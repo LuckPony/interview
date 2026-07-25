@@ -45,4 +45,86 @@ CREATE TABLE IF NOT EXISTS interview_session (
     llm_provider    VARCHAR(50),
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+);
+
+-----面试回答记录-------
+CREATE TABLE IF NOT EXISTS interview_answer (
+    id              BIGSERIAL PRIMARY KEY,
+    session_id      VARCHAR(36) NOT NULL REFERENCES interview_session(id) ON DELETE CASCADE,
+    question_index  INTEGER NOT NULL,
+    question_text   TEXT NOT NULL,
+    answer_text     TEXT,
+    score           INTEGER,                      -- AI 评分 0-100
+    feedback        TEXT,                          -- AI 反馈
+    is_follow_up    BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+------知识库-------
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(100) NOT NULL,
+    description     TEXT,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-------知识库文档------
+CREATE TABLE IF NOT EXISTS knowledge_base_document (
+    id              BIGSERIAL PRIMARY KEY,
+    knowledge_base_id BIGINT NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+    original_name   VARCHAR(255) NOT NULL,
+    storage_key     VARCHAR(255) NOT NULL,   -- ChromaDB 中的存储路径
+    vector_status   VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING / VECTORIZED / FAILED
+    chunk_count     INTEGER DEFAULT 0,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-----向量存储（Spring AI pgvector 标准结构--------
+CREATE TABLE IF NOT EXISTS vector_store (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content         TEXT,
+    metadata        JSONB DEFAULT '{}'::jsonb,
+    embedding       VECTOR(1024)
+);
+
+-- 创建 HNSW 索引加速向量检索
+CREATE INDEX IF NOT EXISTS idx_vector_store_embedding
+    ON vector_store
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+-----面试安排------
+CREATE TABLE IF NOT EXISTS interview_schedule (
+    id              BIGSERIAL PRIMARY KEY,
+    company_name    VARCHAR(255) NOT NULL,
+    job_title       VARCHAR(255),
+    interview_time  TIMESTAMP NOT NULL,
+    contact_info    VARCHAR(255),
+    meeting_link    VARCHAR(500),
+    location        VARCHAR(255),
+    notes           TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING / COMPLETED / CANCELLED / EXPIRED
+    source          VARCHAR(50),                   -- MANUAL / PARSED
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+------ 更新时间触发器---------
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 为需要自动更新 updated_at 的表创建触发器
+CREATE TRIGGER trg_resume_updated_at
+    BEFORE UPDATE ON resume FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_interview_session_updated_at
+    BEFORE UPDATE ON interview_session FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_knowledge_base_updated_at
+    BEFORE UPDATE ON knowledge_base FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_interview_schedule_updated_at
+    BEFORE UPDATE ON interview_schedule FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
