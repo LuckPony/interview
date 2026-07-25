@@ -1,0 +1,17 @@
+[versions]
+spring-boot = "4.0.7"
+lombok = "1.18.36"
+springdoc = "2.8.9"
+mapstruct = "1.6.3"
+redisson = "4.0.0"
+aws-sdk = "2.29.51"
+
+[libraries]
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+springdoc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+mapstruct = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
+mapstruct-processor = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version = "1.1.7" }

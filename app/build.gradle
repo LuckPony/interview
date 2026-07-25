@@ -1,0 +1,71 @@
+plugins {
+    id 'java'
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+}
+
+group = 'com.interview'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    maven{ url = uri('https://maven.aliyun.com/repository/public/')}
+    maven{ url = uri('https://maven.aliyun.com/repository/spring/')}
+    mavenCentral()
+    maven { url = uri('https://repo.spring.io/milestone')}
+}
+
+dependencies {
+    // Web + Validation + Actuator
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    // OpenAPI 3 + Swagger UI
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    // Database
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Lombok
+    compileOnly libs.lombok
+    annotationProcessor libs.lombok
+
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    //Flyway数据库迁移
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+
+    // Flyway PostgreSQL 方言（Spring Boot 3+ / Boot 4 需要单独引入）
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // Redis 缓存（Spring Data Redis 自动配置）
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // AWS S3 SDK —— 用于 MinIO 对象存储
+    implementation "software.amazon.awssdk:s3:${libs.versions.aws.sdk.get()}"
+
+    // H2 内存数据库 —— 仅测试环境使用
+    testRuntimeOnly 'com.h2database:h2'
+
+    // MapStruct 对象映射
+    implementation libs.mapstruct
+    annotationProcessor libs.mapstruct.processor
+
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test'){
+    useJUnitPlatform()
+}
