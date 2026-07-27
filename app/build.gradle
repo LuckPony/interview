@@ -34,6 +34,7 @@ dependencies {
     // Testing
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'com.h2database:h2'
 
     //Flyway数据库迁移
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
@@ -47,12 +48,17 @@ dependencies {
     // AWS S3 SDK —— 用于 MinIO 对象存储
     implementation "software.amazon.awssdk:s3:${libs.versions.aws.sdk.get()}"
 
-    // H2 内存数据库 —— 仅测试环境使用
-    testRuntimeOnly 'com.h2database:h2'
 
     // MapStruct 对象映射
     implementation libs.mapstruct
     annotationProcessor libs.mapstruct.processor
+
+    // Spring AI BOM（统一版本管理）
+    implementation platform("org.springframework.ai:spring-ai-bom:${libs.versions.springAi.get()}")
+
+    // Spring AI OpenAI 兼容模式（用于 DashScope / DeepSeek / Kimi 等）
+    implementation 'org.springframework.ai:spring-ai-openai'
+    implementation 'org.springframework.ai:spring-ai-client-chat'
 
 }
 

@@ -9,7 +9,7 @@ spring:
       enabled: true
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview}
-    username: ${POSTGRES_USER:postgres}
+    username: ${POSTGRES_USER:pony}
     password: ${POSTGRES_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
   jpa:
@@ -47,6 +47,7 @@ springdoc:
   api-docs:
     path: /v3/api-docs
   packages-to-scan: interview.guide.modules
+
 app:
   storage:
     endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}
@@ -54,6 +55,30 @@ app:
     secret-key: ${APP_STORAGE_SECRET_KEY:minioadmin}
     bucket: ${APP_STORAGE_BUCKET:interview}
     region: ${APP_STORAGE_REGION:us-east-1}
+  ai:
+    #默认使用的Provider
+    default-provider: dashscope
+    #结构化输出重试配置
+    structured:
+      max-attempts: 2      #解析失败之后最多重试1（共尝试1次）
+      include-last-error: true      #重试时将错误注入提示词
+    #多Provider定义
+    providers:
+      dashscope:
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        api-key: ${AI_BAILIAN_API_KEY}
+        model: qwen3.5-flash
+        temperature: 0.7
+      deepseek:
+        base-url: https://api.deepseek.com
+        api-key: ${PROVIDER_DEEPSEEK_API_KEY}
+        model: deepseek-v4-pro
+        temperature: 0.7
+      kemi:
+        base-url: https://api.moonshot.cn/v1
+        api-key: ${PROVIDER_KIMI_API_KEY}
+        model: kumi—latest
+        temperature: 0.7
 
 management:
   endpoints:

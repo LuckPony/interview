@@ -5,6 +5,7 @@ springdoc = "2.8.9"
 mapstruct = "1.6.3"
 redisson = "4.0.0"
 aws-sdk = "2.29.51"
+springAi ="2.0.0"
 
 [libraries]
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
