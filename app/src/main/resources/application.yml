@@ -41,12 +41,14 @@ spring:
           min-idle: 2
 springdoc:
   swagger-ui:
-    path: /swagger-ui.html
+    path: /swagger.html
     tags-sorter: alpha
     operations-sorter: alpha
+    try-it-out-enabled: true
+    persist-authorization: true
   api-docs:
     path: /v3/api-docs
-  packages-to-scan: interview.guide.modules
+  packages-to-scan: interview.homegrown.modules
 
 app:
   storage:
@@ -67,7 +69,7 @@ app:
       dashscope:
         base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
         api-key: ${AI_BAILIAN_API_KEY}
-        model: qwen3.5-flash
+        model: qwen3.7-flash
         temperature: 0.7
       deepseek:
         base-url: https://api.deepseek.com

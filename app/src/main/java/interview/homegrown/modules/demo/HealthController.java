@@ -2,6 +2,8 @@ package interview.homegrown.modules.demo;
 
 import interview.homegrown.common.result.Result;
 import interview.homegrown.infrastructure.file.FileStorageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +20,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/demo")
+@Tag(name = "基础设施健康检查",description = "验证 PostgreSQL / Redis / MinIO 连通性")
 public class HealthController {
 
     private final DataSource dataSource;
@@ -32,6 +35,7 @@ public class HealthController {
 
     //综合健康检查：验证postgreSQL + Redis + MinIO 全部连通
     @GetMapping("/health")
+    @Operation(summary = "综合健康检查", description = "同时检测数据库、缓存、对象存储三个服务的连通状态")
     public Result<Map<String, Object>> health(){
         Map<String, Object> status = new HashMap<>();
         status.put("app","UP");
