@@ -24,6 +24,10 @@ spring:
       charset: UTF-8
       enabled: true
       force: true
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -81,6 +85,14 @@ app:
         api-key: ${PROVIDER_KIMI_API_KEY}
         model: kumi—latest
         temperature: 0.7
+
+  file:
+    max-size: 52428800
+    allowed-types:
+      - application/pdf
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - text/plai
 
 management:
   endpoints:

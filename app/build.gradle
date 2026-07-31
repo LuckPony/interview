@@ -21,7 +21,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
     // OpenAPI 3 + Swagger UI
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+    implementation libs.springdoc
 
     // Database
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -59,6 +59,10 @@ dependencies {
     // Spring AI OpenAI 兼容模式（用于 DashScope / DeepSeek / Kimi 等）
     implementation 'org.springframework.ai:spring-ai-openai'
     implementation 'org.springframework.ai:spring-ai-client-chat'
+
+    //文件解析
+    implementation libs.tika.core
+    implementation libs.tika.parsers
 
 }
 

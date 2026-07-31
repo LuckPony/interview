@@ -1,17 +1,21 @@
 [versions]
 spring-boot = "4.0.7"
 lombok = "1.18.36"
-springdoc = "2.8.9"
+springdoc = "3.0.3"
 mapstruct = "1.6.3"
 redisson = "4.0.0"
 aws-sdk = "2.29.51"
 springAi ="2.0.0"
+tika = "2.9.2"
 
 [libraries]
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 springdoc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 mapstruct = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
 mapstruct-processor = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
+tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }                     # 新增
+tika-parsers = { module = "org.apache.tika:tika-parsers-standard-package", version.ref = "tika" } # 新增
+
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

@@ -15,6 +15,7 @@ public enum ErrorCode {
     FILE_TOO_LARGE(1004, "文件过大"),
     FILE_TYPE_NOT_SUPPORTED(1005, "文件类型不支持"),
     DUPLICATE_FILE(1006, "文件已存在"),
+    FILE_PARSE_FAILED(1007,"文件解析失败"),
 
     INTERVIEW_SESSION_NOT_FOUND(2001, "面试会话不存在"),
     INTERVIEW_ALREADY_COMPLETED(2002, "面试已结束"),
