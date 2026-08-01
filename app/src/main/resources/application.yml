@@ -92,7 +92,7 @@ app:
       - application/pdf
       - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
-      - text/plai
+      - text/plain
 
 management:
   endpoints:

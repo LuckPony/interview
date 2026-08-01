@@ -17,7 +17,7 @@ public class FileProperties {
     //单个文件最大字节数设置为50MB
     private long maxSize = 50 * 1024 * 1024L;
 
-    //允许上传的MIME类型
+    //允许上传的MIME类型,默认如下，实际的要去app.file定义
     private List<String> allowedTypes = List.of(
             "application/pdf",
             "application/msword",
