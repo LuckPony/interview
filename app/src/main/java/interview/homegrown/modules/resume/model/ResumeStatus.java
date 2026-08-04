@@ -9,5 +9,9 @@ package interview.homegrown.modules.resume.model;
  * FAILED     - 分析失败
  */
 
-public class ResumeStatus {
+public enum ResumeStatus {
+    UPLOADED,
+    ANALYZING,
+    COMPLETED,
+    FAILED
 }

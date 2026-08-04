@@ -46,8 +46,9 @@ public class ResumeEntity {
 
     @Size(max = 20)
     @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private String status;
+    private ResumeStatus status;
 
     @Column(name = "error_message", length = Integer.MAX_VALUE)
     private String errorMessage;
