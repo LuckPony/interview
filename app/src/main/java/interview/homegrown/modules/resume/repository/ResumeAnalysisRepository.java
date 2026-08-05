@@ -11,6 +11,12 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysisEn
     //按照简历id查找分析结果
     Optional<ResumeAnalysisEntity> findByResumeId(Long resumeId);
 
+    //查找简历id是否有分析结果
+    Boolean existsByResumeId(Long resumeId);
+
     //批量查多个简历的分析结果（避免N+1查询）
     List<ResumeAnalysisEntity> findByResumeIdIn(List<Long> resumeId);
+
+    //根据简历ID删除所有分析报告
+    void deleteByResumeId(Long resumeId);
 }

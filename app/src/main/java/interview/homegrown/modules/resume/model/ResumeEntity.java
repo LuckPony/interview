@@ -44,7 +44,6 @@ public class ResumeEntity {
     @Column(name = "resume_text", columnDefinition = "text")
     private String resumeText;
 
-    @Size(max = 20)
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

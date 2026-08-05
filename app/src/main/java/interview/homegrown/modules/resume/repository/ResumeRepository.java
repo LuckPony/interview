@@ -14,4 +14,6 @@ public interface  ResumeRepository extends JpaRepository<ResumeEntity, Long> {
 
     //按创建时间倒序查全部简历
     List<ResumeEntity> findAllByOrderByCreatedAtDesc();
+
+
 }

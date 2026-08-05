@@ -45,7 +45,7 @@ spring:
           min-idle: 2
 springdoc:
   swagger-ui:
-    path: /swagger.html
+    path: /swagger
     tags-sorter: alpha
     operations-sorter: alpha
     try-it-out-enabled: true

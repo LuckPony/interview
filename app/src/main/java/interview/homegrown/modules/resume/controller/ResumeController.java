@@ -4,6 +4,7 @@ package interview.homegrown.modules.resume.controller;
 import interview.homegrown.common.result.Result;
 import interview.homegrown.modules.resume.model.ResumeDetailDTO;
 import interview.homegrown.modules.resume.model.ResumeListItemDTO;
+import interview.homegrown.modules.resume.service.ResumeDeleteService;
 import interview.homegrown.modules.resume.service.ResumeQueryService;
 import interview.homegrown.modules.resume.service.ResumeUploadService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,10 +25,12 @@ public class ResumeController {
 
     private final ResumeUploadService resumeUploadService;
     private final ResumeQueryService resumeQueryService;
+    private final ResumeDeleteService resumeDeleteService;
 
-    public ResumeController(ResumeUploadService resumeUploadService, ResumeQueryService resumeQueryService) {
+    public ResumeController(ResumeUploadService resumeUploadService, ResumeQueryService resumeQueryService, ResumeDeleteService resumeDeleteService) {
         this.resumeUploadService = resumeUploadService;
         this.resumeQueryService = resumeQueryService;
+        this.resumeDeleteService = resumeDeleteService;
     }
 
     //上传简历并分析简历
@@ -53,6 +56,17 @@ public class ResumeController {
     @Operation(summary = "简历详情", description = "返回简历原文与AI分析报告")
     public Result<ResumeDetailDTO> detail(@PathVariable Long id){
         return Result.success(resumeQueryService.getDetail(id));
+    }
+
+    //删除简历
+    @DeleteMapping (value = "/{id}")
+    @Operation(summary = "删除简历",description = "根据简历id删除指定简历")
+    public Result<Void> delete(
+            @Parameter(description = "id")
+            @PathVariable Long id) {
+
+        resumeDeleteService.delete(id);
+        return Result.success();
     }
 
 }
