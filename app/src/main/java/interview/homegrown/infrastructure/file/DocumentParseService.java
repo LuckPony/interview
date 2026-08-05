@@ -48,7 +48,7 @@ public class DocumentParseService {
             //2.配置内容处理器，从Tika解析出的XHTML结构中只提取<body>标签内的纯文本,-1表示表示不限制文本长度
             BodyContentHandler handler = new BodyContentHandler(-1);
 
-            //3.创建元数据对象，参考文件名解析判断使用什么解析器
+            //3.创建元数据对象，参考文件名解析判断使用什么解析器,只记录属性信息
             Metadata metadata = new Metadata();
             metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, fileName);
 
