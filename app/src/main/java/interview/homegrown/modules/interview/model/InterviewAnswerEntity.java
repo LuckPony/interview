@@ -18,7 +18,7 @@ public class InterviewAnswerEntity {
     private Long id;
 
     @JoinColumn(name = "session_id", nullable = false)
-    private Long sessionId;
+    private String sessionId;
 
     @Column(name = "question_index", nullable = false)
     private Integer questionIndex;

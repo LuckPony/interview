@@ -19,6 +19,7 @@ public class InterviewSkillProperties {
 
     private Map<String, SkillConfig> skills = new HashMap<>();
 
+
     public int getFollowUpCount() {
         return followUpCount;
     }

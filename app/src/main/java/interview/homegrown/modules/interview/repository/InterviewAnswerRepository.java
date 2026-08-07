@@ -9,7 +9,7 @@ import java.util.List;
 public interface InterviewAnswerRepository extends JpaRepository<InterviewAnswerEntity,Long> {
 
     //按照会话 id 查找所有答案
-    List<InterviewAnswerEntity> finBySessionIdOrderByQuestionIndex(String sessionId);
+    List<InterviewAnswerEntity> findBySessionIdOrderByQuestionIndex(String sessionId);
 
     //按照会话 id 删除所有答案
     void deleteBySessionId(String sessionId);
