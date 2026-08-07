@@ -80,10 +80,10 @@ app:
         api-key: ${PROVIDER_DEEPSEEK_API_KEY}
         model: deepseek-v4-pro
         temperature: 0.7
-      kemi:
+      kimi:
         base-url: https://api.moonshot.cn/v1
         api-key: ${PROVIDER_KIMI_API_KEY}
-        model: kumi—latest
+        model: kimi—latest
         temperature: 0.7
 
   file:
