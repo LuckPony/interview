@@ -1,4 +1,4 @@
-package interview.homegrown.modules.resume.ResumeRepositoryTest;
+package interview.homegrown.modules.resume;
 
 
 import interview.homegrown.modules.resume.model.ResumeEntity;
