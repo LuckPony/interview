@@ -245,7 +245,33 @@ public class InterviewSessionService {
         return toDetailDTO(session);
     }
 
+    //======================查询=================
 
+    //查会话列表
+    public List<InterviewListItemDTO> listSessions(){
+
+        return sessionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(s -> {
+                    int answered = answerRepository.findBySessionIdOrderByQuestionIndex(s.getId()).size();
+                    return new InterviewListItemDTO(
+                            s.getId(),
+                            s.getSkillId(),
+                            skillService.getSkill(s.getSkillId()).getName(),
+                            s.getDifficulty(),
+                            s.getStatus(),
+                            s.getTotalQuestions(),
+                            answered,
+                            s.getTotalScore(),
+                            s.getCreatedAt()
+                    );
+                })
+                .toList();
+    }
+
+    //查单个详细会话信息
+    public InterviewSessionDTO getSession(String sessionId){
+        return toDetailDTO(persistenceService.getById(sessionId));
+    }
 
     //====================私有方法=====================
 
