@@ -5,9 +5,12 @@ import interview.homegrown.common.result.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -24,6 +27,19 @@ public class GlobalExceptionHandler {
     public Result<Void> handleIllegalArgument(IllegalArgumentException e) {
         log.warn("参数异常: {}", e.getMessage());
         return Result.error(ErrorCode.BAD_REQUEST, e.getMessage());
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Result<Void>> handleResponseStatusException(ResponseStatusException e) {
+        HttpStatusCode status = e.getStatusCode();
+        int code = status instanceof HttpStatus hs ? hs.value() : status.value();
+        String reason = e.getReason() != null ? e.getReason() : "请求处理异常";
+        if (code >= 500) {
+            log.error("HTTP 状态异常：status={}, reason={}", code, reason, e);
+        } else {
+            log.warn("HTTP 状态异常：status={}, reason={}", code, reason);
+        }
+        return ResponseEntity.status(status).body(Result.error(code, reason));
     }
 
     @ExceptionHandler(Exception.class)

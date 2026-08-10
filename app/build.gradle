@@ -65,6 +65,12 @@ dependencies {
     implementation libs.tika.core
     implementation libs.tika.parsers
 
+    // ===== Drill 模块：安全与 JWT 鉴权 =====
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
 }
 
 java {
@@ -79,4 +85,16 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test'){
     useJUnitPlatform()
+}
+
+bootRun {
+    // 本地开发：macOS 上系统开了 SOCKS/HTTP/HTTPS 代理（scutil 可见，均指向 127.0.0.1:65532）。
+    // 不能简单把 http.proxyHost 设空（AWS S3 SDK 会报“host 为空”），正确做法是：
+    //   1) useSystemProxies=false 关掉系统代理自动探测；
+    //   2) socksProxyHost= 显式清掉 SOCKS；
+    //   3) nonProxyHosts 让 localhost/127.0.0.1 直连（绕过代理），外部 LLM 域名仍走代理。
+    jvmArgs '-Djava.net.useSystemProxies=false',
+            '-DsocksProxyHost=',
+            '-Dhttp.nonProxyHosts=localhost|127.0.0.1|*.local',
+            '-DsocksNonProxyHosts=localhost|127.0.0.1|*.local'
 }
