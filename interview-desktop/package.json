@@ -1,0 +1,22 @@
+{
+  "name": "interview-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interview 备考助手的桌面壳：拉起本地 Spring Boot 后端 + 加载 React SPA + 本地 fs 桥（免上传读大项目）",
+  "main": "src/main.js",
+  "scripts": {
+    "sync-spa": "VITE_API_BASE=http://127.0.0.1:8080 npm --prefix ../../interview-web run build && rm -rf app-dist && cp -r ../../interview-web/dist app-dist",
+    "start": "electron .",
+    "pack": "npm run sync-spa && electron-builder --dir",
+    "dist": "npm run sync-spa && electron-builder",
+    "fix:electron": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app",
+    "postinstall": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app || true"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "allowScripts": {
+    "electron@31.7.7": true
+  }
+}

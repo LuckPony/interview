@@ -1,0 +1,14 @@
+appId: com.yan.interview.desktop
+productName: Interview 备考
+directories:
+  output: dist-electron
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - app-dist/**/*
+mac:
+  category: public.app-category.education
+  target:
+    - dmg
+    - zip
