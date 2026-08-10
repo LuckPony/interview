@@ -14,7 +14,8 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # schema 由 Flyway 全权管理，Hibernate 不再做严格类型校验（避免 SMALLINT/INTEGER 之类良性差异报错）
+      ddl-auto: none
 
     show-sql: false
     properties:
@@ -64,7 +65,7 @@ app:
     region: ${APP_STORAGE_REGION:us-east-1}
   ai:
     #默认使用的Provider
-    default-provider: dashscope
+    default-provider: deepseek
     #结构化输出重试配置
     structured:
       max-attempts: 2      #解析失败之后最多重试1（共尝试1次）
@@ -73,18 +74,22 @@ app:
     providers:
       dashscope:
         base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-        api-key: ${AI_BAILIAN_API_KEY}
-        model: qwen3.7-flash
+        # 当前用户只有 DeepSeek key，阿里 key 留空则该 provider 跳过初始化
+        api-key: ${DASHSCOPE_API_KEY:}
+        # 读 .env 里的 MODEL_NAME；未设则退回默认值
+        model: ${MODEL_NAME:qwen3.7-flash}
         temperature: 0.7
       deepseek:
         base-url: https://api.deepseek.com
-        api-key: ${PROVIDER_DEEPSEEK_API_KEY}
-        model: deepseek-v4-pro
+        # 用户的 key 在 .env 的 API_KEY 里（DeepSeek 的 key）
+        api-key: ${API_KEY}
+        # 读 .env 里的 MODEL_NAME；未设则退回默认值
+        model: ${MODEL_NAME:deepseek-chat}
         temperature: 0.7
       kimi:
         base-url: https://api.moonshot.cn/v1
         api-key: ${PROVIDER_KIMI_API_KEY}
-        model: kimi—latest
+        model: kimi-latest
         temperature: 0.7
 
   file:
@@ -94,35 +99,38 @@ app:
       - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
       - text/plain
+  jwt:
+    secret: ${APP_JWT_SECRET:drill-dev-secret-change-me-please-32bytes}
+    expiration-ms: 86400000   # 24h
 
 interview:
-  follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT}
+  follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:2}
   # Skill 面试方向定义（key 为 skillId）
   skills:
     java-backend:
       name: Java 后端
       description: Java 核心、Spring 生态、并发、JVM、分布式、数据库等
-      default-question-count: ${DEFAULT_QUESTION_COUNT}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
     frontend:
       name: 前端
       description: JavaScript/TypeScript、框架原理、浏览器、工程化等
-      default-question-count: ${DEFAULT_QUESTION_COUNT}
-      python:
-        name: Python
-        description: Python 基础、常用框架、数据分析等
-        default-question-count: ${DEFAULT_QUESTION_COUNT}
-      algorithm:
-        name: 算法
-        description: 数据结构、算法思想、复杂度分析等
-        default-question-count: ${DEFAULT_QUESTION_COUNT}
-      system-design:
-        name: 系统设计
-        description: 高并发、高可用、缓存、消息队列、微服务等
-        default-question-count: ${DEFAULT_QUESTION_COUNT}
-      database:
-        name: 数据库
-        description: MySQL、索引、事务、锁、Redis、分库分表等
-        default-question-count: ${DEFAULT_QUESTION_COUNT}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+    python:
+      name: Python
+      description: Python 基础、常用框架、数据分析等
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+    algorithm:
+      name: 算法
+      description: 数据结构、算法思想、复杂度分析等
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+    system-design:
+      name: 系统设计
+      description: 高并发、高可用、缓存、消息队列、微服务等
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+    database:
+      name: 数据库
+      description: MySQL、索引、事务、锁、Redis、分库分表等
+      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
 
 
 management:

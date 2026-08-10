@@ -29,10 +29,13 @@ public class StructuredOutputInvoker {
 
     private final LlmProviderRegistry registry;
     private final AiConfigProperties config;
+    private final DeepSeekRawClient rawClient;
 
-    public StructuredOutputInvoker(LlmProviderRegistry registry, AiConfigProperties config) {
+    public StructuredOutputInvoker(LlmProviderRegistry registry, AiConfigProperties config,
+                                  DeepSeekRawClient rawClient) {
         this.registry = registry;
         this.config = config;
+        this.rawClient = rawClient;
     }
 
     /**
@@ -77,7 +80,23 @@ public class StructuredOutputInvoker {
                         .call()
                         .content();
 
+                // 兜底：Spring AI 只读了 content，推理模型偶发把答案塞进 reasoning_content 导致 content 为空。
+                // 这里直连 DeepSeek 原生接口，content 为空时改用 reasoning_content 作为兜底，避免无谓 500。
+                if ((response == null || response.isBlank()) && rawClient != null) {
+                    String fallback = rawClient.complete(effectiveSystem, currentUser);
+                    if (fallback != null && !fallback.isBlank()) {
+                        log.info("Spring AI content 为空，已用 DeepSeek 原生 reasoning_content 兜底");
+                        response = fallback;
+                    }
+                }
+
                 if (response == null || response.isBlank()){
+                    String effectiveProvider = (provider != null && !provider.isBlank())
+                            ? provider : config.getDefaultProvider();
+                    var cfg = config.getProviders().get(effectiveProvider);
+                    log.warn("LLM 返回空 content (provider={}, model={})。若使用推理模型（如 deepseek-v4-flash），"
+                                    + "可能是模型只输出了 reasoning_content，Spring AI 2.0 未解析该字段。",
+                            effectiveProvider, cfg != null ? cfg.getModel() : "unknown");
                     throw new RuntimeException("LLM 返回为空");
                 }
 
