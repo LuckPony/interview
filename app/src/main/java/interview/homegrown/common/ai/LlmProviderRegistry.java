@@ -1,6 +1,7 @@
 package interview.homegrown.common.ai;
 
 
+import com.openai.core.Timeout;
 import interview.homegrown.common.config.AiConfigProperties;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -59,11 +61,28 @@ public class LlmProviderRegistry {
                         .apiKey(cfg.getApiKey())
                         .model(cfg.getModel())
                         .temperature(cfg.getTemperature())
-                        .timeout(Duration.ofSeconds(60))
-                        .maxRetries(structured.getMaxAttempts())
+                        .timeout(Duration.ofSeconds(45))
+                        // 重试只交给 StructuredOutputInvoker 的 for 循环（能注入上次错误信息帮模型修正），
+                        // 这里设为 0，避免与上层 for 循环相乘叠加（maxAttempts² 次真实请求 → 出题卡 2-3 分钟）。
+                        .maxRetries(0)
                         .build();
+                // 显式 connect/read 超时：Spring AI 2.0 的 OpenAI 客户端底层是 OkHttp，
+                // 仅靠 OpenAiChatOptions.timeout 的读超时不足以兜底——dashscope 路由黑洞
+                // （包被丢弃而非拒绝）时 TCP 建连会卡很久，表现为 start-plan "一直 pending"
+                // 并拖死 Tomcat 线程。这里经 httpClientBuilderCustomizer 给 OkHttp 设
+                // 10s 建连 + 45s 读 + 45s 调用超时，让卡住的 LLM 快速失败而非挂死后端。
+                // 超时保持 45s 而非进一步收紧：实测单次 deepseek 调用常达 ~30s，收到 30s 反而会让
+                // 本可成功的调用超时→报错→上层重试重打，得不偿失。卡 3 分钟的真凶是 maxRetries 与
+                // 外层 for 循环相乘（6 次请求），去掉相乘后最坏仅 2×45s=90s，已是原 270s 的 1/3。
+                OpenAiHttpClientBuilderCustomizer timeoutCustomizer = b -> b.timeout(
+                        Timeout.builder()
+                                .connect(Duration.ofSeconds(10))
+                                .read(Duration.ofSeconds(45))
+                                .request(Duration.ofSeconds(45))
+                                .build());
                 OpenAiChatModel chatModel = OpenAiChatModel.builder()
                         .options(options)
+                        .httpClientBuilderCustomizer(timeoutCustomizer)
                         .build();
                 ChatClient chatClient = ChatClient.builder(chatModel).build();
                 clients.put(name,chatClient);

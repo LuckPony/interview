@@ -1,32 +1,47 @@
 package interview.homegrown.modules.drill.web;
 
+import interview.homegrown.modules.drill.ai.TutorGenerator;
+import interview.homegrown.modules.drill.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillRun;
 import interview.homegrown.modules.drill.domain.DrillRunStatus;
+import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.domain.SelectedTask;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
+import interview.homegrown.modules.drill.repository.DrillTurnRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.service.AnswerService;
 import interview.homegrown.modules.drill.service.CorpusService;
+import interview.homegrown.modules.drill.service.DailyPlanService;
 import interview.homegrown.modules.drill.service.HistoryService;
 import interview.homegrown.modules.drill.service.NoteService;
 import interview.homegrown.modules.drill.service.ProfileService;
 import interview.homegrown.modules.drill.service.QuestionService;
 import interview.homegrown.modules.drill.service.RehearsalService;
+import interview.homegrown.modules.drill.service.ReviewService;
 import interview.homegrown.modules.drill.service.SelectionService;
+import interview.homegrown.modules.drill.web.dto.ConversationView;
+import interview.homegrown.modules.drill.web.dto.ChatRequest;
+import interview.homegrown.modules.drill.web.dto.DailyTaskView;
 import interview.homegrown.modules.drill.web.dto.DebtView;
 import interview.homegrown.modules.drill.web.dto.GradeView;
 import interview.homegrown.modules.drill.web.dto.NoteRequest;
 import interview.homegrown.modules.drill.web.dto.NoteView;
 import interview.homegrown.modules.drill.web.dto.QuestionView;
 import interview.homegrown.modules.drill.web.dto.RehearsalAnswerRequest;
+import interview.homegrown.modules.drill.web.dto.ReviewView;
 import interview.homegrown.modules.drill.web.dto.RehearsalStartRequest;
 import interview.homegrown.modules.drill.web.dto.RehearsalView;
 import interview.homegrown.modules.drill.web.dto.RunDetailView;
 import interview.homegrown.modules.drill.web.dto.RunSummaryView;
 import interview.homegrown.modules.drill.web.dto.SubmitRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,9 +49,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -61,6 +79,8 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 @RequestMapping("/api/drill")
 public class DrillController {
 
+    private static final Logger log = LoggerFactory.getLogger(DrillController.class);
+
     private final SelectionService selectionService;
     private final QuestionService questionService;
     private final AnswerService answerService;
@@ -71,12 +91,20 @@ public class DrillController {
     private final CorpusService corpusService;
     private final DrillRunRepository runRepo;
     private final QuestionBankRepository questionBankRepo;
+    private final DrillTurnRepository turnRepo;
+    private final TutorGenerator tutorGenerator;
+    private final ObjectMapper objectMapper;
+    private final DailyPlanService dailyPlanService;
+    private final ReviewService reviewService;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
                            AnswerService answerService, ProfileService profileService,
                            RehearsalService rehearsalService, NoteService noteService,
                            HistoryService historyService, CorpusService corpusService,
-                           DrillRunRepository runRepo, QuestionBankRepository questionBankRepo) {
+                           DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
+                           DrillTurnRepository turnRepo, TutorGenerator tutorGenerator,
+                           ObjectMapper objectMapper, DailyPlanService dailyPlanService,
+                           ReviewService reviewService) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
@@ -87,6 +115,11 @@ public class DrillController {
         this.corpusService = corpusService;
         this.runRepo = runRepo;
         this.questionBankRepo = questionBankRepo;
+        this.turnRepo = turnRepo;
+        this.tutorGenerator = tutorGenerator;
+        this.objectMapper = objectMapper;
+        this.dailyPlanService = dailyPlanService;
+        this.reviewService = reviewService;
     }
 
     // ------------------------------------------------------------ LEARN
@@ -108,7 +141,7 @@ public class DrillController {
         return openRun(uid, task);
     }
 
-    /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）。 */
+    /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
     @PostMapping("/start-plan")
     public QuestionView startPlan(@RequestBody StartPlanRequest req) {
         Long uid = currentUserId();
@@ -116,6 +149,7 @@ public class DrillController {
         String mode = req.mode() == null ? "continue" : req.mode();
         SelectedTask task = switch (mode) {
             case "review" -> selectionService.pickReviewWithinPlan(uid, req.planId());
+            case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
             default -> selectionService.pickNextWithinPlan(uid, req.planId());
         };
         return openRun(uid, task);
@@ -140,13 +174,20 @@ public class DrillController {
         QuestionBank q = questionBankRepo.findById(old.getQuestionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
 
-        // 已有未闭环作答 -> 恢复之（物理闸门语义：同一时间只做一道）
-        List<DrillRun> activeRuns = runRepo.findByUserIdAndStatusIn(uid, ACTIVE_STATUSES);
-        if (!activeRuns.isEmpty()) {
-            DrillRun run = activeRuns.getFirst();
+        // 已有未闭环作答 -> 恢复之（物理闸门语义：同一时间只做一道）。
+        // 复用只认 LEARN 主线：若活跃的是 REHEARSAL，先搁置再开原题，避免把它当 LEARN 新题返回。
+        List<DrillRun> activeLearns = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN);
+        if (!activeLearns.isEmpty()) {
+            DrillRun run = activeLearns.getFirst();
             QuestionBank aq = questionBankRepo.findById(run.getQuestionId())
                     .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
-            return new QuestionView(run.getId(), aq.getStem(), aq.getProbeType().name(), aq.getResponseFormat().name());
+            return new QuestionView(run.getId(), run.getQuestionId(), aq.getStem(), aq.getProbeType().name(), aq.getResponseFormat().name());
+        }
+        List<DrillRun> activeRehearsals = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.REHEARSAL);
+        if (!activeRehearsals.isEmpty()) {
+            DrillRun stray = activeRehearsals.getFirst();
+            stray.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(stray);
         }
 
         // 用原题开新 run：不重新调用 LLM，直接复用已生成的 stem/points
@@ -161,24 +202,100 @@ public class DrillController {
             // 闸门二：部分唯一索引物理闸门（并发兜底）
             throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
         }
-        return new QuestionView(run.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+        return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+    }
+
+    // ------------------------------------------------------------ 今日任务（每日自动排期）
+
+    /** 今日任务：确保生成（懒兜底）后返回列表（含预生成题干，READY 即秒开）。 */
+    @GetMapping("/today")
+    public List<DailyTaskView> today() {
+        Long uid = currentUserId();
+        dailyPlanService.ensureToday(uid);
+        return dailyPlanService.todayView(uid);
+    }
+
+    /**
+     * 用今日任务的预生成题开 run（不调 LLM）。预生成还没好（PENDING）时现场同步出一题兜底。
+     * 真正开了新 run 才把任务置 DONE（若是恢复别的活跃 run，则不消费该任务）。
+     */
+    @PostMapping("/task/{taskId}/start")
+    public QuestionView startTask(@PathVariable Long taskId) {
+        Long uid = currentUserId();
+        boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
+        dailyPlanService.ensureReady(uid, taskId);
+        DailyTask t = dailyPlanService.requireTask(uid, taskId);
+        QuestionView view = openRunOnQuestion(uid, t.getQuestionId());
+        if (!hadActive) {
+            dailyPlanService.markDone(taskId);
+        }
+        return view;
+    }
+
+    /** 连续下一题：取今日下一个 READY 任务开 run；今日已全部完成则 404，由前端提示。 */
+    @PostMapping("/next-task")
+    public QuestionView nextTask() {
+        Long uid = currentUserId();
+        dailyPlanService.ensureToday(uid);
+        List<DailyTask> ready = dailyPlanService.readyTasksToday(uid);
+        if (ready.isEmpty()) {
+            throw new ResponseStatusException(NOT_FOUND, "今日任务已全部完成，去自由练习吧");
+        }
+        DailyTask t = ready.get(0);
+        boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
+        dailyPlanService.ensureReady(uid, t.getId());
+        t = dailyPlanService.requireTask(uid, t.getId());
+        QuestionView view = openRunOnQuestion(uid, t.getQuestionId());
+        if (!hadActive) {
+            dailyPlanService.markDone(t.getId());
+        }
+        return view;
     }
 
     private static final List<DrillRunStatus> ACTIVE_STATUSES = List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING);
 
     private QuestionView openRun(Long uid, SelectedTask task) {
-        // 若已有未闭环作答，直接恢复该题：避免物理闸门冲突，也避免重复调用 LLM 出题。
-        List<DrillRun> activeRuns = runRepo.findByUserIdAndStatusIn(uid, ACTIVE_STATUSES);
-        if (!activeRuns.isEmpty()) {
-            DrillRun run = activeRuns.getFirst();
-            QuestionBank q = questionBankRepo.findById(run.getQuestionId())
-                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
-            return new QuestionView(run.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
-        }
+        QuestionView resumed = resumeActiveOrPark(uid);
+        if (resumed != null) return resumed;
 
         // 资料注入：若该概念所属方向绑了用户的书/项目资料，把解析文本喂给出题器（v1 全文注入）
         String ref = corpusService.referenceForConcept(task.conceptId());
         var q = questionService.generate(task, ref);       // 出题（LLM 填空）
+        return openRunOnQuestion(uid, q.getId());
+    }
+
+    /**
+     * 物理闸门（LEARN 主线复用）：有活跃 LEARN 直接返回它（恢复未闭环作答）；
+     * 有活跃 REHEARSAL 先搁置腾出闸门名额。无活跃则返回 null，可开新题。
+     */
+    private QuestionView resumeActiveOrPark(Long uid) {
+        // 把"未闭环作答"收窄到 LEARN，否则一个没结束的 REHEARSAL（模拟面试/追问场）
+        // 会被当成 LEARN 新题返回，用户在其上答完点"继续追问"会撞 spawnFollowup 的守卫。
+        List<DrillRun> activeLearns = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN);
+        if (!activeLearns.isEmpty()) {
+            DrillRun run = activeLearns.getFirst();
+            QuestionBank q = questionBankRepo.findById(run.getQuestionId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
+            return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+        }
+        // 存在被丢弃的活跃 REHEARSAL（如中途切去练习）：先搁置腾出物理闸门名额，再开 LEARN 新题。
+        // 用 PARKED（与 72h 自动搁置同款终态）而非 endRehearsal 结算——避免对未完成的模拟面试误判分/动 mastery。
+        List<DrillRun> activeRehearsals = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.REHEARSAL);
+        if (!activeRehearsals.isEmpty()) {
+            DrillRun stray = activeRehearsals.getFirst();
+            stray.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(stray);
+        }
+        return null;
+    }
+
+    /** 用已存在的题目开一条 LEARN run（不调 LLM，今日任务预生成题走这里）。 */
+    private QuestionView openRunOnQuestion(Long uid, Long questionId) {
+        QuestionBank q = questionBankRepo.findById(questionId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
+        QuestionView resumed = resumeActiveOrPark(uid);
+        if (resumed != null) return resumed;
+
         DrillRun run = new DrillRun();
         run.setUserId(uid);
         run.setQuestionId(q.getId());
@@ -190,13 +307,201 @@ public class DrillController {
             // 闸门二：部分唯一索引物理闸门，已有未闭环作答（并发兜底）
             throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
         }
-        return new QuestionView(run.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+        return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
     }
 
-    @PostMapping("/{runId}/submit")
-    public GradeView submit(@PathVariable Long runId, @RequestBody SubmitRequest req) {
+    /**
+     * 提交作答并流式讲解（SSE 单端点，替代旧「submit 同步 JSON + 另开 tutor-stream」两段式）。
+     *
+     * <p>协议（text/event-stream）：
+     * <ol>
+     *   <li>{@code event: grade} → 判分结果（GradeView JSON），前端据此先渲染评分面板；</li>
+     *   <li>{@code data: {"text":"..."}}（默认 message 事件）→ 逐 token 的讲解，前端累积显示；</li>
+     *   <li>{@code event: done} → 完整讲解文本，前端用它兜底覆盖（修复偶发末尾截断）；</li>
+     *   <li>{@code event: error} → 流式中途异常。</li>
+     * </ol>
+     *
+     * <p>判分（answerService.submit）在写响应体之前同步完成——若抛闸门 409 等，由 Spring 错误
+     * 机制直接返回，不会进 SSE 体；只有讲解流式阶段的中断才走 {@code event: error}。
+     */
+    @PostMapping(value = "/{runId}/submit", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> submit(
+            @PathVariable Long runId, @RequestBody SubmitRequest req) {
         Long uid = currentUserId();
-        return answerService.submit(uid, runId, req.rawAnswer(), req.timing(), req.activeSeconds());
+        GradeView grade = answerService.submit(uid, runId, req.rawAnswer(), req.timing(), req.activeSeconds());
+
+        DrillTurn turn = turnRepo.findByRunIdAndRound(runId, 0)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        if (turn.getRawAnswer() == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "本轮尚未作答");
+        }
+        String stem = turn.getStem();
+        String pointsJson = turn.getPointsJson();
+        String byConceptJson = turn.getByConceptJson();
+        String rawAnswer = turn.getRawAnswer();
+        final DrillTurn fTurn = turn;
+
+        StreamingResponseBody body = out -> {
+            try {
+                // 1) grade 事件：先让前端渲染评分面板（verdict），与讲解解耦
+                out.write(("event: grade\ndata: " + objectMapper.writeValueAsString(grade) + "\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                // 2) 逐 token 推讲解
+                final StringBuilder buf = new StringBuilder();
+                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        token -> {
+                            buf.append(token);
+                            try {
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        });
+
+                // 完整文本写库（让对话线下次刷新也能拿到）
+                if (full != null) {
+                    fTurn.setTutorText(full);
+                    turnRepo.save(fTurn);
+                }
+
+                String donePayload = full == null ? "" : jsonEscape(full);
+                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("submit SSE 推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    // ---------------------------------------------------- 对话式作答（chat + finish）
+
+    /**
+     * 对话式作答 SSE（POST /{runId}/chat）：
+     * <p>用户在聊天页发送消息后，AI 以辅导老师身份流式回复。<b>不判分</b>——评分延迟到
+     * 用户点「结束并评分」时由 {@code POST /{runId}/finish} 一次性完成。
+     *
+     * <p>协议（text/event-stream）：
+     * <ol>
+     *   <li>{@code data: {"text":"..."}}（默认 message 事件）→ 逐 token 的 AI 回复；</li>
+     *   <li>{@code event: done} → 回复结束；</li>
+     *   <li>{@code event: error} → 流式中途异常。</li>
+     * </ol>
+     *
+     * <p>同步段完成：验证 run 归属 + 状态、保存用户回答为 DrillTurn、首次对话时推进 run 到 ANSWERING。
+     * 流式段调 {@link TutorGenerator#streamChat} 生成对话回复，完成后写回 turn.tutorText。
+     *
+     * <p>状态门槛放宽：除 READY/ANSWERING 外，也允许对「已判分的 LEARN run」继续对话——历史记录
+     * 「继续对话」= 用户向 AI 提问（追问是用户问 AI），不重新评分，GRADED 状态保持不变。
+     */
+    @PostMapping(value = "/{runId}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> chat(
+            @PathVariable Long runId, @RequestBody ChatRequest req) {
+        Long uid = currentUserId();
+
+        DrillRun run = runRepo.findByUserIdAndId(uid, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        // 状态门槛：READY/ANSWERING 正常对话；另放行「已判分的 LEARN run」——历史记录「继续对话」
+        // = 用户在同一道题上继续向 AI 提问（追问是用户问 AI），不重新评分、不改 GRADED 状态。
+        boolean continueAfterGraded =
+                run.getStatus() == DrillRunStatus.GRADED && run.getMode() == DrillMode.LEARN;
+        if (run.getStatus() != DrillRunStatus.READY && run.getStatus() != DrillRunStatus.ANSWERING
+                && !continueAfterGraded) {
+            throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可对话: " + run.getStatus());
+        }
+        if (req.rawAnswer() == null || req.rawAnswer().isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "回答不能为空");
+        }
+
+        QuestionBank q = questionBankRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+
+        // 保存用户回答为新 turn（round 递增）
+        List<DrillTurn> existing = turnRepo.findByRunIdOrderByRoundAsc(runId);
+        int nextRound = existing.isEmpty() ? 0 : existing.getLast().getRound() + 1;
+        DrillTurn turn = new DrillTurn();
+        turn.setRunId(runId);
+        turn.setRound(nextRound);
+        turn.setStem(q.getStem());
+        turn.setRawAnswer(req.rawAnswer());
+        turnRepo.save(turn);
+
+        // 首次对话：run READY -> ANSWERING
+        if (run.getStatus() == DrillRunStatus.READY) {
+            run.setStatus(DrillRunStatus.ANSWERING);
+            runRepo.save(run);
+        }
+
+        // 收集全部 turns（含刚创建的）供 AI 参考对话历史
+        List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
+        String stem = q.getStem();
+        String pointsJson = q.getPointsJson();
+        final DrillTurn fTurn = turn;
+
+        StreamingResponseBody body = out -> {
+            try {
+                String full = tutorGenerator.streamChat(stem, pointsJson, allTurns,
+                        token -> {
+                            try {
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("chat SSE token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        });
+
+                // 完整文本写回 turn
+                if (full != null) {
+                    fTurn.setTutorText(full);
+                    turnRepo.save(fTurn);
+                }
+
+                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("chat SSE 推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /**
+     * 结束对话并评分（POST /{runId}/finish）：
+     * <p>基于整轮对话（所有 /chat 的用户回答）一次性判分，返回 GradeView。
+     * 判分后 run 状态置 GRADED，mastery 按概念粒度更新。
+     */
+    @PostMapping("/{runId}/finish")
+    public GradeView finish(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        return answerService.finish(uid, runId);
     }
 
     // -------------------------------------------------------- REHEARSAL
@@ -207,12 +512,221 @@ public class DrillController {
         return rehearsalService.start(uid, req == null ? null : req.conceptId());
     }
 
-    /** 同一个端点既可能返回"下一个追问"，也可能返回本场结算，靠 finished 区分 */
-    @PostMapping("/rehearsal/{runId}/answer")
-    public RehearsalView rehearsalAnswer(@PathVariable Long runId,
-                                         @RequestBody RehearsalAnswerRequest req) {
+    /**
+     * 模拟面试作答并流式讲解（SSE 单端点，与 LEARN {@code submit} 同构）。
+     *
+     * <p>协议（text/event-stream）：
+     * <ol>
+     *   <li>{@code event: result} → 判分/下一轮结果（RehearsalView JSON），前端据此渲染下一问或结算；</li>
+     *   <li>{@code data: {"text":"..."}}（默认 message 事件）→ 逐 token 的讲解，前端累积显示；</li>
+     *   <li>{@code event: done} → 讲解结束（不再回带完整文本，避免末尾整段重复）；</li>
+     *   <li>{@code event: error} → 流式中途异常。</li>
+     * </ol>
+     *
+     * <p>判分（rehearsalService.answer）在写响应体之前同步完成——若抛闸门 409 等，由 Spring 错误
+     * 机制直接返回，不会进 SSE 体；仅讲解流式阶段的中断才走 {@code event: error}。
+     * 讲解针对"刚作答的那一轮"（view.round），写成 JSON 后再逐 token 推，避免旧两段式里
+     * answer 同步卡慢 + 前端再单独开 tutor-stream 拉讲解的双重 LLM 往返。
+     */
+    @PostMapping(value = "/rehearsal/{runId}/answer", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> rehearsalAnswer(
+            @PathVariable Long runId, @RequestBody RehearsalAnswerRequest req) {
+        // 同步段取 uid（SecurityContext 不跨 async 线程）
         Long uid = currentUserId();
-        return rehearsalService.answer(uid, runId, req.rawAnswer());
+        // 同步判分（决定 advance / settle），与 LEARN submit 同策略
+        RehearsalView view = rehearsalService.answer(uid, runId, req.rawAnswer());
+        // 取「刚作答那轮」的 turn 生成讲解（view.round 即已作答轮）
+        DrillTurn turn = turnRepo.findByRunIdAndRound(runId, view.round())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "本轮问题不存在"));
+        if (turn.getRawAnswer() == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "本轮尚未作答");
+        }
+        String stem = turn.getStem();
+        String pointsJson = turn.getPointsJson();
+        String byConceptJson = turn.getByConceptJson();
+        String rawAnswer = turn.getRawAnswer();
+        final DrillTurn fTurn = turn;
+        final RehearsalView fView = view;
+
+        StreamingResponseBody body = out -> {
+            try {
+                // 1) result 事件：先让前端渲染下一问 / 结算卡
+                out.write(("event: result\ndata: " + objectMapper.writeValueAsString(fView) + "\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                // 2) 逐 token 推讲解
+                final StringBuilder buf = new StringBuilder();
+                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        token -> {
+                            buf.append(token);
+                            try {
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        });
+
+                // 完整文本写库（让对话线下次刷新也能拿到）
+                if (full != null) {
+                    fTurn.setTutorText(full);
+                    turnRepo.save(fTurn);
+                }
+
+                // done 带回完整文本：前端用它兜底覆盖本地累积，修复偶发末尾截断。
+                // 注意：这是安全网而非"重复消息"——前端 onDone 是替换累积文本，UI 不会重复出现气泡；
+                // 之前 raw curl 看到的整段只是 SSE 原始帧，属正常兜底机制。
+                String donePayload = full == null ? "" : jsonEscape(full);
+                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("rehearsal answer SSE 推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /**
+     * LEARN grade 卡"继续追问"按钮：基于已 GRADED 的 LEARN run spawn 一条 mode=REHEARSAL 的追问场，
+     * 复用 questionId，maxRound=10 让用户追问到底，settle 跳过 mastery（不算正式面试，不取 L3）。
+     * 返回追问场第一轮的 RehearsalView。
+     */
+    @PostMapping("/{runId}/followup")
+    public RehearsalView followup(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        return rehearsalService.spawnFollowup(uid, runId);
+    }
+
+    /** 追问/模拟面试主动结束：用户点"下一题（结束追问）"或"结算本场"时调用 */
+    @PostMapping("/rehearsal/{runId}/end")
+    public RehearsalView rehearsalEnd(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        return rehearsalService.endRehearsal(uid, runId);
+    }
+
+    // ------------------------------------------------------------ 教学讲解 SSE 流
+
+    /**
+     * 教学讲解 SSE 流：前端 EventSource 订阅此 URL，逐 token 累积显示讲解。
+     * 服务端调 TutorGenerator 流式生成，每 token 写 {@code data: <token>\n\n}，
+     * 写完时再补 {@code event: done} 与完整文本，最后把讲解写回 drill_turn.tutor_text。
+     *
+     * <p>路由注意：本端点路径是 {@code /{runId}/tutor-stream}，单段动态段；
+     * 不能与 {@code GET /{runId}} 撞路由（SSE 端点在前缀排序靠后），Spring MVC
+     * 按"具体路径优先于路径变量"，先匹配本端点的子串。
+     */
+    @GetMapping(value = "/{runId}/tutor-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> tutorStream(
+            @PathVariable Long runId,
+            @RequestParam(defaultValue = "0") int round) {
+        // 同步段取 uid（SecurityContext 不跨 async 线程，uid 必须现在拿到）
+        Long uid = currentUserId();
+        DrillRun run = runRepo.findByUserIdAndId(uid, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        // 主问 LEARN 讲解要求 run 已判分(GRADED)；模拟面试 REHEARSAL 多轮间 run 处于 ANSWERING
+        // 态（不立即 GRADED），每轮用户作答后即当轮生成讲解，故对 REHEARSAL 模式放宽门槛。
+        if (run.getStatus() != DrillRunStatus.GRADED && run.getMode() != DrillMode.REHEARSAL) {
+            throw new ResponseStatusException(BAD_REQUEST, "该作答尚未判分，无讲解");
+        }
+        DrillTurn turn = turnRepo.findByRunIdAndRound(runId, round)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "本轮问题不存在"));
+        if (turn.getRawAnswer() == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "本轮尚未作答");
+        }
+
+        // 捕获到 lambda 里的变量需为 final
+        String stem = turn.getStem();
+        String pointsJson = turn.getPointsJson();
+        String byConceptJson = turn.getByConceptJson();
+        String rawAnswer = turn.getRawAnswer();
+        final DrillTurn fTurn = turn;       // mutable turn 在 lambda 内被 setTutorText 写库
+
+        StreamingResponseBody body = out -> {
+            try {
+                out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                final StringBuilder buf = new StringBuilder();
+                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        token -> {
+                            buf.append(token);
+                            try {
+                                // token 帧统一包成 JSON：前端 JSON.parse 取 .text，天然处理转义
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        });
+
+                // 完整文本写库（让对话线下次刷新也能拿到）
+                if (full != null) {
+                    fTurn.setTutorText(full);
+                    turnRepo.save(fTurn);
+                }
+
+                // done 不再回带完整文本：前端以逐 token 累积为准，避免末尾整段重复
+                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("tutor-stream 推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /**
+     * SSE 行内 JSON 字符串转义：不仅转义引号/反斜杠/换行/回车，还转义全部 C0 控制字符
+     * （含制表符 \t，Go 代码缩进常用）与 U+2028/U+2029，保证 {@code {"text":"..."}} 帧是合法 JSON。
+     * 否则前端 JSON.parse 会失败、把原始帧当文本注入气泡，表现为代码块里出现 {"text":"..."} 乱码。
+     */
+    private static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder b = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> b.append("\\\"");
+                case '\\' -> b.append("\\\\");
+                case '\n' -> b.append("\\n");
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default -> {
+                    if (c < 0x20 || c == 0x2028 || c == 0x2029) {
+                        b.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        b.append(c);
+                    }
+                }
+            }
+        }
+        return b.toString();
     }
 
     // ------------------------------------------------------------- 内化
@@ -226,6 +740,12 @@ public class DrillController {
     @GetMapping("/debt")
     public List<DebtView> debt() {
         return noteService.debt(currentUserId());
+    }
+
+    /** AI 复盘：题目 + 对话总结（欠缺） + 解题思路 + 记忆口诀（按 runId 缓存，只生成一次）。 */
+    @GetMapping("/{runId}/review")
+    public ReviewView review(@PathVariable Long runId) {
+        return reviewService.review(currentUserId(), runId);
     }
 
     // ------------------------------------------------------------- 看数
@@ -243,6 +763,12 @@ public class DrillController {
         return historyService.list(currentUserId());
     }
 
+    /** 对话线：一道题（questionId）的完整问答历史，前端点卡片后渲染 */
+    @GetMapping("/history/conversation/{questionId}")
+    public ConversationView conversation(@PathVariable Long questionId) {
+        return historyService.conversation(currentUserId(), questionId);
+    }
+
     @GetMapping("/{runId}")
     public RunDetailView historyDetail(@PathVariable Long runId) {
         return historyService.detail(currentUserId(), runId);
@@ -258,7 +784,8 @@ public class DrillController {
 
     public record StartRequest(Long conceptId) {}
 
-    public record StartPlanRequest(Long planId, String mode) {}
+    public record StartPlanRequest(Long planId, String mode, Integer layer) {}
+
 
     public record RestartRequest(Long runId) {}
 }

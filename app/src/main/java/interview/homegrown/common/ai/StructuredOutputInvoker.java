@@ -74,18 +74,25 @@ public class StructuredOutputInvoker {
                     log.info("结构化输出重试第 {} 次, 上次错误: {}", attempt + 1, lastError);
                 }
 
-                String response = client.prompt()
-                        .system(effectiveSystem)
-                        .user(currentUser)
-                        .call()
-                        .content();
+                String response = null;
+                try {
+                    response = client.prompt()
+                            .system(effectiveSystem)
+                            .user(currentUser)
+                            .call()
+                            .content();
+                } catch (Exception callEx) {
+                    // Spring AI 读不到 content（推理模型常把答案塞进 reasoning_content 而抛
+                    // "Error reading response"），不能直接放弃——改用原生接口兜底。
+                    log.warn("Spring AI 调用异常，改用 DeepSeek 原生兜底: {}", callEx.getMessage());
+                }
 
                 // 兜底：Spring AI 只读了 content，推理模型偶发把答案塞进 reasoning_content 导致 content 为空。
                 // 这里直连 DeepSeek 原生接口，content 为空时改用 reasoning_content 作为兜底，避免无谓 500。
                 if ((response == null || response.isBlank()) && rawClient != null) {
                     String fallback = rawClient.complete(effectiveSystem, currentUser);
                     if (fallback != null && !fallback.isBlank()) {
-                        log.info("Spring AI content 为空，已用 DeepSeek 原生 reasoning_content 兜底");
+                        log.info("已用 DeepSeek 原生 reasoning_content 兜底");
                         response = fallback;
                     }
                 }
@@ -100,7 +107,7 @@ public class StructuredOutputInvoker {
                     throw new RuntimeException("LLM 返回为空");
                 }
 
-                T result = converter.convert(response);
+                T result = converter.convert(extractJson(response));
                 log.debug("结构化输出解析成功, 类型={}",outputClass.getSimpleName());
                 return result;
             }catch(Exception e){
@@ -118,6 +125,29 @@ public class StructuredOutputInvoker {
     //使用默认 Provider 的简化调用
     public <T> T invoke(String systemPrompt, String userPrompt, Class<T> outputClass){
         return invoke(systemPrompt, userPrompt, outputClass, null);
+    }
+
+    /**
+     * 从模型原始输出中清洗出 JSON：
+     * - 去掉 ```json ... ``` / ``` ... ``` 代码围栏（推理模型常用）
+     * - 截取第一个 '{' 到最后一个 '}' 之间内容，容忍前后多余的说明文字
+     * 目的：让 BeanOutputConverter 首轮即可解析成功，避免解析失败触发重试
+     * （每次重试都会让推理模型再跑一遍推理，深度推理模型会把耗时翻倍）。
+     */
+    private String extractJson(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.startsWith("```")) {
+            int nl = t.indexOf('\n');
+            if (nl >= 0) t = t.substring(nl + 1);
+            int fence = t.lastIndexOf("```");
+            if (fence >= 0) t = t.substring(0, fence);
+            t = t.trim();
+        }
+        int s = t.indexOf('{');
+        int e = t.lastIndexOf('}');
+        if (s >= 0 && e > s) t = t.substring(s, e + 1);
+        return t;
     }
 
 }

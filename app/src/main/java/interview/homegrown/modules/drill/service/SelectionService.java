@@ -100,6 +100,31 @@ public class SelectionService {
         return pickFor(userId, due.get(0).getConceptId());
     }
 
+    /**
+     * 层级练习（痛点1「方向」级入口）：候选池限定在「本方向 + 指定 layer」的概念集合内，
+     * 仍走同一套确定性优先级（到期复习 -> 从未练过 -> 最近到期）。
+     * 用于学习计划页「点某个层级直接开练」——例如只想补 L1 基础或冲 L4 串联。
+     */
+    public SelectedTask pickNextWithinPlanAtLayer(Long userId, Long planId, int layer) {
+        List<Concept> planConcepts = conceptRepo.findByStudyPlanId(planId);
+        List<Concept> layerConcepts = planConcepts.stream()
+                .filter(c -> c.getLayer() == layer)
+                .toList();
+        if (layerConcepts.isEmpty()) {
+            throw new IllegalStateException("该方向还没有 L" + layer + " 层级的概念，先去「开始练习」让系统补建");
+        }
+        List<Mastery> mastered = masteryRepo.findByUserId(userId);
+        Set<Long> layerIds = layerConcepts.stream().map(Concept::getId).collect(Collectors.toSet());
+        List<Mastery> layerMastered = mastered.stream()
+                .filter(m -> layerIds.contains(m.getConceptId()))
+                .toList();
+        Set<Long> doneIds = layerMastered.stream().map(Mastery::getConceptId).collect(Collectors.toSet());
+        Concept primary = pickPrimary(layerConcepts, layerMastered, doneIds);
+        Map<Long, Mastery> byConcept = layerMastered.stream()
+                .collect(Collectors.toMap(Mastery::getConceptId, Function.identity(), (a, b) -> a));
+        return combinationPolicy.build(primary, layerConcepts, byConcept);
+    }
+
     private Concept pickPrimary(List<Concept> all, List<Mastery> mastered, Set<Long> doneIds) {
         Instant now = Instant.now();
 

@@ -47,4 +47,9 @@ public class AnswerService {
 
         return gradingService.grade(userId, runId, rawAnswer);
     }
+
+    /** 延迟评分：基于整轮对话一次性判分，委托 GradingService.finish。 */
+    public GradeView finish(Long userId, Long runId) {
+        return gradingService.finish(userId, runId);
+    }
 }

@@ -1,5 +1,6 @@
 package interview.homegrown.modules.drill.repository;
 
+import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillRun;
 import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +16,9 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
     // 物理闸门读取：同一用户未闭环的作答（READY/ANSWERING）
     List<DrillRun> findByUserIdAndStatusIn(Long userId, List<DrillRunStatus> statuses);
+
+    // 物理闸门读取（按 mode 区分主线）：避免把活跃 REHEARSAL 当 LEARN 新题返回
+    List<DrillRun> findByUserIdAndStatusInAndMode(Long userId, List<DrillRunStatus> statuses, DrillMode mode);
 
     Optional<DrillRun> findByUserIdAndId(Long userId, Long id);
 
@@ -32,7 +36,8 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
      * 再查一次 grade_result，典型 N+1。
      */
     @Query("""
-            select r.id as runId, q.stem as stem, g.rawScore as rawScore, r.updatedAt as answeredAt
+            select r.id as runId, q.id as questionId, q.stem as stem,
+                   g.rawScore as rawScore, r.updatedAt as answeredAt
             from DrillRun r, GradeResult g, QuestionBank q
             where g.runId = r.id
               and q.id = r.questionId
@@ -47,6 +52,8 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
     interface NoteDebtRow {
         Long getRunId();
 
+        Long getQuestionId();
+
         String getStem();
 
         BigDecimal getRawScore();
@@ -57,9 +64,10 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
     /**
      * 问答记录：当前用户已判分的 LEARN 作答，按判分时间倒排。
      * 关联 grade_result 拿分数/档位/判分时间，left join drill_note 判断是否有笔记。
+     * questionId 一起带回来，供服务层按题聚合（一道题一条对话线）。
      */
     @Query("""
-            select r.id as runId, q.stem as stem, g.rawScore as rawScore, g.grade as grade,
+            select r.id as runId, r.questionId as questionId, q.stem as stem, g.rawScore as rawScore, g.grade as grade,
                    g.createdAt as answeredAt, n.id as noteId
             from DrillRun r
             join GradeResult g on g.runId = r.id
@@ -74,6 +82,8 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
     interface HistoryRow {
         Long getRunId();
 
+        Long getQuestionId();
+
         String getStem();
 
         BigDecimal getRawScore();
@@ -84,4 +94,14 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
         Long getNoteId();
     }
+
+    /** 对话线：某道题下所有已判分 run（LEARN 原答 + 重答 + REHEARSAL 追问场），按创建时间升序 */
+    List<DrillRun> findByUserIdAndQuestionIdAndStatusOrderByIdAsc(
+            Long userId, Long questionId, DrillRunStatus status);
+
+    /** 对话线（全状态）：某道题下所有 run（含进行中 READY/ANSWERING），按创建时间升序 */
+    List<DrillRun> findByUserIdAndQuestionIdOrderByIdAsc(Long userId, Long questionId);
+
+    /** 列表：某用户所有 LEARN run（含进行中），按 id 倒序（最新在前） */
+    List<DrillRun> findByUserIdAndModeOrderByIdDesc(Long userId, DrillMode mode);
 }

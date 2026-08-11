@@ -47,6 +47,14 @@ public class DrillTurn {
 
     private Boolean passed;
 
+    /**
+     * 教学讲解：判分落地后由 TutorGenerator 写一段老师式讲解
+     * （基于 stem + 评分点 + 判分 + 学生答案，帮用户理解这道题，不是判分报告）。
+     * null = 暂无（生成失败或尚未生成），前端按 null 不渲染处理。
+     */
+    @Column(columnDefinition = "text")
+    private String tutorText;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 }

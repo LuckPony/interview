@@ -1,14 +1,18 @@
 package interview.homegrown.modules.drill.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
+import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillNote;
 import interview.homegrown.modules.drill.domain.DrillRun;
 import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.GradeResult;
+import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.grader.GradeScale;
+import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.DrillNoteRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
@@ -76,18 +80,20 @@ public class NoteService {
     private final DrillTurnRepository turnRepo;
     private final QuestionBankRepository qbRepo;
     private final GradeResultRepository gradeRepo;
+    private final ConceptRepository conceptRepo;
     private final SimilarityGuard similarityGuard;
     private final ObjectMapper objectMapper;
 
     public NoteService(DrillRunRepository runRepo, DrillNoteRepository noteRepo,
                        DrillTurnRepository turnRepo, QuestionBankRepository qbRepo,
-                       GradeResultRepository gradeRepo, SimilarityGuard similarityGuard,
-                       ObjectMapper objectMapper) {
+                       GradeResultRepository gradeRepo, ConceptRepository conceptRepo,
+                       SimilarityGuard similarityGuard, ObjectMapper objectMapper) {
         this.runRepo = runRepo;
         this.noteRepo = noteRepo;
         this.turnRepo = turnRepo;
         this.qbRepo = qbRepo;
         this.gradeRepo = gradeRepo;
+        this.conceptRepo = conceptRepo;
         this.similarityGuard = similarityGuard;
         this.objectMapper = objectMapper;
     }
@@ -161,14 +167,56 @@ public class NoteService {
 
     // ----------------------------------------------------------- 债务清单
 
-    /** 答错且未复盘的作答清单（仅展示，不拦截开新题） */
+    /** 答错且未复盘的作答清单（仅展示，不拦截开新题），每条带薄弱点清单 + 概念/方向归属 */
     @Transactional(readOnly = true)
     public List<DebtView> debt(Long userId) {
         return runRepo.findNoteDebt(userId, GradeScale.PASS_LINE).stream()
-                .map(r -> new DebtView(r.getRunId(), r.getStem(),
-                        r.getRawScore() == null ? 0d : r.getRawScore().doubleValue(),
-                        r.getAnsweredAt()))
+                .map(r -> {
+                    Long conceptId = null;
+                    Long planId = null;
+                    QuestionBank qb = r.getQuestionId() == null ? null
+                            : qbRepo.findById(r.getQuestionId()).orElse(null);
+                    if (qb != null && qb.getConceptIds() != null && qb.getConceptIds().length > 0) {
+                        conceptId = qb.getConceptIds()[0].longValue();
+                        Concept c = conceptRepo.findById(conceptId).orElse(null);
+                        if (c != null) planId = c.getStudyPlanId();
+                    }
+                    return new DebtView(r.getRunId(), r.getStem(),
+                            r.getRawScore() == null ? 0d : r.getRawScore().doubleValue(),
+                            r.getAnsweredAt(), weakPointsOf(r.getRunId()), conceptId, planId);
+                })
                 .toList();
+    }
+
+    /** 判分结果里没打中的评分点（MISS/PARTIAL），作为"薄弱点"给复盘页 */
+    private List<String> weakPointsOf(Long runId) {
+        return gradeRepo.findByRunId(runId)
+                .map(gr -> extractWeakPoints(gr.getByConceptJson()))
+                .orElse(List.of());
+    }
+
+    private List<String> extractWeakPoints(String byConceptJson) {
+        if (byConceptJson == null || byConceptJson.isBlank()) return List.of();
+        try {
+            JsonNode root = objectMapper.readTree(byConceptJson);
+            if (!root.isArray()) return List.of();
+            List<String> weak = new ArrayList<>();
+            for (JsonNode concept : root) {
+                JsonNode prs = concept.path("pointResults");
+                if (!prs.isArray()) continue;
+                for (JsonNode p : prs) {
+                    String verdict = p.path("verdict").asText("").toUpperCase();
+                    if ("MISS".equals(verdict) || "PARTIAL".equals(verdict)) {
+                        String point = p.path("point").asText("");
+                        if (!point.isBlank()) weak.add(point);
+                    }
+                }
+            }
+            return weak;
+        } catch (Exception e) {
+            log.warn("薄弱点解析失败，忽略: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     // ----------------------------------------------------------- 内部

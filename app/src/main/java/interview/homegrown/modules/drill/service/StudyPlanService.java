@@ -19,6 +19,7 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
 import java.util.List;
@@ -26,6 +27,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 /**
  * 痛点 1 的「AI 确认需求」落地：学习方向由多轮对话动态生成，不再写死成固定目录。
@@ -137,7 +141,93 @@ public class StudyPlanService {
                 .toList();
     }
 
+    // ---------------------------------------------------- 用户手动编辑（痛点 1 的自主权）
+
+    /** 编辑方向：改标题/目标。标题改动会同步该方向下所有知识点的 topic，保持一致。 */
+    @Transactional
+    public PlanView updatePlan(Long userId, Long planId, String title, String goal) {
+        StudyPlan plan = requireOwnedPlan(userId, planId);
+        if (title != null && !title.isBlank()) {
+            String old = plan.getTitle();
+            plan.setTitle(title.trim());
+            if (!old.equals(plan.getTitle())) {
+                for (Concept c : conceptRepo.findByStudyPlanId(plan.getId())) {
+                    c.setTopic(plan.getTitle());
+                    conceptRepo.save(c);
+                }
+            }
+        }
+        plan.setGoal(goal);
+        planRepo.save(plan);
+        return toView(userId, plan);
+    }
+
+    /** 删除方向：先删该方向下的知识点（连带各自的掌握度记录），再删方向。 */
+    @Transactional
+    public void deletePlan(Long userId, Long planId) {
+        StudyPlan plan = requireOwnedPlan(userId, planId);
+        for (Concept c : conceptRepo.findByStudyPlanId(plan.getId())) {
+            masteryRepo.deleteByConceptId(c.getId());
+            conceptRepo.delete(c);
+        }
+        planRepo.delete(plan);
+    }
+
+    /** 给方向新增一个知识点。 */
+    @Transactional
+    public PlanView addConcept(Long userId, Long planId, String name, Integer layer, String note) {
+        StudyPlan plan = requireOwnedPlan(userId, planId);
+        if (name == null || name.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "知识点名称不能为空");
+        }
+        Concept c = new Concept();
+        c.setTopic(plan.getTitle());
+        c.setLayer(clampLayer(layer == null ? 1 : layer));
+        c.setName(name.trim());
+        c.setDescription(note);
+        c.setStudyPlanId(plan.getId());
+        conceptRepo.save(c);
+        return toView(userId, plan);
+    }
+
+    /** 编辑知识点：改名称/认知层/提示。只允许编辑当前用户方向下的知识点。 */
+    @Transactional
+    public PlanView updateConcept(Long userId, Long conceptId, String name, Integer layer, String note) {
+        Concept c = requireOwnedConcept(userId, conceptId);
+        if (name != null && !name.isBlank()) c.setName(name.trim());
+        if (layer != null) c.setLayer(clampLayer(layer));
+        c.setDescription(note);
+        conceptRepo.save(c);
+        StudyPlan plan = planRepo.findById(c.getStudyPlanId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "学习方向不存在"));
+        return toView(userId, plan);
+    }
+
+    /** 删除知识点：连带清掉它的掌握度记录（FK）。 */
+    @Transactional
+    public void deleteConcept(Long userId, Long conceptId) {
+        Concept c = requireOwnedConcept(userId, conceptId);
+        masteryRepo.deleteByConceptId(c.getId());
+        conceptRepo.delete(c);
+    }
+
     // —— 内部 ——
+
+    /** 取当前用户的方向，不存在或不属于该用户一律 404。 */
+    private StudyPlan requireOwnedPlan(Long userId, Long planId) {
+        return planRepo.findById(planId)
+                .filter(p -> p.getUserId().equals(userId))
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "学习方向不存在"));
+    }
+
+    /** 取当前用户方向下的知识点（全局种子概念 study_plan_id 为 null，不可编辑）。 */
+    private Concept requireOwnedConcept(Long userId, Long conceptId) {
+        Concept c = conceptRepo.findById(conceptId)
+                .filter(c2 -> c2.getStudyPlanId() != null)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        requireOwnedPlan(userId, c.getStudyPlanId());   // 校验方向归属
+        return c;
+    }
 
     private PlanView toView(Long userId, StudyPlan plan) {
         List<Mastery> allM = masteryRepo.findByUserId(userId);
@@ -147,7 +237,7 @@ public class StudyPlanService {
                         (a, b) -> a));
         List<PlanConceptView> concepts = conceptRepo.findByStudyPlanId(plan.getId()).stream()
                 .map(c -> new PlanConceptView(c.getId(), c.getName(), c.getTopic(), c.getLayer(),
-                        lvl.getOrDefault(c.getId(), 0)))
+                        lvl.getOrDefault(c.getId(), 0), c.getDescription()))
                 .sorted(Comparator.comparingInt(PlanConceptView::layer))
                 .toList();
         long mastered = concepts.stream().filter(c -> c.masteryLevel() > 0).count();

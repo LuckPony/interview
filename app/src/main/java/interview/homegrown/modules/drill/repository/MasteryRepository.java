@@ -16,6 +16,9 @@ public interface MasteryRepository extends JpaRepository<Mastery, Long> {
 
     Optional<Mastery> findByUserIdAndConceptId(Long userId, Long conceptId);
 
+    // 删除知识点时连带清掉它的掌握度记录（mastery.concept_id 有 FK 到 concept）
+    void deleteByConceptId(Long conceptId);
+
     // upsert：首次插入，重复则覆盖（深度画像与排程都靠它）
     @Modifying
     @Query(value = """

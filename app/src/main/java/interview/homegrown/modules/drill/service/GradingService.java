@@ -99,6 +99,8 @@ public class GradingService {
 
         // LEARN 模式把题干、评分点、用户原答案、判分结果落到 drill_turn，
         // 供「问答记录」回看自己的作答；REHEARSAL 已在 RehearsalService 自行维护 turns。
+        // 教学讲解（tutor_text）由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
+        // 这里不再同步写——避免阻塞判分提交，且让前端能逐 token 流式接收。
         if (run.getMode() == DrillMode.LEARN) {
             DrillTurn turn = new DrillTurn();
             turn.setRunId(runId);
@@ -110,6 +112,96 @@ public class GradingService {
             turn.setRawScore(out.rawScore());
             turnRepo.save(turn);
         }
+
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed);
+
+        run.setStatus(DrillRunStatus.GRADED);
+        runRepo.save(run);
+
+        return new GradeView(runId, q.getId(),
+                out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
+                out.grade().name(), out.byConceptJson());
+    }
+
+    /**
+     * 延迟评分：基于整轮对话（多轮 chat 的全部用户消息）一次性判分。
+     * <p>
+     * 与 {@link #grade} 的区别：turns 已由 /chat 端点逐轮创建，这里不新建 turn，
+     * 而是把所有用户回答拼接成 combined answer 交给 grader，然后把判分结果写回 round=0 的 turn。
+     *
+     * @param userId 当前用户
+     * @param runId  作答 ID
+     * @return 判分结果
+     */
+    @Transactional
+    public GradeView finish(Long userId, Long runId) {
+        DrillRun run = runRepo.findByUserIdAndId(userId, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        if (run.getStatus() == DrillRunStatus.GRADED) {
+            throw new ResponseStatusException(BAD_REQUEST, "该作答已评分");
+        }
+        if (run.getStatus() != DrillRunStatus.READY && run.getStatus() != DrillRunStatus.ANSWERING) {
+            throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可评分: " + run.getStatus());
+        }
+
+        QuestionBank q = qbRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+
+        List<DrillTurn> turns = turnRepo.findByRunIdOrderByRoundAsc(runId);
+        if (turns.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "尚无对话记录，无法评分");
+        }
+
+        // 把所有用户回答拼接成 combined answer 供 grader 判分。
+        // 聊天不限轮数，若整段对话过长，判分 LLM 会撑爆上下文 → 500；
+        // 这里保留最近 MAX 字符（近期内容对判分最相关），避免因长对话而崩溃。
+        int MAX_COMBINED = 8000;
+        StringBuilder combined = new StringBuilder();
+        for (int i = 0; i < turns.size(); i++) {
+            DrillTurn t = turns.get(i);
+            if (t.getRawAnswer() != null && !t.getRawAnswer().isBlank()) {
+                if (!combined.isEmpty()) combined.append("\n\n");
+                combined.append(t.getRawAnswer());
+            }
+        }
+        if (combined.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
+        }
+        if (combined.length() > MAX_COMBINED) {
+            combined = new StringBuilder(
+                    combined.substring(combined.length() - MAX_COMBINED))
+                    .insert(0, "…（对话过长，仅保留最近部分）\n\n");
+        }
+        String rawAnswer = combined.toString();
+
+        boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
+
+        Grader grader = switch (q.getResponseFormat()) {
+            case FREE_TEXT, STRUCTURED -> graderText;
+            case CHOICE -> graderMcq;
+            case CODE -> throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
+        };
+        Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);
+
+        // 落 GradeResult
+        GradeResult gr = new GradeResult();
+        gr.setRunId(runId);
+        gr.setQuestionId(q.getId());
+        gr.setAnswerHash(Integer.toHexString(rawAnswer.hashCode()));
+        gr.setByConceptJson(out.byConceptJson());
+        gr.setRawScore(out.rawScore());
+        gr.setGrade(out.grade());
+        gradeRepo.save(gr);
+
+        // 把判分结果写回 round=0 的 turn（不新建 turn，turns 已由 /chat 创建）
+        DrillTurn turn0 = turns.stream()
+                .filter(t -> t.getRound() == 0)
+                .findFirst()
+                .orElse(turns.get(0));
+        turn0.setPointsJson(q.getPointsJson());
+        turn0.setByConceptJson(out.byConceptJson());
+        turn0.setRawScore(out.rawScore());
+        turnRepo.save(turn0);
 
         applyMastery(userId, out.conceptScores(), run.getMode(), timed);
 

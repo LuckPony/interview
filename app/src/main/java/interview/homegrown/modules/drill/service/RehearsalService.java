@@ -1,7 +1,6 @@
 package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.modules.drill.ai.FollowupGenerator;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.ConceptRole;
@@ -61,12 +60,13 @@ public class RehearsalService {
 
     /** 进入模拟面试的门槛：写模式已达标 */
     private static final int ENTRY_LEVEL = 2;
-    /** 追问封顶轮数（不含主问） */
+    /** 追问封顶轮数（不含主问）——主动 /rehearsal 仍守纪律 */
     private static final int MAX_FOLLOWUP = 2;
+    /** 追问场封顶轮数（不含主问）——LEARN grade 触发的"继续追问"用此，较宽松让用户追问到底 */
+    private static final int FOLLOWUP_MAX_ROUND = 10;
 
     private final SelectionService selectionService;
     private final QuestionService questionService;
-    private final FollowupGenerator followupGenerator;
     private final GraderText graderText;
     private final GradingService gradingService;
     private final DrillRunRepository runRepo;
@@ -78,14 +78,13 @@ public class RehearsalService {
     private final ObjectMapper objectMapper;
 
     public RehearsalService(SelectionService selectionService, QuestionService questionService,
-                            FollowupGenerator followupGenerator, GraderText graderText,
+                            GraderText graderText,
                             GradingService gradingService, DrillRunRepository runRepo,
                             DrillTurnRepository turnRepo, QuestionBankRepository qbRepo,
                             MasteryRepository masteryRepo, ConceptRepository conceptRepo,
                             GradeResultRepository gradeRepo, ObjectMapper objectMapper) {
         this.selectionService = selectionService;
         this.questionService = questionService;
-        this.followupGenerator = followupGenerator;
         this.graderText = graderText;
         this.gradingService = gradingService;
         this.runRepo = runRepo;
@@ -106,20 +105,64 @@ public class RehearsalService {
 
         SelectedTask task = selectionService.pickFor(userId, target);
         QuestionBank q = questionService.generate(task);
+        return persistRehearsalRun(userId, q, null, MAX_FOLLOWUP);
+    }
 
+    /**
+     * 从某 LEARN run 的 grade 卡触发的"继续追问"：复用源 questionId 创建 REHEARSAL run，
+     * sourceRunId 非空 → settle 时跳过 mastery 应用（追问不算正式面试、不取 L3）。
+     * maxRound 较宽容 10，让用户追问到底；answer 也对追问场去掉 passed gate。
+     *
+     * <p>源 run 必须是当前用户已 GRADED 的 LEARN run；未判分或非 LEARN 一律 400。
+     * <p>同 active-run 物理闸门语义：有 active 直接恢复之（与 openRun 同策略）。
+     */
+    @Transactional
+    public RehearsalView spawnFollowup(Long userId, Long sourceRunId) {
+        if (sourceRunId == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "sourceRunId 不能为空");
+        }
+        DrillRun source = runRepo.findByUserIdAndId(userId, sourceRunId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "源作答不存在"));
+        if (source.getStatus() != DrillRunStatus.GRADED) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "只有判分完成的作答才能追问，当前状态: " + source.getStatus());
+        }
+        if (source.getMode() != DrillMode.LEARN) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "只能从 LEARN 模式的作答追问，源 run 模式: " + source.getMode());
+        }
+        QuestionBank q = qbRepo.findById(source.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
+        // source_run_id 已建立自引用 FK，spawn 即 spawn —— 但保存时同一事务里两次 useIdentity
+        // 会撞，拆出来：先 persist 拿 id，再 update source_run_id。
+        return persistRehearsalRun(userId, q, source.getId(), FOLLOWUP_MAX_ROUND);
+    }
+
+    /**
+     * 持久化一个 REHEARSAL run（无论来源）：active 闸门、写 run + turn-0，返回 asking view。
+     * <p>sourceRunId 非空时需要在 save 后再 setSourceRunId（自引用 FK 同事务两次 INSERT 难做）。
+     */
+    private RehearsalView persistRehearsalRun(Long userId, QuestionBank q,
+                                              Long sourceRunId, int maxRound) {
         DrillRun run = new DrillRun();
         run.setUserId(userId);
         run.setQuestionId(q.getId());
         run.setMode(DrillMode.REHEARSAL);
         run.setStatus(DrillRunStatus.ANSWERING);
-        run.setOpenBook(false);                 // 闭卷：模拟面试没有资料可翻
-        run.setTiming("COUNTDOWN");             // 计时：压力来源，也让 EASY 档可达
+        run.setOpenBook(false);                 // 闭卷
+        run.setTiming("COUNTDOWN");             // 计时
         run.setCurrentRound(0);
-        run.setMaxRound(MAX_FOLLOWUP);
+        run.setMaxRound(maxRound);
         try {
             run = runRepo.save(run);
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
+        }
+
+        // 自引用 FK：同事务里 save 后再 setSourceRunId，再 save 一次
+        if (sourceRunId != null) {
+            run.setSourceRunId(sourceRunId);
+            run = runRepo.save(run);
         }
 
         DrillTurn turn = new DrillTurn();
@@ -129,7 +172,7 @@ public class RehearsalService {
         turn.setPointsJson(q.getPointsJson());
         turnRepo.save(turn);
 
-        return RehearsalView.asking(run.getId(), 0, MAX_FOLLOWUP, q.getStem());
+        return RehearsalView.asking(run.getId(), 0, maxRound, q.getStem());
     }
 
     /** 挑一个够格进模拟面试的概念：已达 L2、最久没练的优先 */
@@ -178,34 +221,59 @@ public class RehearsalService {
         turn.setByConceptJson(out.byConceptJson());
         turn.setRawScore(out.rawScore());
         turn.setPassed(GradeScale.passed(out.rawScore()));
+        // 教学讲解由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
+        // 这里不再同步生成——避免阻塞追问提交 + 让前端能逐 token 流式接收讲解。
         turnRepo.save(turn);
 
         boolean roundsLeft = run.getCurrentRound() < run.getMaxRound();
-        // 本轮没过就不再追问：连当前这层都答不上来，继续深挖只是重复羞辱，没有训练价值
-        if (roundsLeft && Boolean.TRUE.equals(turn.getPassed())) {
-            return askFollowup(run, q, turn);
+        boolean isFollowup = run.getSourceRunId() != null;
+        // 主动 /rehearsal 守纪律：未 pass 不追（连本层都答不上来，深挖只是重复羞辱）
+        // 追问场（sourceRunId 非空）完全放手：让用户追问到底
+        if (roundsLeft && (isFollowup || Boolean.TRUE.equals(turn.getPassed()))) {
+            // 不再同步调 LLM 生成"下一问"（前端已改为用户主动追问模式，那次生成纯浪费且阻塞 POST）。
+            // 仅自增轮次并建占位 turn，讲解由前端订阅的 /tutor-stream 异步流式生成。
+            return advanceRound(run, q);
         }
         return settle(userId, run, q);
     }
 
-    private RehearsalView askFollowup(DrillRun run, QuestionBank q, DrillTurn prev) {
+    /**
+     * 推进到下一轮：仅建一个占位 turn 并自增 currentRound，不调 LLM。
+     * 讲解由前端订阅的 /{runId}/tutor-stream 异步流式生成（见 DrillController）。
+     * 占位 turn 的 stem/points 沿用原题，使后续追问轮的判分与讲解上下文围绕同一概念，保持一致。
+     */
+    private RehearsalView advanceRound(DrillRun run, QuestionBank q) {
         int nextRound = run.getCurrentRound() + 1;
-        List<String> names = conceptNames(q);
-
-        GeneratedQuestion fq = followupGenerator.generate(
-                prev.getStem(), prev.getRawAnswer(), names, nextRound);
+        int answeredRound = run.getCurrentRound();
 
         DrillTurn next = new DrillTurn();
         next.setRunId(run.getId());
         next.setRound(nextRound);
-        next.setStem(fq.stem);
-        next.setPointsJson(graderText.wrapPoints(fq));
+        next.setStem(q.getStem());
+        next.setPointsJson(q.getPointsJson());
         turnRepo.save(next);
 
         run.setCurrentRound(nextRound);
         runRepo.save(run);
 
-        return RehearsalView.asking(run.getId(), nextRound, run.getMaxRound(), fq.stem);
+        // 返回的 round = 刚作答的这一轮；前端据此订阅 tutor-stream 讲解本轮
+        return RehearsalView.asking(run.getId(), answeredRound, run.getMaxRound(), "");
+    }
+
+    /** 主动结束本场：用户点"下一题（结束追问）"即触发强制 settle */
+    @Transactional
+    public RehearsalView endRehearsal(Long userId, Long runId) {
+        DrillRun run = runRepo.findByUserIdAndId(userId, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "本场作答不存在"));
+        if (run.getMode() != DrillMode.REHEARSAL) {
+            throw new ResponseStatusException(BAD_REQUEST, "本场不是模拟面试/追问模式");
+        }
+        if (run.getStatus() == DrillRunStatus.GRADED) {
+            throw new ResponseStatusException(BAD_REQUEST, "本场已结束");
+        }
+        QuestionBank q = qbRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
+        return settle(userId, run, q);
     }
 
     /** 结算：全部轮通过才发 L3；任一轮没过则按平均分正常升降 */
@@ -229,8 +297,11 @@ public class RehearsalService {
         gr.setGrade(grade);
         gradeRepo.save(gr);
 
-        List<ConceptScore> scores = buildConceptScores(q, avg, grade);
-        gradingService.applyMastery(userId, scores, DrillMode.REHEARSAL, true);
+        // 追问场（sourceRunId 非空）跳过 mastery 应用：追问不算正式面试、不取 L3（用户决策）
+        if (run.getSourceRunId() == null) {
+            List<ConceptScore> scores = buildConceptScores(q, avg, grade);
+            gradingService.applyMastery(userId, scores, DrillMode.REHEARSAL, true);
+        }
 
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);

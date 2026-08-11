@@ -53,6 +53,13 @@ public class DrillRun {
     @Column(nullable = false)
     private int maxRound = 0;        // REHEARSAL 追问封顶（LEARN 恒为 0）
 
+    /**
+     * 追问来源：仅当 mode=REHEARSAL 且本 run 是从某 LEARN run 的 grade 卡通过"继续追问"按钮 spawn 时填入。
+     * settle 时检测非空 → 跳过 mastery 应用（追问不算正式面试，不取 L3）。
+     * 同一表自引用，加 FK 让孤儿追问自动挂掉。
+     */
+    private Long sourceRunId;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 
