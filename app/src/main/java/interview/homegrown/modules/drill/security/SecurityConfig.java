@@ -20,12 +20,12 @@ public class SecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain drillSecurityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
-        http.securityMatcher("/api/drill/**", "/api/auth/**")
+        http.securityMatcher("/api/drill/**", "/api/auth/**", "/api/settings/**")
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/drill/**").authenticated()
+                        .requestMatchers("/api/drill/**", "/api/settings/**").authenticated()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

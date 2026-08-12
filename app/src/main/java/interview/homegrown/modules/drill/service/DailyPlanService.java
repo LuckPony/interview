@@ -99,18 +99,26 @@ public class DailyPlanService {
         }
     }
 
-    /** 幂等：今天已有则不重建；PENDING 未出题则异步补生成。返回今日任务。 */
+    /**
+     * 幂等：今天已生成过的方向不再重复建；但<b>每个方向都保证有今日任务</b>——
+     * 某个方向若是今天后建的（首访问时还没生成），也要当场补上，否则该方向今日任务为空。
+     * PENDING 未出题则异步补生成。返回今日任务。
+     */
     @Transactional
     public List<DailyTask> ensureToday(Long userId) {
         LocalDate today = LocalDate.now();
         List<DailyTask> existing = taskRepo.findByUserIdAndTaskDate(userId, today);
-        if (existing.isEmpty()) {
-            List<DailyTask> created = new ArrayList<>();
-            for (StudyPlan plan : planRepo.findByUserId(userId)) {
+        List<DailyTask> created = new ArrayList<>();
+        for (StudyPlan plan : planRepo.findByUserId(userId)) {
+            boolean hasTasks = existing.stream().anyMatch(t -> plan.getId().equals(t.getPlanId()));
+            if (!hasTasks) {
                 created.addAll(planTasks(userId, plan, today));
             }
+        }
+        if (!created.isEmpty()) {
             try {
-                existing = taskRepo.saveAll(created);
+                existing = new ArrayList<>(existing);
+                existing.addAll(taskRepo.saveAll(created));
             } catch (DataIntegrityViolationException e) {
                 // 并发下重复生成：直接读回已存在的
                 existing = taskRepo.findByUserIdAndTaskDate(userId, today);

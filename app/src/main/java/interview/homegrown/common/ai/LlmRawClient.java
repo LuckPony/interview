@@ -41,31 +41,33 @@ public class LlmRawClient {
     private static final Logger log = LoggerFactory.getLogger(LlmRawClient.class);
 
     private final HttpClient httpClient;
-    private final String endpoint;
-    private final String apiKey;
-    private final String model;
+    private final AiSettingsService settings;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public LlmRawClient(AiConfigProperties config) {
-        var provider = config.getProviders().get(config.getDefaultProvider());
-        if (provider == null || !provider.isAvailable()) {
-            this.httpClient = null;
-            this.endpoint = null;
-            this.apiKey = null;
-            this.model = null;
-            log.warn("LlmRawClient 跳过初始化：默认 Provider 未配置完整，reasoning_content 兜底暂不可用");
-            return;
-        }
-        this.model = provider.getModel();
-        String base = provider.getBaseUrl();
-        this.endpoint = base.endsWith("/chat/completions") ? base
-                : (base.endsWith("/") ? base + "chat/completions" : base + "/chat/completions");
-        this.apiKey = provider.getApiKey();
-
+    public LlmRawClient(AiSettingsService settings) {
+        this.settings = settings;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        log.info("LlmRawClient 初始化成功: model={}, endpoint={}", model, endpoint);
+        var cfg = settings.currentProvider();
+        log.info("LlmRawClient 就绪: provider={}, model={}", cfg.provider(), cfg.model());
+    }
+
+    /** 当前用户配置（设置页可改，改完立即生效） */
+    private AiConfig cfg() {
+        return settings.currentProvider();
+    }
+
+    private boolean available() {
+        AiConfig c = cfg();
+        return c != null && c.apiKey() != null && !c.apiKey().isBlank()
+                && c.model() != null && !c.model().isBlank();
+    }
+
+    private String endpoint() {
+        String base = cfg().baseUrl();
+        return base.endsWith("/chat/completions") ? base
+                : (base.endsWith("/") ? base + "chat/completions" : base + "/chat/completions");
     }
 
     /**
@@ -74,10 +76,10 @@ public class LlmRawClient {
      * @return 答案文本；若两者皆空返回 null（由上层决定是否重试/抛错）
      */
     public String complete(String system, String user) {
-        if (httpClient == null) return null;
+        if (!available()) return null;
         try {
             Map<String, Object> body = new java.util.HashMap<>();
-            body.put("model", model);
+            body.put("model", cfg().model());
             body.put("messages", List.of(
                     Map.of("role", "system", "content", system),
                     Map.of("role", "user", "content", user)));
@@ -121,13 +123,13 @@ public class LlmRawClient {
      */
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
                        boolean fallbackToReasoning, Consumer<String> onReasoning) {
-        if (httpClient == null) {
+        if (!available()) {
             notifyError(onError, new IllegalStateException("LlmRawClient 未初始化"));
             return;
         }
         try {
             Map<String, Object> body = new java.util.HashMap<>();
-            body.put("model", model);
+            body.put("model", cfg().model());
             body.put("messages", List.of(
                     Map.of("role", "system", "content", system),
                     Map.of("role", "user", "content", user)));
@@ -137,8 +139,8 @@ public class LlmRawClient {
             body.put("max_tokens", 8192);
             body.put("stream", true);
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .uri(URI.create(endpoint()))
+                    .header("Authorization", "Bearer " + cfg().apiKey())
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .header("Accept", "text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
@@ -220,8 +222,8 @@ public class LlmRawClient {
         Map<String, Object> withStream = stream ? body : body;  // stream 字段由调用方决定是否加
         String json = objectMapper.writeValueAsString(withStream);
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .header("Authorization", "Bearer " + apiKey)
+                .uri(URI.create(endpoint()))
+                .header("Authorization", "Bearer " + cfg().apiKey())
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .timeout(Duration.ofSeconds(60))
