@@ -1,0 +1,203 @@
+.rehearsal-start {
+  max-width: 560px;
+  padding: var(--s-7) var(--s-6);
+  text-align: center;
+}
+.rehearsal-ico {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--cinnabar-wash);
+  color: var(--cinnabar);
+}
+.rehearsal-start h2 {
+  font-size: var(--fs-xl);
+}
+.rehearsal-start p {
+  color: var(--ink-soft);
+  margin: var(--s-3) auto var(--s-5);
+  max-width: 44ch;
+}
+.rehearsal-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 4px 12px;
+  margin-bottom: var(--s-5);
+}
+
+/* —— 追问 —— */
+.round-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+.round-dot {
+  width: 22px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+  transition: background 0.4s var(--ease-out);
+}
+.round-dot.on {
+  background: var(--cinnabar);
+}
+.round-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-left: var(--s-2);
+}
+.closed-tag {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar-deep);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  background: var(--cinnabar-wash);
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+
+.rehearsal-card {
+  padding: var(--s-6);
+}
+.rehearsal-stem {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre-wrap;
+  margin-bottom: var(--s-5);
+}
+.rehearsal-answer {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  padding: var(--s-4);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+  resize: vertical;
+  transition: border-color 0.3s var(--ease-out);
+}
+.rehearsal-answer:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.rehearsal-answer::placeholder {
+  color: var(--ink-faint);
+}
+.rehearsal-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--s-4);
+}
+
+/* —— 流式讲解 —— */
+.rehearsal-explain {
+  padding: var(--s-6);
+  border-left: 3px solid var(--cinnabar);
+}
+.rehearsal-explain .eyebrow {
+  display: block;
+  margin-bottom: var(--s-3);
+}
+.rehearsal-explain-live {
+  font-size: var(--fs-base);
+  line-height: 1.8;
+  color: var(--ink);
+  white-space: pre-wrap;
+  margin: 0;
+}
+.tutor-thinking {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  margin: 0;
+}
+.tutor-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--cinnabar);
+  border-radius: 1px;
+  animation: tutor-blink 1s steps(2, start) infinite;
+}
+@keyframes tutor-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+/* —— 结算 —— */
+.rehearsal-settled {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-4);
+}
+.settle-card {
+  width: min(480px, 100%);
+  text-align: center;
+  padding: var(--s-7) var(--s-6);
+  border-top: 3px solid var(--line);
+}
+.settle-card.pass {
+  border-top-color: var(--good);
+}
+.settle-card.fail {
+  border-top-color: var(--bad);
+}
+.settle-icon {
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--s-3);
+}
+.settle-card.pass .settle-icon { color: var(--good); }
+.settle-card.fail .settle-icon { color: var(--bad); }
+.settle-card h2 {
+  font-size: var(--fs-xl);
+}
+.settle-sub {
+  color: var(--ink-soft);
+  margin: var(--s-2) auto var(--s-5);
+  max-width: 38ch;
+  font-size: var(--fs-sm);
+}
+.settle-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-display);
+  color: var(--cinnabar-deep);
+}
+.settle-score span {
+  font-size: 2.6rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.settle-score small {
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+}
+.round-scores {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: var(--s-4);
+}

@@ -1,0 +1,152 @@
+/* —— 按钮：单一主色，宁方勿圆 —— */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-5);
+  height: 42px;
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: transform 0.35s var(--ease-out), background 0.35s var(--ease-out),
+    border-color 0.35s var(--ease-out), color 0.35s var(--ease-out);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--cinnabar);
+  color: var(--on-accent);
+  box-shadow: 0 1px 0 var(--cinnabar-deep);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--cinnabar-deep);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar-deep);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 var(--s-3);
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--cinnabar-deep);
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--bad-wash);
+}
+
+/* —— 卡片：发丝线，无阴影 —— */
+.card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+}
+.card.flush {
+  padding: 0;
+}
+
+/* —— 语义徽章 —— */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.badge.is-good {
+  color: var(--good);
+  background: var(--good-wash);
+  border-color: color-mix(in oklch, var(--good) 35%, transparent);
+}
+.badge.is-warn {
+  color: var(--warn);
+  background: var(--warn-wash);
+  border-color: color-mix(in oklch, var(--warn) 35%, transparent);
+}
+.badge.is-bad {
+  color: var(--bad);
+  background: var(--bad-wash);
+  border-color: color-mix(in oklch, var(--bad) 35%, transparent);
+}
+.badge.is-soft {
+  color: var(--ink-soft);
+  background: var(--paper-3);
+  border-color: var(--line);
+}
+.badge.is-accent {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border-color: color-mix(in oklch, var(--cinnabar) 35%, transparent);
+}
+.badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: currentColor;
+}
+
+/* —— 题型标签 —— */
+.tag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+}
+
+/* —— 加载 —— */
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--cinnabar);
+  border-radius: 99px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

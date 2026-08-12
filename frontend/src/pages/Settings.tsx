@@ -1,0 +1,121 @@
+import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
+import { aiSettings, type AiSettingsView } from '../api/drill';
+import { Button, Card, Loading } from '../components/ui';
+import { ApiError } from '../api/client';
+import './Settings.css';
+
+function msg(e: unknown): string {
+  return e instanceof ApiError ? e.message : '保存失败';
+}
+
+/** 设置页：配置 AI 模型 provider / base-url / api-key / model / temperature。 */
+export function Settings() {
+  const [cfg, setCfg] = useState<AiSettingsView | null>(null);
+  const [provider, setProvider] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [temperature, setTemperature] = useState('0.7');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    aiSettings
+      .get()
+      .then((v) => {
+        setCfg(v);
+        setProvider(v.provider);
+        setBaseUrl(v.baseUrl);
+        setModel(v.model);
+        setTemperature(String(v.temperature));
+      })
+      .catch((e) => setErr(msg(e)));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setErr('');
+    setSaved(false);
+    try {
+      // apiKey 留空 = 沿用当前已存的 key（后端处理）
+      await aiSettings.update({
+        provider: provider.trim(),
+        baseUrl: baseUrl.trim(),
+        model: model.trim(),
+        apiKey: apiKey.trim(),
+        temperature: Number(temperature) || 0.7,
+      });
+      setSaved(true);
+      setApiKey('');
+      // 刷新掩码
+      setCfg(await aiSettings.get());
+    } catch (e) {
+      setErr(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="page">
+      <header className="page-head">
+        <span className="eyebrow">设置 · SETTINGS</span>
+        <h1>模型设置</h1>
+        <p>配置你要用的 AI 模型与密钥。支持任何 OpenAI 兼容接口（DeepSeek / 阿里 DashScope / Kimi / 自建等）。改完立即生效，无需重启。</p>
+      </header>
+
+      {err && <div className="banner info">{err}</div>}
+
+      {cfg === null ? (
+        <Loading label="读取设置…" />
+      ) : (
+        <Card className="settings-card">
+          <label className="field">
+            <span className="field-label">Provider 名称（仅用于显示）</span>
+            <input className="note-input" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="例如 deepseek / dashscope / kimi" />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Base URL（OpenAI 兼容端点）</span>
+            <input className="note-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.deepseek.com" />
+          </label>
+
+          <label className="field">
+            <span className="field-label">模型名</span>
+            <input className="note-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-v4-flash" />
+          </label>
+
+          <label className="field">
+            <span className="field-label">API Key</span>
+            <input
+              className="note-input"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={cfg.apiKeyMasked ? `当前：${cfg.apiKeyMasked}（留空则不变）` : '填写 API Key'}
+              autoComplete="off"
+            />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Temperature（0-1）</span>
+            <input className="note-input" type="number" step="0.1" min="0" max="1" value={temperature} onChange={(e) => setTemperature(e.target.value)} />
+          </label>
+
+          <div className="settings-actions">
+            <Button onClick={save} disabled={busy}>
+              {busy ? '保存中…' : '保存设置'}
+            </Button>
+            {saved && (
+              <span className="settings-saved">
+                <Check size={14} strokeWidth={2} /> 已保存，下次调用立即生效
+              </span>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

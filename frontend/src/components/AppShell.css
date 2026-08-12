@@ -1,0 +1,153 @@
+/* 桌面级应用框架：像原生软件的窗口，而非网页 */
+.app-frame {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  height: 100vh;
+  max-width: 1340px;
+  margin: 0 auto;
+  background: var(--paper);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/* —— 侧边栏 —— */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  padding: var(--s-5) var(--s-4);
+  background: linear-gradient(180deg, var(--paper-2), var(--paper));
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3) var(--s-5);
+}
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--cinnabar);
+  border: 1.5px solid var(--cinnabar);
+  border-radius: var(--r-md);
+  background: var(--cinnabar-wash);
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.brand-text strong {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.brand-text small {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--s-3);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--ink-soft);
+  font-size: var(--fs-base);
+  position: relative;
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.nav-item:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+.nav-item.active {
+  background: var(--cinnabar-wash);
+  color: var(--cinnabar-deep);
+  font-weight: 500;
+}
+.nav-item.active svg {
+  color: var(--cinnabar);
+}
+.nav-dot {
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--cinnabar);
+  opacity: 0.5;
+}
+
+.side-foot {
+  margin-top: auto;
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--paper-3);
+}
+.user-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+.logout {
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  padding: 4px;
+  border-radius: var(--r-sm);
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.logout:hover {
+  color: var(--bad);
+  background: var(--bad-wash);
+}
+
+/* —— 主区 —— */
+.main {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 760px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .sidebar {
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: var(--s-3) var(--s-4);
+    overflow-x: auto;
+  }
+  .brand { padding: 0 var(--s-3) 0 0; }
+  .brand-text { display: none; }
+  .nav { flex-direction: row; margin: 0; }
+  .side-foot { display: none; }
+}

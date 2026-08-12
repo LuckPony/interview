@@ -1,0 +1,366 @@
+/* —— 问答记录列表 —— */
+.hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  text-align: left;
+  width: 100%;
+  padding: var(--s-4) var(--s-5);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out);
+}
+.hist-row:hover {
+  border-color: var(--cinnabar);
+  background: var(--paper);
+  transform: translateX(2px);
+}
+
+.hist-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.hist-stem {
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hist-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.hist-score {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.hist-note {
+  display: inline-grid;
+  place-items: center;
+  color: var(--cinnabar);
+}
+.hist-date {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  letter-spacing: 0.03em;
+}
+
+/* —— 详情弹窗（复用 note-backdrop 语义，自包含样式） —— */
+.note-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 42%, transparent);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  z-index: 50;
+  animation: fade-in 0.25s var(--ease-out);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.detail-dialog {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  padding: var(--s-6);
+  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+}
+.detail-close {
+  position: absolute;
+  top: var(--s-4);
+  right: var(--s-4);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--ink-faint);
+  border-radius: var(--r-sm);
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.detail-close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+.detail-q {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin: var(--s-3) 0;
+  padding: var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.detail-stem {
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.detail-block {
+  margin: var(--s-4) 0;
+}
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s-2);
+}
+.detail-answer {
+  padding: var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: var(--s-4) 0;
+}
+
+.detail-concepts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+.detail-concept {
+  padding: var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.detail-concept-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.concept-role {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+.concept-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+.point-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 5px 0;
+  border-top: 1px dashed var(--line);
+}
+.point-row:first-of-type {
+  border-top: none;
+}
+.verdict-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  margin-top: 6px;
+  background: var(--ink-faint);
+}
+.verdict-dot.is-good {
+  background: var(--good);
+}
+.verdict-dot.is-warn {
+  background: var(--warn);
+}
+.verdict-dot.is-bad {
+  background: var(--bad);
+}
+.point-text {
+  flex: 1;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.5;
+}
+.point-evidence {
+  flex-basis: 100%;
+  padding-left: calc(8px + var(--s-2));
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.factual {
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  background: var(--bad-wash);
+  border: 1px solid color-mix(in oklch, var(--bad) 30%, transparent);
+  border-radius: var(--r-sm);
+}
+.factual .eyebrow {
+  color: var(--bad);
+}
+.factual-item {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* —— 详情底部：继续追问（接力 REHEARSAL） —— */
+.detail-followup {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.followup-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+/* —— 列表：按题聚合，多轮标记 —— */
+.hist-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar-deep);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 30%, transparent);
+  background: var(--cinnabar-wash);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+/* —— 对话线弹窗 —— */
+.conv-dialog {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  padding: var(--s-6);
+  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+}
+
+.conv-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+.conv-run {
+  padding: var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.conv-run.is-followup {
+  border-style: dashed;
+  background: var(--cinnabar-wash);
+  border-color: color-mix(in oklch, var(--cinnabar) 35%, transparent);
+}
+.conv-run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.conv-run-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+.conv-run.is-followup .conv-run-label {
+  color: var(--cinnabar-deep);
+}
+.conv-run-score {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.conv-turn {
+  border-top: 1px dashed var(--line);
+  padding-top: var(--s-3);
+  margin-top: var(--s-3);
+}
+.conv-turn:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+.conv-turn-q {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+.conv-turn-q .eyebrow {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.conv-turn-stem {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.55;
+}
+.conv-turn-a {
+  margin-top: var(--s-2);
+}
+.conv-points {
+  margin-top: var(--s-3);
+}

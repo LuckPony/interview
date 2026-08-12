@@ -1,0 +1,369 @@
+/* ====== 方向切换 tabs ====== */
+.plan-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--s-5);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plan-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.plan-tab:hover {
+  color: var(--ink);
+}
+
+.plan-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.plan-tab-new {
+  margin-left: auto;
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink-soft);
+}
+
+.plan-tab-new:hover {
+  color: var(--accent);
+}
+
+/* ====== 方向摘要卡片 ====== */
+.plan-summary {
+  padding: var(--s-5);
+  margin-bottom: var(--s-5);
+}
+
+.plan-summary-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-5);
+  margin-bottom: var(--s-4);
+}
+
+.plan-summary-top h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  margin: 0 0 var(--s-2);
+  color: var(--ink);
+}
+
+.plan-goal {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 480px;
+}
+
+.plan-summary-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-shrink: 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stat-num {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.stat-num.warn {
+  color: var(--bad);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+}
+
+.plan-corpus {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  margin-bottom: var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  background: var(--bg-soft);
+  border-radius: 6px;
+}
+
+.plan-summary-actions {
+  display: flex;
+  gap: var(--s-3);
+}
+
+/* ====== 概念树：按 layer 分层 ====== */
+.concept-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.concept-layer {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-4);
+}
+
+.layer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  color: var(--ink-soft);
+}
+
+.layer-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.layer-count {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.layer-practice {
+  margin-left: auto;
+  padding: 2px var(--s-2);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  gap: 4px;
+}
+.layer-practice:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.layer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* concept chip — in PlansPage context */
+.concept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.concept-chip:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+.concept-chip.mastered {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--ink-soft);
+}
+
+.concept-chip.mastered .chip-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+}
+
+.chip-check {
+  color: var(--good);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chip-arrow {
+  color: var(--ink-soft);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.concept-chip:hover .chip-arrow {
+  opacity: 1;
+}
+
+/* ====== empty state ====== */
+.empty.small {
+  padding: var(--s-6) 0;
+  text-align: center;
+}
+
+.empty.small p {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+/* reposition due-badge */
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+/* ============================================================
+   编辑模式（用户自主权：改方向 + 增改删知识点）
+   ============================================================ */
+.plan-editor {
+  padding: var(--s-5) var(--s-6);
+}
+.plan-editor > .eyebrow {
+  display: block;
+  margin-bottom: var(--s-4);
+}
+.edit-field {
+  display: block;
+  margin-bottom: var(--s-3);
+}
+.edit-field > span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s-1);
+}
+.edit-field input,
+.edit-field textarea {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  resize: vertical;
+}
+.edit-field input:focus,
+.edit-field textarea:focus {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 1px;
+}
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+/* —— 知识点编辑列表 —— */
+.concept-editor {
+  margin-top: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.concept-editor > .eyebrow {
+  margin-bottom: var(--s-1);
+}
+.concept-edit-row {
+  display: grid;
+  grid-template-columns: 1.5fr 84px 1.2fr auto;
+  gap: var(--s-2);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.concept-edit-row.is-new {
+  border-style: dashed;
+  background: var(--paper);
+  border-color: var(--cinnabar);
+}
+.concept-edit-row input,
+.concept-edit-row select {
+  font-family: inherit;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: var(--s-2) var(--s-3);
+  width: 100%;
+}
+.concept-edit-row input:focus,
+.concept-edit-row select:focus {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 1px;
+}
+.ce-actions {
+  display: flex;
+  gap: var(--s-2);
+}
+.ce-err {
+  grid-column: 1 / -1;
+  color: var(--bad);
+  font-size: var(--fs-sm);
+}
+
+/* 窄屏：知识点编辑行折行 */
+@media (max-width: 720px) {
+  .concept-edit-row {
+    grid-template-columns: 1fr 84px;
+  }
+  .concept-edit-row .ce-note,
+  .concept-edit-row .ce-actions {
+    grid-column: 1 / -1;
+  }
+}

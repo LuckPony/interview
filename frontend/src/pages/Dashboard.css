@@ -1,0 +1,196 @@
+.dash-actions {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+
+.dash-primary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  text-align: left;
+  padding: var(--s-5) var(--s-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(120deg, var(--cinnabar-wash), var(--paper-2));
+  transition: transform 0.4s var(--ease-out), border-color 0.4s var(--ease-out);
+}
+.dash-primary:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, var(--cinnabar) 40%, var(--line));
+}
+.dash-primary-ico {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--cinnabar);
+  color: var(--on-accent);
+}
+.dash-primary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dash-kicker {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cinnabar-deep);
+}
+.dash-primary-body strong {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.dash-primary-body small {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+.dash-go {
+  margin-left: auto;
+  color: var(--cinnabar-deep);
+  transition: transform 0.4s var(--ease-out);
+}
+.dash-primary:hover .dash-go {
+  transform: translate(3px, -3px);
+}
+
+.dash-secondary {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--s-4);
+}
+.dash-sec {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: var(--fs-base);
+  transition: border-color 0.3s var(--ease-out), color 0.3s var(--ease-out);
+}
+.dash-sec:hover {
+  border-color: var(--ink-faint);
+  color: var(--cinnabar-deep);
+}
+.dash-sec svg {
+  color: var(--ink-soft);
+}
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-4);
+  margin-bottom: var(--s-7);
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  position: relative;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1;
+}
+.stat-label {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.stat .dot {
+  position: absolute;
+  top: var(--s-5);
+  right: var(--s-5);
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+}
+.stat .dot.is-good { background: var(--good); }
+.stat .dot.is-bad { background: var(--bad); }
+
+.dash-debt-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--s-4);
+}
+.dash-debt-head h2 {
+  font-size: var(--fs-lg);
+}
+.dash-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-sm);
+  color: var(--cinnabar-deep);
+}
+.dash-link:hover { text-decoration: underline; }
+
+.debt-list {
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.debt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  cursor: pointer;
+  transition: background 0.25s var(--ease-out);
+}
+.debt-item + .debt-item { border-top: 1px solid var(--line); }
+.debt-item:hover { background: var(--paper-3); }
+.debt-stem {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .dash-actions { grid-template-columns: 1fr; }
+  .dash-stats { grid-template-columns: 1fr; }
+}
+
+/* —— 方向切换 + 新建入口（砚台） —— */
+.dash-direction {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-4);
+}
+.dash-direction .ps {
+  margin: 0;
+}
+.dash-new-plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--cinnabar-deep);
+  background: transparent;
+  border: 1px dashed color-mix(in oklch, var(--cinnabar) 40%, transparent);
+  border-radius: var(--r-md);
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.dash-new-plan:hover {
+  background: var(--cinnabar-wash);
+  border-style: solid;
+}

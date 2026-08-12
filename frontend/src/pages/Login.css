@@ -1,0 +1,99 @@
+.login {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  min-height: 100vh;
+}
+
+/* —— 左：编辑式主张 —— */
+.login-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--s-8) var(--s-7);
+  border-right: 1px solid var(--line);
+}
+.login-title {
+  font-size: var(--fs-hero);
+  margin: var(--s-4) 0 var(--s-5);
+}
+.login-lede {
+  color: var(--ink-soft);
+  max-width: 42ch;
+  font-size: var(--fs-md);
+}
+.inkstone {
+  width: min(280px, 70%);
+  margin-top: var(--s-6);
+  color: var(--cinnabar);
+}
+.login-meta {
+  margin-top: auto;
+  padding-top: var(--s-6);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+/* —— 右：登录卡 —— */
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+}
+.login-card {
+  width: min(380px, 100%);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+}
+.login-card h2 {
+  font-size: var(--fs-xl);
+}
+.login-sub {
+  color: var(--ink-soft);
+  margin: var(--s-2) 0 var(--s-5);
+  font-size: var(--fs-sm);
+}
+.field {
+  display: block;
+  margin-bottom: var(--s-4);
+}
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s-2);
+}
+.field input {
+  width: 100%;
+  height: 46px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  font-size: var(--fs-md);
+  transition: border-color 0.3s var(--ease-out);
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.field input::placeholder {
+  color: var(--ink-faint);
+}
+
+@media (max-width: 860px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+  .login-hero {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: var(--s-7) var(--s-5);
+  }
+}

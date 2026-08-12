@@ -1,0 +1,308 @@
+/* ============================================================
+   掌握画像（重写）：按学习方向切换，分认知层展示掌握程度
+   ============================================================ */
+
+/* —— 方向切换 tabs —— */
+.profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-5);
+}
+.profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.profile-tab:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.profile-tab.active {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border-color: color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  font-weight: 600;
+}
+
+.profile-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+/* —— 概览卡 —— */
+.profile-summary {
+  padding: var(--s-6) var(--s-6);
+}
+.profile-summary-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
+}
+.profile-summary-top h2 {
+  font-size: var(--fs-lg);
+  margin: 0 0 var(--s-2);
+}
+.profile-goal {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 46ch;
+}
+.profile-total {
+  flex-shrink: 0;
+  text-align: right;
+}
+.profile-total-num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--ink);
+  display: block;
+  line-height: 1;
+}
+.profile-total-num small {
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+.profile-total-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+}
+
+/* —— 进度条 —— */
+.progress-track {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.progress-track.small {
+  height: 6px;
+  flex: 1;
+  max-width: 200px;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--cinnabar), color-mix(in oklch, var(--cinnabar) 65%, var(--amber)));
+  transition: width 0.6s var(--ease-out);
+}
+.profile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.profile-pct {
+  font-family: var(--font-mono);
+  color: var(--cinnabar-deep);
+}
+.profile-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warn);
+}
+
+/* —— 认知层模块 —— */
+.profile-layers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.profile-layer {
+  padding: var(--s-5) var(--s-6);
+}
+.profile-layer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.profile-layer-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.profile-layer-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+.profile-layer-count.done {
+  color: var(--good);
+}
+
+/* —— 概念 chips —— */
+.profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-2) var(--s-3);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.profile-chip:hover {
+  border-color: var(--cinnabar);
+  background: var(--paper);
+}
+.profile-chip .chip-name {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+.profile-chip .chip-note {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* —— 底部继续练习入口 —— */
+.profile-foot {
+  margin-top: var(--s-6);
+  display: flex;
+  justify-content: center;
+}
+.profile-practice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 30%, transparent);
+  border-radius: 99px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.profile-practice:hover {
+  background: var(--cinnabar);
+  color: var(--on-accent);
+}
+
+/* —— 认知层模块内容弹层 —— */
+.module-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 42%, transparent);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  z-index: 50;
+  animation: fade-in 0.25s var(--ease-out);
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+.module-modal {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+}
+.module-close {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  border-radius: var(--r-sm);
+  transition: all 0.3s var(--ease-out);
+}
+.module-close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+.module-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  padding-right: 32px;
+}
+.module-title {
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+}
+.module-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.module-item {
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.module-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.module-item-name {
+  font-weight: 500;
+  color: var(--ink);
+}
+.module-item-note {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.module-empty {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  text-align: center;
+  padding: var(--s-5) 0;
+}

@@ -1,0 +1,76 @@
+/* ============================================================
+   砚 · 设计令牌
+   原则（impeccable / 反 AI 味共识）：
+   - 暖中性底，绝不用纯黑纯白
+   - OKLCH 感知均匀色板，主色只一种（朱砂），辅色金盏克制
+   - 发丝线分隔，几乎不用阴影
+   - 字体：Fraunces(拉丁衬线) + 思源宋体(中文衬线) 作展示；思源黑体作正文；等宽作标签
+   ============================================================ */
+:root {
+  /* —— 纸面与墨色（暖调，向红黄偏，读者/编辑气质）—— */
+  --paper: oklch(0.972 0.011 85);        /* 主背景，米白暖纸 */
+  --paper-2: oklch(0.948 0.013 82);       /* 面板/卡片底 */
+  --paper-3: oklch(0.928 0.015 80);       /* 凹陷/输入底 */
+  --ink: oklch(0.27 0.018 55);            /* 主文字，暖近黑 */
+  --ink-soft: oklch(0.45 0.014 58);       /* 次级文字 */
+  --ink-faint: oklch(0.62 0.011 62);      /*  Tertiary / 占位 */
+  --line: oklch(0.86 0.012 75);           /* 发丝分隔线 */
+  --line-strong: oklch(0.74 0.014 70);    /* 稍重线（强调边界） */
+
+  /* —— 朱砂（唯一主强调色）—— */
+  --cinnabar: oklch(0.572 0.181 33);      /* 朱砂 / 赭红 */
+  --cinnabar-deep: oklch(0.50 0.175 32);  /* hover / 按压 */
+  --cinnabar-wash: oklch(0.95 0.030 35);  /* 极淡底纹 */
+  --on-accent: oklch(0.982 0.008 85);     /* 朱砂之上的字 */
+
+  /* —— 金盏（克制辅色，仅作第二信号）—— */
+  --amber: oklch(0.78 0.105 78);
+  --amber-wash: oklch(0.965 0.035 82);
+
+  /* —— 语义（掌握度 / 判定）—— */
+  --good: oklch(0.62 0.105 152);          /* 已掌握 */
+  --good-wash: oklch(0.96 0.03 155);
+  --warn: oklch(0.74 0.115 72);           /* 进行中 */
+  --warn-wash: oklch(0.97 0.04 78);
+  --bad: oklch(0.56 0.168 24);            /* 未掌握 / 失分 */
+  --bad-wash: oklch(0.955 0.03 25);
+  --hit: oklch(0.62 0.105 152);
+  --partial: oklch(0.74 0.115 72);
+  --miss: oklch(0.56 0.168 24);
+
+  /* —— 字体：系统原生栈（免 Google Fonts 联网依赖，中英混排稳定、阅读舒适） —— */
+  --font-display: var(--font-sans); /* 标题同款黑体，靠字重区分层级 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* —— 流式字号（clamp，模块化比例 ~1.25）—— */
+  --fs-xs: 0.75rem;     /* 12 */
+  --fs-sm: 0.8125rem;   /* 13 */
+  --fs-base: 0.9375rem; /* 15 */
+  --fs-md: 1.0625rem;   /* 17 */
+  --fs-lg: 1.25rem;     /* 20 */
+  --fs-xl: 1.75rem;     /* 28 */
+  --fs-2xl: clamp(2.1rem, 4vw, 2.9rem);
+  --fs-hero: clamp(2.8rem, 7vw, 5rem);
+
+  /* —— 间距（8 基数）—— */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* —— 形状：单一圆角语汇，宁方勿圆 —— */
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+
+  /* —— 动效：指数缓动，编排而非装饰 —— */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);     /* ease-out-quart */
+  --ease-expo: cubic-bezier(0.19, 1, 0.22, 1);   /* expo */
+  --dur: 0.5s;
+}

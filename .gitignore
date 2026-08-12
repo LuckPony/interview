@@ -38,3 +38,9 @@ out/
 
 ### Project ###
 .env
+
+### macOS ###
+.DS_Store
+
+### Tools ###
+.workbuddy/

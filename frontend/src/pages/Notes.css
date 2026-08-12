@@ -1,0 +1,325 @@
+/* ============================================================
+   内化复盘（重写）：按学习方向分组 + 卡片瀑布流
+   ============================================================ */
+
+/* —— 分组 —— */
+.notes-waterfall {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+.notes-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  color: var(--ink);
+}
+.notes-group-title {
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+.notes-group-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  margin-left: var(--s-1);
+}
+
+/* —— 瀑布流：CSS 多列 masonry —— */
+.notes-masonry {
+  column-count: 2;
+  column-gap: var(--s-4);
+}
+@media (max-width: 860px) {
+  .notes-masonry {
+    column-count: 1;
+  }
+}
+
+/* —— 欠账卡片 —— */
+.debt-card {
+  break-inside: avoid;
+  margin: 0 0 var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  transition: border-color var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+.debt-card:hover {
+  border-color: var(--cinnabar);
+  transform: translateY(-1px);
+}
+.debt-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.debt-card-stem {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.debt-card-weak {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--warn);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debt-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-3);
+}
+
+/* —— 复盘弹窗 —— */
+.notes-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 42%, transparent);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  z-index: 50;
+  animation: notes-fade 0.25s var(--ease-out);
+}
+@keyframes notes-fade {
+  from { opacity: 0; }
+}
+.notes-modal {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: var(--s-6);
+  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+}
+.notes-close {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  border-radius: var(--r-sm);
+  transition: all 0.3s var(--ease-out);
+}
+.notes-close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+/* —— 薄弱点分析面板 —— */
+.weak-panel {
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  background: var(--bad-wash);
+  border: 1px solid color-mix(in oklch, var(--bad) 28%, transparent);
+  border-radius: var(--r-md);
+}
+.weak-panel .eyebrow {
+  display: block;
+  color: var(--bad);
+  margin-bottom: var(--s-3);
+}
+.weak-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.weak-list li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.55;
+}
+.weak-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--bad);
+  transform: translateY(-2px);
+}
+
+/* —— 笔记表单 —— */
+.note-q {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding-bottom: var(--s-4);
+  margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.note-stem {
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: 1.55;
+}
+.note-conv-section {
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.field {
+  display: block;
+  margin-bottom: var(--s-4);
+}
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s-2);
+}
+.note-area,
+.note-input {
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  resize: vertical;
+}
+.note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+/* —— 已内化 —— */
+.note-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-6) 0;
+  text-align: center;
+}
+.done-icon {
+  color: var(--good);
+}
+.done-left {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+/* —— AI 复盘报告：欠缺 / 思路 / 口诀 —— */
+.review-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.review-report.review-loading {
+  padding: var(--s-5) 0;
+  align-items: center;
+  justify-content: center;
+}
+.review-section {
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.review-section.mnemonic {
+  background: var(--amber-wash);
+  border-color: color-mix(in oklch, var(--amber) 45%, transparent);
+}
+.review-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s-2);
+}
+.review-section.mnemonic .review-label {
+  color: var(--warn);
+}
+.review-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.7;
+}
+.review-mnemonic {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+/* —— 复盘子页面（占满页面宽度） —— */
+.review-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  width: 100%;
+}
+.review-question {
+  padding: var(--s-5) var(--s-6);
+}
+.review-question .note-q {
+  margin-bottom: var(--s-4);
+}
+.review-page .note-form {
+  padding: var(--s-5) var(--s-6);
+}
+/* 宽屏下 AI 复盘三块并排，充分利用横向空间 */
+@media (min-width: 960px) {
+  .review-page .review-report {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: stretch;
+  }
+  .review-page .review-report .review-section {
+    height: 100%;
+  }
+}
+
+/* —— 复盘页 markdown 化后的尺寸对齐 —— */
+.weak-list .weak-md {
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+.weak-list .weak-md p { margin: 0; }
+.weak-list .weak-md > :first-child { margin-top: 0; }
+.review-text.md { font-size: var(--fs-sm); }
+.review-mnemonic.md { font-size: var(--fs-base); font-weight: 600; }
+.review-question .note-q .md.note-stem { flex: 1; min-width: 0; }

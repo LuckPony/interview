@@ -1,0 +1,121 @@
+/* ============================================================
+   Markdown 渲染样式
+   贴「砚」设计令牌：暖纸底、朱砂主色、等宽作代码。
+   浅色主题下代码块用浅色底纹（不破坏暖纸基调）。
+   气泡内 .chat-bubble 默认 pre-wrap / p{margin:0}，这里用更高
+   优先级（.chat-bubble .md）收回复原 markdown 应有的段落节奏。
+   ============================================================ */
+.md {
+  font-size: var(--fs-base);
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: normal;
+  word-break: break-word;
+}
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+
+.md p { margin: 0 0 0.7em; }
+.md p:last-child { margin-bottom: 0; }
+
+.md h1, .md h2, .md h3, .md h4 {
+  font-family: var(--font-display);
+  line-height: 1.3;
+  margin: 1.1em 0 0.5em;
+  color: var(--ink);
+}
+.md h1 { font-size: 1.3em; }
+.md h2 { font-size: 1.18em; }
+.md h3 { font-size: 1.06em; }
+.md h4 { font-size: 1em; font-family: var(--font-sans); color: var(--ink-soft); }
+
+.md ul, .md ol { margin: 0.5em 0 0.9em; padding-left: 1.4em; }
+.md li { margin: 0.28em 0; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li::marker { color: var(--ink-faint); }
+
+.md strong { font-weight: 700; color: var(--ink); }
+.md em { font-style: italic; }
+
+.md a {
+  color: var(--cinnabar-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.md a:hover { color: var(--cinnabar); }
+
+/* 行内代码：浅底纹 + 朱砂字，发丝边 */
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: color-mix(in oklch, var(--ink) 8%, transparent);
+  color: var(--cinnabar-deep);
+  padding: 0.12em 0.4em;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  word-break: break-word;
+}
+
+/* 代码块：轻量浅色底，不用深色块（贴合暖纸 / 浅色主题） */
+.md pre {
+  background: color-mix(in oklch, var(--ink) 6%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4);
+  margin: 0.75em 0;
+  overflow-x: auto;
+}
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+  font-size: 0.85em;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.md blockquote {
+  margin: 0.7em 0;
+  padding: 0.15em 0 0.15em 0.9em;
+  border-left: 3px solid color-mix(in oklch, var(--cinnabar) 45%, transparent);
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.md hr { border: none; border-top: 1px solid var(--line); margin: 1em 0; }
+
+.md table {
+  border-collapse: collapse;
+  margin: 0.7em 0;
+  width: 100%;
+  font-size: 0.9em;
+}
+.md th, .md td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md th { background: var(--paper-3); font-family: var(--font-sans); }
+
+.md img { max-width: 100%; border-radius: var(--r-md); }
+
+/* —— 气泡内：覆盖 .chat-bubble 的 pre-wrap 与 p{margin:0} —— */
+.chat-bubble .md { white-space: normal; }
+.chat-bubble .md p { margin: 0 0 0.7em; }
+.chat-bubble .md p:last-child { margin-bottom: 0; }
+
+/* 题干（提问）用展示衬线，更像「命题」；代码仍走等宽 */
+.chat-bubble.is-stem .md {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  line-height: 1.7;
+  color: var(--ink);
+}
+.chat-bubble.is-stem .md code,
+.chat-bubble.is-stem .md pre,
+.chat-bubble.is-stem .md pre code {
+  font-family: var(--font-mono);
+}

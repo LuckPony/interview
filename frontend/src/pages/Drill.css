@@ -1,0 +1,679 @@
+.timer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar-deep);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  background: var(--cinnabar-wash);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+/* —— 闸门卡 —— */
+.gate-card {
+  padding: var(--s-6);
+}
+.gate-card p {
+  color: var(--ink);
+  font-size: var(--fs-md);
+}
+.gate-hint {
+  color: var(--ink-soft) !important;
+  font-size: var(--fs-sm) !important;
+  margin: var(--s-3) 0 var(--s-5) !important;
+}
+
+/* —— 会话条：第 N/共 M + 上一题 / 下一题（主动权在用户） —— */
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.session-nav {
+  display: flex;
+  gap: var(--s-2);
+}
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.nav-btn:hover:not(:disabled) {
+  color: var(--cinnabar-deep);
+  border-color: color-mix(in oklch, var(--cinnabar) 40%, transparent);
+}
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.nav-btn.primary {
+  color: #fff;
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+}
+.nav-btn.primary:hover:not(:disabled) {
+  color: #fff;
+  background: var(--cinnabar-deep);
+  border-color: var(--cinnabar-deep);
+  transform: translateY(-1px);
+}
+/* 下一题按钮内的内联加载圈：在朱砂底白字按钮里用 currentColor 做旋转高亮 */
+.spinner-inline {
+  display: inline-block;
+  border-top-color: currentColor;
+}
+
+/* —— 头部「换个方向」返回键 —— */
+.head-back {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.head-back:hover {
+  color: var(--cinnabar-deep);
+  border-color: color-mix(in oklch, var(--cinnabar) 40%, transparent);
+}
+
+/* —— 方向列表（home） —— */
+.plan-actions {
+  margin-bottom: var(--s-5);
+}
+.plan-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--s-4);
+}
+.plan-card {
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.plan-head h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--ink);
+  margin: 0;
+}
+.plan-goal {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  margin: 0;
+}
+.plan-toolbar {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+}
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: #fff;
+  background: var(--cinnabar-deep);
+  border-radius: 99px;
+}
+.plan-concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+.concept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 5px 10px 5px 12px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.concept-chip:hover {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+  transform: translateY(-1px);
+}
+.chip-done {
+  color: var(--good);
+  font-weight: 700;
+}
+
+/* —— 对话新建方向（intake） —— */
+.chat-card {
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 160px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.chat-hint {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  font-style: italic;
+  padding: var(--s-4) 0;
+  text-align: center;
+}
+.bubble {
+  max-width: 82%;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.bubble.user {
+  align-self: flex-end;
+  background: var(--cinnabar);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-bottom-left-radius: 4px;
+}
+.draft-card {
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  background: var(--cinnabar-wash);
+  border-radius: var(--r-md);
+  padding: var(--s-4) var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.draft-card h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  color: var(--ink);
+  margin: 0;
+}
+.draft-goal {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+.draft-points {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--s-2) 0;
+  padding: 0;
+}
+.draft-points li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+.draft-actions {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+.chat-thread {
+  padding: var(--s-5) var(--s-6);
+  background: var(--paper);
+  /* 聊天线程可滚动：题干 + 多轮对话 + 评分全在一个面板里 */
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+.chat-stem-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.chat-input {
+  padding: var(--s-4) var(--s-5);
+  background: var(--paper);
+}
+.chat-input-textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  resize: vertical;
+  transition: border-color 0.3s var(--ease-out);
+}
+.chat-input-textarea:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.chat-input-textarea::placeholder {
+  color: var(--ink-faint);
+}
+.chat-input-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.chat-input-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.chat-input-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin-top: var(--s-2);
+}
+
+/* —— 评分总结：独立于聊天线程，显示在输入框下方 —— */
+.chat-verdict {
+  padding: var(--s-5) var(--s-6);
+  background: var(--paper);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 20%, var(--line));
+}
+
+.chat-row-loading .chat-bubble {
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.chat-row-followup-ask {
+  margin-top: var(--s-3);
+}
+
+/* —— 追问结束后过渡提示 —— */
+.followup-settled-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-3);
+}
+.followup-settled-note button {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  border-radius: 99px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+}
+.followup-settled-note button:hover {
+  background: var(--cinnabar-wash);
+}
+
+/* —— 资料上传（基于自己的书/项目资料学习） —— */
+.upload-card {
+  margin-bottom: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.upload-hint {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  margin: 0;
+}
+.upload-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color 0.3s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.upload-btn:hover {
+  border-color: var(--cinnabar);
+  transform: translateY(-1px);
+}
+.attached-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.attached-file .file-name {
+  font-weight: 500;
+  color: var(--ink);
+}
+.file-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+.file-remove:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+/* —— 方向卡片上的资料标签 —— */
+.plan-corpus {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px dashed var(--line);
+}
+.plan-corpus .corpus-name {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: var(--fs-sm);
+}
+
+/* —— 桌面端免上传：选本地文件/文件夹 —— */
+.path-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+
+/* —— 出题加载遮罩：点「继续学习/开始练习/下一题」后，后端调 LLM 生成新题期间的提示 —— */
+.gen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--paper) 72%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: gen-fade 0.18s ease-out;
+}
+.gen-overlay-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 12px 40px -12px rgba(48, 30, 20, 0.28);
+  color: var(--ink);
+  font-size: var(--fs-md);
+}
+.gen-overlay-card .spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+.gen-overlay-card p {
+  margin: 0;
+}
+@keyframes gen-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+
+
+/* —— 今日任务（每日自动排期，预生成题秒开） —— */
+.today-card {
+  padding: var(--s-5) var(--s-6);
+  margin-bottom: var(--s-5);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 25%, var(--line));
+}
+.today-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  color: var(--cinnabar-deep);
+}
+.today-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+.today-count {
+  display: flex;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+.today-kind {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.today-review {
+  color: var(--warn);
+  background: var(--warn-wash);
+}
+.today-new {
+  color: var(--good);
+  background: var(--good-wash);
+}
+.today-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.today-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.today-item:hover {
+  border-color: var(--cinnabar);
+  background: var(--paper);
+}
+.today-concept {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.today-concept em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  margin-left: 4px;
+}
+.today-stem {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-pending {
+  flex: 1;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  font-style: italic;
+}
+.today-arrow {
+  color: var(--ink-faint);
+  flex-shrink: 0;
+}
+
+/* —— 聊天页（LEARN）：占满整个屏幕，输入框常驻底部，滚动只在聊天线程 —— */
+.chat-page {
+  height: 100vh;
+  max-height: 100vh;
+  max-width: none;
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-page .chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+  flex-shrink: 0;
+}
+.chat-head-title h1 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+.chat-page .banner {
+  flex-shrink: 0;
+  margin-bottom: var(--s-3);
+}
+.chat-page .chat-panel {
+  /* 聊天框高度 = 应用高度的 80%（按视口比例自适应，不锁死像素） */
+  flex: 0 0 80vh;
+  height: 80vh;
+  max-height: 80vh;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.chat-page .chat-thread {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+.chat-page .chat-input {
+  flex-shrink: 0;
+}
+.chat-page .chat-input-textarea {
+  resize: none;
+  max-height: 24vh;
+}
+.chat-page .chat-verdict {
+  flex-shrink: 0;
+}
+
+/* —— 聊天页紧凑化：字体略小、输入框更矮，聊天区更高、放下更多内容 —— */
+.chat-page .chat-thread {
+  padding: var(--s-3) var(--s-4);
+}
+.chat-page .chat-bubble,
+.chat-page .chat-bubble .md,
+.chat-page .tutor-text,
+.chat-page .me-text {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.chat-page .chat-bubble.is-stem p {
+  font-size: var(--fs-base);
+}
+.chat-page .chat-input {
+  padding: var(--s-2) var(--s-4);
+}
+.chat-page .chat-input-textarea {
+  padding: var(--s-2) var(--s-3);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.chat-page .chat-input-foot {
+  margin-top: var(--s-2);
+}
+
+.today-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  font-style: italic;
+}

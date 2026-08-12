@@ -1,0 +1,17 @@
+.settings-card {
+  padding: var(--s-5) var(--s-6);
+  max-width: 640px;
+}
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+.settings-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--good);
+}

@@ -1,0 +1,177 @@
+/* 内化笔记弹窗：在当前练习页内嵌打开，不切路由、不丢成绩页上下文。
+   风格对齐 impeccable 令牌：暖纸底、发丝线、单一朱砂强调、ease-out-quart 编排。 */
+
+.note-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 6vh, 64px) 16px;
+  background: color-mix(in oklch, var(--ink) 28%, transparent);
+  backdrop-filter: blur(2px);
+  animation: note-fade var(--dur) var(--ease-out) both;
+  overflow-y: auto;
+}
+
+.note-dialog {
+  width: min(540px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: var(--s-5) var(--s-5) var(--s-5);
+  animation: note-rise var(--dur) var(--ease-out) both;
+}
+
+@keyframes note-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes note-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.note-dialog-head h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--ink);
+  margin: var(--s-2) 0 var(--s-1);
+  letter-spacing: -0.01em;
+}
+
+.note-dialog-sub {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* —— 题面引用条 —— */
+.note-q {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-3);
+  margin: var(--s-4) 0 var(--s-3);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cinnabar);
+  border-radius: var(--r-md);
+}
+.note-stem {
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+/* —— 表单字段（与 Notes.css 同语汇）—— */
+.field {
+  display: block;
+  margin-bottom: var(--s-4);
+}
+.field-label {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--s-2);
+}
+.note-area,
+.note-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  line-height: 1.6;
+  transition: border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+.note-area {
+  resize: vertical;
+}
+.note-area:focus,
+.note-input:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+  box-shadow: 0 0 0 3px var(--cinnabar-wash);
+}
+
+/* —— 操作行 —— */
+.note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+.banner.info {
+  background: var(--cinnabar-wash);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 30%, var(--line));
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-3);
+  line-height: 1.5;
+}
+
+/* —— 完成态 —— */
+.note-done {
+  text-align: center;
+  padding: var(--s-5) var(--s-3) var(--s-2);
+}
+.done-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto var(--s-3);
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--good-wash);
+  color: var(--good);
+}
+.note-done h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--ink);
+  margin: 0 0 var(--s-3);
+}
+.overlap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-content: center;
+  text-align: left;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  margin: 0 auto var(--s-3);
+  max-width: 380px;
+}
+.overlap.high {
+  border-color: color-mix(in oklch, var(--amber) 45%, var(--line));
+  background: var(--amber-wash);
+  color: var(--ink);
+}
+.overlap strong {
+  color: var(--ink);
+}
+.done-left {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  margin: 0 0 var(--s-4);
+}
+.note-done .note-actions {
+  justify-content: center;
+}
