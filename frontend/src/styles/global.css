@@ -195,7 +195,7 @@ dialog::backdrop {
   color: var(--cinnabar-deep);
 }
 
-/* —— 学习方向切换（组件式下拉，只在砚台） —— */
+/* —— 学习方向切换（组件式下拉，只在首页） —— */
 .ps {
   position: relative;
   display: inline-flex;

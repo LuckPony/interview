@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "砚 · AI 学习/面试备考研习前端（桌面级静态 SPA）",
+  "description": "面霸 · AI 学习/面试备考前端（桌面级静态 SPA）",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

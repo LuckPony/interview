@@ -165,7 +165,7 @@
   .dash-stats { grid-template-columns: 1fr; }
 }
 
-/* —— 方向切换 + 新建入口（砚台） —— */
+/* —— 方向切换 + 新建入口（首页） —— */
 .dash-direction {
   display: flex;
   align-items: center;

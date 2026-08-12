@@ -21,11 +21,6 @@
   max-width: 42ch;
   font-size: var(--fs-md);
 }
-.inkstone {
-  width: min(280px, 70%);
-  margin-top: var(--s-6);
-  color: var(--cinnabar);
-}
 .login-meta {
   margin-top: auto;
   padding-top: var(--s-6);

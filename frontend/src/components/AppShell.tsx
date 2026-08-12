@@ -23,7 +23,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: '砚台', icon: LayoutDashboard, end: true },
+  { to: '/', label: '首页', icon: LayoutDashboard, end: true },
   { to: '/plan', label: '学习计划', icon: Compass },
   { to: '/drill', label: '练习', icon: PenLine },
   { to: '/rehearsal', label: '模拟面试', icon: MessagesSquare },
@@ -46,9 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-frame">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">砚</span>
+          <span className="brand-mark">面</span>
           <span className="brand-text">
-            <strong>砚</strong>
+            <strong>面霸</strong>
             <small>面试备考</small>
           </span>
         </div>

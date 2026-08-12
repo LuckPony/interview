@@ -42,16 +42,15 @@ export function Login() {
           把判断留给自己。
         </h1>
         <p className="login-lede reveal reveal-delay-2">
-          砚是一套反套路的备考系统：出题与判分交给模型，
+          面霸是一套反套路的备考系统：出题与判分交给模型，
           但练什么、判多严、何时复习，全由服务端确定性算法决定。你只管动脑。
         </p>
-        <Inkstone />
         <div className="login-meta reveal reveal-delay-3">演示环境 · 输入任意数字编号即可进入</div>
       </section>
 
       <section className="login-panel">
         <div className="login-card reveal">
-          <h2>入砚</h2>
+          <h2>进入面霸</h2>
           <p className="login-sub">输入你的面霸编号，开启一段闭卷的复习。</p>
           <form onSubmit={submit}>
             <label className="field">
@@ -66,44 +65,12 @@ export function Login() {
             </label>
             {err && <div className="banner info">{err}</div>}
             <Button type="submit" disabled={busy} style={{ width: '100%' }}>
-              进入砚台
+              进入面霸
               {!busy && <ArrowRight size={16} strokeWidth={2} />}
             </Button>
           </form>
         </div>
       </section>
     </div>
-  );
-}
-
-function Inkstone() {
-  return (
-    <svg className="inkstone" viewBox="0 0 240 150" fill="none" aria-hidden>
-      <rect
-        x="14"
-        y="34"
-        width="212"
-        height="92"
-        rx="20"
-        stroke="var(--ink-faint)"
-        strokeWidth="1.5"
-      />
-      <ellipse
-        cx="116"
-        cy="80"
-        rx="74"
-        ry="36"
-        stroke="var(--cinnabar)"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M192 8 C 170 36, 150 70, 120 104"
-        stroke="var(--ink-soft)"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <path d="M120 104 l 9 -3 -3 9 z" fill="var(--cinnabar)" />
-      <circle cx="116" cy="80" r="3" fill="var(--cinnabar)" />
-    </svg>
   );
 }

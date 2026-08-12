@@ -28,7 +28,7 @@ export function Dashboard() {
     studyPlan.list().then(setPlans).catch(() => undefined);
   }, []);
 
-  // 当前学习方向：只在砚台切换，其他页面（问答记录/复盘/练习）都按它过滤
+  // 当前学习方向：只在首页切换，其他页面（问答记录/复盘/练习）都按它过滤
   const { activeId, switchPlan } = useActivePlan(plans);
   const debtActive = debt ? debt.filter((d) => d.planId === activeId) : [];
 
@@ -39,7 +39,7 @@ export function Dashboard() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">砚台 · 今日</span>
+        <span className="eyebrow">面霸 · 今日</span>
         <h1>面霸 #{userId}</h1>
         <p>闭卷、动脑、内化。挑一条路开始。</p>
       </header>

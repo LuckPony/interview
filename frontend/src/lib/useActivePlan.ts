@@ -14,7 +14,7 @@ export function useActivePlan(plans: PlanView[]) {
   });
 
   // 记忆的方向若已不存在（如被删除），回落到第一个。
-  // 注意：plans 为空（异步加载中）时不要重置，否则会覆盖用户在砚台刚选的方向。
+  // 注意：plans 为空（异步加载中）时不要重置，否则会覆盖用户在首页刚选的方向。
   useEffect(() => {
     setActiveId((cur) => {
       if (cur != null && plans.some((p) => p.id === cur)) return cur;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Check, BookOpen } from 'lucide-react';
 import type { PlanView } from '../api/types';
 
-/** 学习方向切换器（组件式下拉）：切换前弹确认；只用在砚台页，其他页面跟随。 */
+/** 学习方向切换器（组件式下拉）：切换前弹确认；只在首页用，其他页面跟随。 */
 export function PlanSwitcher({
   plans,
   activeId,

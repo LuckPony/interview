@@ -236,7 +236,7 @@ export function IntakeChat() {
       </div>
 
       <button className="dash-link" onClick={() => navigate('/')}>
-        返回砚台
+        返回首页
       </button>
     </div>
   );

@@ -40,7 +40,7 @@ export function Plans({
     };
   }, []);
 
-  // 当前学习方向（在砚台切换，这里只跟随）：练习首页也只展示该方向
+  // 当前学习方向（在首页切换，这里只跟随）：练习首页也只展示该方向
   const { activeId } = useActivePlan(plans);
   const todayActive = today?.filter((t) => t.planId === activeId) ?? [];
   const planList = plans.filter((p) => p.id === activeId);
@@ -103,7 +103,7 @@ export function Plans({
       {planList.length === 0 ? (
         <div className="empty">
           <h3>当前方向暂无学习计划</h3>
-          <p>去「砚台」切换学习方向，或点上面「新建学习方向」。</p>
+          <p>去「首页」切换学习方向，或点上面「新建学习方向」。</p>
         </div>
       ) : (
         <div className="plan-list">
