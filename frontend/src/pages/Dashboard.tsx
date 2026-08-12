@@ -40,7 +40,7 @@ export function Dashboard() {
     <div className="page">
       <header className="page-head">
         <span className="eyebrow">砚台 · 今日</span>
-        <h1>研习者 #{userId}</h1>
+        <h1>面霸 #{userId}</h1>
         <p>闭卷、动脑、内化。挑一条路开始。</p>
       </header>
 
@@ -61,7 +61,7 @@ export function Dashboard() {
           </span>
           <span className="dash-primary-body">
             <span className="dash-kicker">练习</span>
-            <strong>继续研习</strong>
+            <strong>继续学习</strong>
             <small>
               {debtCount > 0 ? `有 ${debtCount} 条复盘待写，先去消化` : '服务端已为你选好下一题'}
             </small>

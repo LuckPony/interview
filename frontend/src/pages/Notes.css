@@ -106,7 +106,7 @@
   max-height: 88vh;
   overflow-y: auto;
   padding: var(--s-6);
-  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+  box-shadow: 0 24px 60px -24px rgba(35, 43, 54, 0.25);
 }
 .notes-close {
   position: absolute;

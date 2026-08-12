@@ -92,7 +92,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-xl);
   padding: var(--s-6);
-  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+  box-shadow: 0 24px 60px -24px rgba(35, 43, 54, 0.25);
 }
 .detail-close {
   position: absolute;
@@ -286,7 +286,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-xl);
   padding: var(--s-6);
-  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+  box-shadow: 0 24px 60px -24px rgba(35, 43, 54, 0.25);
 }
 
 .conv-timeline {

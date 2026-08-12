@@ -142,7 +142,7 @@ public class DrillController {
         Long uid = currentUserId();
         // 债务闸门已移除（同上）
         var task = selectionService.pickFor(uid, req.conceptId());
-        return openRun(uid, task, planIdOfConcept(req.conceptId()));
+        return openRun(uid, task, planIdOfConcept(req.conceptId()), null, req.conceptId());
     }
 
     /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
@@ -156,7 +156,9 @@ public class DrillController {
             case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
             default -> selectionService.pickNextWithinPlan(uid, req.planId());
         };
-        return openRun(uid, task, req.planId());
+        // 层级练习把显式指定的 layer 传给闸门：恢复活跃 run 时必须匹配该层，
+        // 否则搁置旧 run、按目标层重新出题（否则点「练这一层」会被同方向的旧活跃题顶掉）。
+        return openRun(uid, task, req.planId(), "layer".equals(mode) ? req.layer() : null, null);
     }
 
     /**
@@ -259,11 +261,16 @@ public class DrillController {
     private static final List<DrillRunStatus> ACTIVE_STATUSES = List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING);
 
     private QuestionView openRun(Long uid, SelectedTask task) {
-        return openRun(uid, task, null);   // 自由模式：不指定方向，恢复任何活跃 run
+        return openRun(uid, task, null, null, null);   // 自由模式：不指定目标，恢复任何活跃 run
     }
 
     private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId) {
-        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId);
+        return openRun(uid, task, targetPlanId, null, null);
+    }
+
+    private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
+                                 Integer targetLayer, Long targetConceptId) {
+        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
         if (resumed != null) return resumed;
 
         // 资料注入：若该概念所属方向绑了用户的书/项目资料，把解析文本喂给出题器（v1 全文注入）
@@ -273,23 +280,25 @@ public class DrillController {
     }
 
     /**
-     * 物理闸门（LEARN 主线复用 + 方向隔离）：有活跃 LEARN 且与目标方向同方向 → 恢复它；
-     * 活跃 run 属<b>别的方向</b>而目标方向明确 → 先搁置它，为目标方向开新题（不同方向各自独立）。
+     * 物理闸门（LEARN 主线复用 + 方向/层级/概念隔离）：
+     * 有活跃 LEARN 且<b>与用户本次请求的目标一致</b>（同方向，且未显式指定层级/概念，或指定了且匹配）
+     * → 恢复它，避免同一题开两条未闭环 run。
+     * 活跃 run 与请求不匹配（别的方向、或用户显式点了别的层级/概念）→ 先搁置它，为请求的目标开新题。
      * 有活跃 REHEARSAL 先搁置腾出闸门名额。无活跃则返回 null，可开新题。
      */
-    private QuestionView resumeActiveOrPark(Long uid, Long targetPlanId) {
+    private QuestionView resumeActiveOrPark(Long uid, Long targetPlanId, Integer targetLayer, Long targetConceptId) {
         List<DrillRun> activeLearns = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN);
         if (!activeLearns.isEmpty()) {
             DrillRun run = activeLearns.getFirst();
             Long activePlanId = planIdOfQuestion(run.getQuestionId());
             boolean samePlan = targetPlanId == null || activePlanId == null
                     || targetPlanId.equals(activePlanId);
-            if (samePlan) {
+            if (samePlan && layerMatches(run, targetLayer) && conceptMatches(run, targetConceptId)) {
                 QuestionBank q = questionBankRepo.findById(run.getQuestionId())
                         .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
                 return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
             }
-            // 活跃 run 属于别的方向：搁置（PARKED），让目标方向开新题
+            // 活跃 run 与请求不匹配（别的方向，或显式指定的层级/概念不一致）：搁置（PARKED），为请求目标开新题
             run.setStatus(DrillRunStatus.PARKED);
             runRepo.save(run);
         }
@@ -312,7 +321,7 @@ public class DrillController {
     private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId) {
         QuestionBank q = questionBankRepo.findById(questionId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
-        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId);
+        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, null, null);
         if (resumed != null) return resumed;
 
         DrillRun run = new DrillRun();
@@ -804,9 +813,32 @@ public class DrillController {
 
     /** 题目主概念所属学习方向（用于闸门的方向隔离）。 */
     private Long planIdOfQuestion(Long questionId) {
+        Long primaryId = primaryConceptId(questionId);
+        return primaryId == null ? null : planIdOfConcept(primaryId);
+    }
+
+    /**
+     * 活跃 run 的主概念是否属于用户显式指定的层级。
+     * 未指定层级（null）一律视为匹配；题目拿不到主概念时保守不匹配（宁可按目标层重出，也不顶掉请求）。
+     */
+    private boolean layerMatches(DrillRun run, Integer targetLayer) {
+        if (targetLayer == null) return true;
+        return conceptRepo.findById(primaryConceptId(run.getQuestionId()))
+                .map(c -> c.getLayer() == targetLayer)
+                .orElse(false);
+    }
+
+    /** 活跃 run 的主概念是否就是用户显式点开的概念（未指定概念则一律匹配）。 */
+    private boolean conceptMatches(DrillRun run, Long targetConceptId) {
+        if (targetConceptId == null) return true;
+        Long primaryId = primaryConceptId(run.getQuestionId());
+        return primaryId != null && primaryId.equals(targetConceptId);
+    }
+
+    private Long primaryConceptId(Long questionId) {
         QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
         if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
-        return planIdOfConcept(q.getConceptIds()[0].longValue());
+        return q.getConceptIds()[0].longValue();
     }
 
     /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */

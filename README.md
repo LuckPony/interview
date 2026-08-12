@@ -172,7 +172,7 @@ npm install
 npm start
 ```
 
-> **注意**：桌面端构建时会把前端静态产物打进 `app-dist/`。前端目录迁移后，`interview-desktop/package.json` 里 `sync-spa` 脚本仍指向旧路径 `../../interview-web`，需要更新为 `../frontend` 才能正常打包。
+> **注意**：桌面端的 `sync-spa` 脚本会构建 `../frontend`（前端目录）并把产物复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
 
 ## 🏗️ 架构设计
 

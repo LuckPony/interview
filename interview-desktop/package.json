@@ -5,7 +5,7 @@
   "description": "Interview 备考助手的桌面壳：拉起本地 Spring Boot 后端 + 加载 React SPA + 本地 fs 桥（免上传读大项目）",
   "main": "src/main.js",
   "scripts": {
-    "sync-spa": "VITE_API_BASE=http://127.0.0.1:8080 npm --prefix ../../interview-web run build && rm -rf app-dist && cp -r ../../interview-web/dist app-dist",
+    "sync-spa": "VITE_API_BASE=http://127.0.0.1:8080 npm --prefix ../frontend run build && rm -rf app-dist && cp -r ../frontend/dist app-dist",
     "start": "electron .",
     "pack": "npm run sync-spa && electron-builder --dir",
     "dist": "npm run sync-spa && electron-builder",

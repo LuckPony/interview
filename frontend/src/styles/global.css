@@ -36,7 +36,7 @@ body::after {
   inset: 0;
   z-index: 9999;
   pointer-events: none;
-  opacity: 0.05;
+  opacity: 0.028;
   mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -138,7 +138,7 @@ dialog[open] {
   background: var(--paper-2);
   color: var(--ink);
   padding: var(--s-5);
-  box-shadow: 0 24px 60px -24px rgba(40, 22, 10, 0.45);
+  box-shadow: 0 24px 60px -24px rgba(35, 43, 54, 0.25);
 }
 dialog::backdrop {
   background: color-mix(in oklch, var(--ink) 42%, transparent);
@@ -243,7 +243,7 @@ dialog::backdrop {
   background: var(--paper);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
-  box-shadow: 0 16px 40px -16px rgba(40, 22, 10, 0.4);
+  box-shadow: 0 16px 40px -16px rgba(35, 43, 54, 0.18);
   animation: ps-in 0.15s var(--ease-out);
 }
 @keyframes ps-in {

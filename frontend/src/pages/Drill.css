@@ -481,7 +481,7 @@
   background: var(--paper-2);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: 0 12px 40px -12px rgba(48, 30, 20, 0.28);
+  box-shadow: 0 12px 40px -12px rgba(35, 43, 54, 0.16);
   color: var(--ink);
   font-size: var(--fs-md);
 }

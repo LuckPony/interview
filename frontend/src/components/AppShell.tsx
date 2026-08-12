@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="brand-mark">砚</span>
           <span className="brand-text">
             <strong>砚</strong>
-            <small>备考研习</small>
+            <small>面试备考</small>
           </span>
         </div>
 
@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="side-foot">
           <div className="user-chip">
-            <span className="user-id">研习者 #{userId}</span>
+            <span className="user-id">面霸 #{userId}</span>
             <button className="logout" onClick={onLogout} title="退出">
               <LogOut size={16} strokeWidth={1.6} />
             </button>

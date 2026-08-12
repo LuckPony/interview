@@ -33,7 +33,7 @@ export function Tag({ children }: { children: ReactNode }) {
   return <span className="tag">{children}</span>;
 }
 
-export function Loading({ label = '研习中…' }: { label?: string }) {
+export function Loading({ label = '加载中…' }: { label?: string }) {
   return (
     <div className="loading">
       <span className="spinner" aria-hidden />

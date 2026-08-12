@@ -626,7 +626,7 @@ export function Drill() {
       <header className="page-head chat-head">
         <div className="chat-head-title">
           <span className="eyebrow">练习 · LEARN</span>
-          <h1>研习</h1>
+          <h1>练习</h1>
         </div>
         <button className="head-back" onClick={goHome}>
           <Compass size={14} strokeWidth={1.6} /> 换个方向
