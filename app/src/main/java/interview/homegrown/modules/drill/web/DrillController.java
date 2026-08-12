@@ -1,6 +1,7 @@
 package interview.homegrown.modules.drill.web;
 
 import interview.homegrown.modules.drill.ai.TutorGenerator;
+import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillRun;
@@ -8,6 +9,7 @@ import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.domain.SelectedTask;
+import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
@@ -92,6 +94,7 @@ public class DrillController {
     private final DrillRunRepository runRepo;
     private final QuestionBankRepository questionBankRepo;
     private final DrillTurnRepository turnRepo;
+    private final ConceptRepository conceptRepo;
     private final TutorGenerator tutorGenerator;
     private final ObjectMapper objectMapper;
     private final DailyPlanService dailyPlanService;
@@ -102,9 +105,9 @@ public class DrillController {
                            RehearsalService rehearsalService, NoteService noteService,
                            HistoryService historyService, CorpusService corpusService,
                            DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
-                           DrillTurnRepository turnRepo, TutorGenerator tutorGenerator,
-                           ObjectMapper objectMapper, DailyPlanService dailyPlanService,
-                           ReviewService reviewService) {
+                           DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
+                           TutorGenerator tutorGenerator, ObjectMapper objectMapper,
+                           DailyPlanService dailyPlanService, ReviewService reviewService) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
@@ -116,6 +119,7 @@ public class DrillController {
         this.runRepo = runRepo;
         this.questionBankRepo = questionBankRepo;
         this.turnRepo = turnRepo;
+        this.conceptRepo = conceptRepo;
         this.tutorGenerator = tutorGenerator;
         this.objectMapper = objectMapper;
         this.dailyPlanService = dailyPlanService;
@@ -138,7 +142,7 @@ public class DrillController {
         Long uid = currentUserId();
         // 债务闸门已移除（同上）
         var task = selectionService.pickFor(uid, req.conceptId());
-        return openRun(uid, task);
+        return openRun(uid, task, planIdOfConcept(req.conceptId()));
     }
 
     /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
@@ -152,7 +156,7 @@ public class DrillController {
             case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
             default -> selectionService.pickNextWithinPlan(uid, req.planId());
         };
-        return openRun(uid, task);
+        return openRun(uid, task, req.planId());
     }
 
     /**
@@ -225,7 +229,7 @@ public class DrillController {
         boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
         dailyPlanService.ensureReady(uid, taskId);
         DailyTask t = dailyPlanService.requireTask(uid, taskId);
-        QuestionView view = openRunOnQuestion(uid, t.getQuestionId());
+        QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId());
         if (!hadActive) {
             dailyPlanService.markDone(taskId);
         }
@@ -245,7 +249,7 @@ public class DrillController {
         boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
         dailyPlanService.ensureReady(uid, t.getId());
         t = dailyPlanService.requireTask(uid, t.getId());
-        QuestionView view = openRunOnQuestion(uid, t.getQuestionId());
+        QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId());
         if (!hadActive) {
             dailyPlanService.markDone(t.getId());
         }
@@ -255,28 +259,39 @@ public class DrillController {
     private static final List<DrillRunStatus> ACTIVE_STATUSES = List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING);
 
     private QuestionView openRun(Long uid, SelectedTask task) {
-        QuestionView resumed = resumeActiveOrPark(uid);
+        return openRun(uid, task, null);   // 自由模式：不指定方向，恢复任何活跃 run
+    }
+
+    private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId) {
+        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId);
         if (resumed != null) return resumed;
 
         // 资料注入：若该概念所属方向绑了用户的书/项目资料，把解析文本喂给出题器（v1 全文注入）
         String ref = corpusService.referenceForConcept(task.conceptId());
         var q = questionService.generate(task, ref);       // 出题（LLM 填空）
-        return openRunOnQuestion(uid, q.getId());
+        return openRunOnQuestion(uid, q.getId(), targetPlanId);
     }
 
     /**
-     * 物理闸门（LEARN 主线复用）：有活跃 LEARN 直接返回它（恢复未闭环作答）；
+     * 物理闸门（LEARN 主线复用 + 方向隔离）：有活跃 LEARN 且与目标方向同方向 → 恢复它；
+     * 活跃 run 属<b>别的方向</b>而目标方向明确 → 先搁置它，为目标方向开新题（不同方向各自独立）。
      * 有活跃 REHEARSAL 先搁置腾出闸门名额。无活跃则返回 null，可开新题。
      */
-    private QuestionView resumeActiveOrPark(Long uid) {
-        // 把"未闭环作答"收窄到 LEARN，否则一个没结束的 REHEARSAL（模拟面试/追问场）
-        // 会被当成 LEARN 新题返回，用户在其上答完点"继续追问"会撞 spawnFollowup 的守卫。
+    private QuestionView resumeActiveOrPark(Long uid, Long targetPlanId) {
         List<DrillRun> activeLearns = runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN);
         if (!activeLearns.isEmpty()) {
             DrillRun run = activeLearns.getFirst();
-            QuestionBank q = questionBankRepo.findById(run.getQuestionId())
-                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
-            return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+            Long activePlanId = planIdOfQuestion(run.getQuestionId());
+            boolean samePlan = targetPlanId == null || activePlanId == null
+                    || targetPlanId.equals(activePlanId);
+            if (samePlan) {
+                QuestionBank q = questionBankRepo.findById(run.getQuestionId())
+                        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
+                return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+            }
+            // 活跃 run 属于别的方向：搁置（PARKED），让目标方向开新题
+            run.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(run);
         }
         // 存在被丢弃的活跃 REHEARSAL（如中途切去练习）：先搁置腾出物理闸门名额，再开 LEARN 新题。
         // 用 PARKED（与 72h 自动搁置同款终态）而非 endRehearsal 结算——避免对未完成的模拟面试误判分/动 mastery。
@@ -291,9 +306,13 @@ public class DrillController {
 
     /** 用已存在的题目开一条 LEARN run（不调 LLM，今日任务预生成题走这里）。 */
     private QuestionView openRunOnQuestion(Long uid, Long questionId) {
+        return openRunOnQuestion(uid, questionId, null);
+    }
+
+    private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId) {
         QuestionBank q = questionBankRepo.findById(questionId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
-        QuestionView resumed = resumeActiveOrPark(uid);
+        QuestionView resumed = resumeActiveOrPark(uid, targetPlanId);
         if (resumed != null) return resumed;
 
         DrillRun run = new DrillRun();
@@ -360,7 +379,8 @@ public class DrillController {
                             } catch (Exception e) {
                                 log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
                             }
-                        });
+                        },
+                        r -> sseReasoning(out, r));;
 
                 // 完整文本写库（让对话线下次刷新也能拿到）
                 if (full != null) {
@@ -465,7 +485,8 @@ public class DrillController {
                             } catch (Exception e) {
                                 log.debug("chat SSE token 推送异常（已吞）: {}", e.getMessage());
                             }
-                        });
+                        },
+                        r -> sseReasoning(out, r));;
 
                 // 完整文本写回 turn
                 if (full != null) {
@@ -567,7 +588,8 @@ public class DrillController {
                             } catch (Exception e) {
                                 log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
                             }
-                        });
+                        },
+                        r -> sseReasoning(out, r));;
 
                 // 完整文本写库（让对话线下次刷新也能拿到）
                 if (full != null) {
@@ -672,7 +694,8 @@ public class DrillController {
                             } catch (Exception e) {
                                 log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
                             }
-                        });
+                        },
+                        r -> sseReasoning(out, r));;
 
                 // 完整文本写库（让对话线下次刷新也能拿到）
                 if (full != null) {
@@ -772,6 +795,28 @@ public class DrillController {
     @GetMapping("/{runId}")
     public RunDetailView historyDetail(@PathVariable Long runId) {
         return historyService.detail(currentUserId(), runId);
+    }
+
+    /** 概念所属学习方向（用于闸门的方向隔离）。 */
+    private Long planIdOfConcept(Long conceptId) {
+        return conceptRepo.findById(conceptId).map(Concept::getStudyPlanId).orElse(null);
+    }
+
+    /** 题目主概念所属学习方向（用于闸门的方向隔离）。 */
+    private Long planIdOfQuestion(Long questionId) {
+        QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
+        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
+        return planIdOfConcept(q.getConceptIds()[0].longValue());
+    }
+
+    /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */
+    private void sseReasoning(java.io.OutputStream out, String reasoning) {
+        try {
+            out.write(("event: reasoning\ndata: {\"text\":\"" + jsonEscape(reasoning) + "\"}\n\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (Exception ignored) {
+        }
     }
 
     private Long currentUserId() {

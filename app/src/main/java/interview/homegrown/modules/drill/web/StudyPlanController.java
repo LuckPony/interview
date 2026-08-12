@@ -1,10 +1,13 @@
 package interview.homegrown.modules.drill.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.service.StudyPlanService;
 import interview.homegrown.modules.drill.web.dto.ChatMessage;
 import interview.homegrown.modules.drill.web.dto.IntakeResponse;
 import interview.homegrown.modules.drill.web.dto.PlanView;
 import interview.homegrown.modules.drill.web.dto.StudyPlanDraft;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,7 +19,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -38,14 +44,63 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 public class StudyPlanController {
 
     private final StudyPlanService service;
+    private final ObjectMapper objectMapper;
 
-    public StudyPlanController(StudyPlanService service) {
+    public StudyPlanController(StudyPlanService service, ObjectMapper objectMapper) {
         this.service = service;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping("/intake")
     public IntakeResponse intake(@RequestBody IntakeRequest req) {
         return service.intake(req.messages(), req.corpusId());
+    }
+
+    /**
+     * 流式 intake（SSE）：先逐 token 推对话回复，结束后 event:draft 推草稿（信息不够则 null）。
+     * 与练习聊天同款流式体验。
+     */
+    @PostMapping(value = "/intake/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> intakeStream(@RequestBody IntakeRequest req) {
+        List<ChatMessage> messages = req.messages();
+        Long corpusId = req.corpusId();
+        StreamingResponseBody body = out -> {
+            try {
+                String reply = service.intakeStream(messages, corpusId, token -> {
+                    try {
+                        out.write(("data: " + objectMapper.writeValueAsString(Map.of("text", token)) + "\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    } catch (Exception ignored) {
+                        // 单个 token 推送失败不致命
+                    }
+                });
+                // 把流式的回复并入对话历史，再提取草稿
+                List<ChatMessage> conv = new ArrayList<>(messages);
+                if (reply != null && !reply.isBlank()) {
+                    conv.add(new ChatMessage("assistant", reply));
+                }
+                StudyPlanDraft draft = service.extractDraft(conv, corpusId);
+                out.write(("event: draft\ndata: " + objectMapper.writeValueAsString(draft) + "\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                try {
+                    out.write(("event: error\ndata: " + objectMapper.writeValueAsString(
+                            Map.of("message", String.valueOf(e.getMessage()))) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
     }
 
     @PostMapping("/confirm")

@@ -28,9 +28,12 @@ public class QuestionGenerator {
         this.invoker = invoker;
     }
 
-    public GeneratedQuestion generate(SelectedTask task, ProbeType probeType,
-                                      ResponseFormat format, List<String> avoidStems,
-                                      String referenceText) {
+    public record Prompt(String system, String user) {
+    }
+
+    /** 组装出题 prompt（供流式出题复用，与同步 generate 完全一致）。 */
+    public Prompt prompt(SelectedTask task, ProbeType probeType, ResponseFormat format,
+                         List<String> avoidStems, String referenceText) {
         String system = """
                 你是一位经验丰富的技术导师兼面试官，现在正亲自向一位学习者提问。
                 你出题时要用第一人称、直接面向学习者：
@@ -43,6 +46,11 @@ public class QuestionGenerator {
                 如果概念较抽象，可先给出一个贴近工程的例子，再引导学习者分析其原理或边界。
                 题干用 Markdown 排版：涉及代码时用 ``` 代码块包裹并注明语言，关键术语用 **加粗**，
                 必要时可用列表或 ### 小标题，让学习者阅读更清楚。
+                题干必须聚焦一个核心问题，一次最多 2-3 个递进的小问，不要堆砌多个无关小问题，
+                不要一段话里塞四五个问句。
+                如果概念是算法 / 数据结构 / 代码实现类：请在题干里指定一道具体的 LeetCode 题目
+                （题号 + 题名），并明确提示"先到 LeetCode 完成这道题，然后把通过全部用例的代码
+                粘贴到输入框"；代码题可以多问几轮（复杂度、边界、优化、扩展），不受 3 问限制。
                 只产出题目与评分点，严禁给出答案、解析或提示。
                 评分点(points)必须是可客观核验的知识点，每条带权重 weight(1-3，越核心越大)。
                 必须按概念分组输出 byConcept，conceptIndex 使用下面清单里给出的序号。
@@ -82,7 +90,14 @@ public class QuestionGenerator {
                     + "不得杜撰或超出资料范围：\n" + referenceText;
         }
 
-        return invoker.invoke(system, user, GeneratedQuestion.class);
+        return new Prompt(system, user);
+    }
+
+    public GeneratedQuestion generate(SelectedTask task, ProbeType probeType,
+                                      ResponseFormat format, List<String> avoidStems,
+                                      String referenceText) {
+        Prompt p = prompt(task, probeType, format, avoidStems, referenceText);
+        return invoker.invoke(p.system(), p.user(), GeneratedQuestion.class);
     }
 
     private String renderConcepts(List<ConceptRef> concepts) {

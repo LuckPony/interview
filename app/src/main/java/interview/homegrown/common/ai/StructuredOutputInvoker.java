@@ -29,10 +29,10 @@ public class StructuredOutputInvoker {
 
     private final LlmProviderRegistry registry;
     private final AiConfigProperties config;
-    private final DeepSeekRawClient rawClient;
+    private final LlmRawClient rawClient;
 
     public StructuredOutputInvoker(LlmProviderRegistry registry, AiConfigProperties config,
-                                  DeepSeekRawClient rawClient) {
+                                  LlmRawClient rawClient) {
         this.registry = registry;
         this.config = config;
         this.rawClient = rawClient;
@@ -74,28 +74,8 @@ public class StructuredOutputInvoker {
                     log.info("结构化输出重试第 {} 次, 上次错误: {}", attempt + 1, lastError);
                 }
 
-                String response = null;
-                try {
-                    response = client.prompt()
-                            .system(effectiveSystem)
-                            .user(currentUser)
-                            .call()
-                            .content();
-                } catch (Exception callEx) {
-                    // Spring AI 读不到 content（推理模型常把答案塞进 reasoning_content 而抛
-                    // "Error reading response"），不能直接放弃——改用原生接口兜底。
-                    log.warn("Spring AI 调用异常，改用 DeepSeek 原生兜底: {}", callEx.getMessage());
-                }
-
-                // 兜底：Spring AI 只读了 content，推理模型偶发把答案塞进 reasoning_content 导致 content 为空。
-                // 这里直连 DeepSeek 原生接口，content 为空时改用 reasoning_content 作为兜底，避免无谓 500。
-                if ((response == null || response.isBlank()) && rawClient != null) {
-                    String fallback = rawClient.complete(effectiveSystem, currentUser);
-                    if (fallback != null && !fallback.isBlank()) {
-                        log.info("已用 DeepSeek 原生 reasoning_content 兜底");
-                        response = fallback;
-                    }
-                }
+                // 优先 Spring AI（官方适配器，换模型更通用）；Spring AI 失败/返回空再走原生兜底。
+                String response = rawOrSpring(client, effectiveSystem, currentUser);
 
                 if (response == null || response.isBlank()){
                     String effectiveProvider = (provider != null && !provider.isBlank())
@@ -125,6 +105,24 @@ public class StructuredOutputInvoker {
     //使用默认 Provider 的简化调用
     public <T> T invoke(String systemPrompt, String userPrompt, Class<T> outputClass){
         return invoke(systemPrompt, userPrompt, outputClass, null);
+    }
+
+    /**
+     * 取一次模型回复：优先 LlmRawClient 原生直连（读 reasoning_content，对推理模型可靠且快）。
+     * Spring AI 读不到 deepseek 的 reasoning_content（私有字段）会抛 "Error reading response"，
+     * 若先走它 = 每次白等一次再兜底，出题翻倍变慢；故原生优先，Spring AI 仅作原生不可用时的后备。
+     */
+    private String rawOrSpring(ChatClient client, String system, String user) {
+        if (rawClient != null) {
+            String r = rawClient.complete(system, user);
+            if (r != null && !r.isBlank()) return r;
+        }
+        try {
+            return client.prompt().system(system).user(user).call().content();
+        } catch (Exception e) {
+            log.warn("Spring AI 调用异常: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

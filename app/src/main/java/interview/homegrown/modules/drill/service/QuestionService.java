@@ -35,7 +35,8 @@ public class QuestionService {
 
     /** 相似度超过它就判定为重复题 */
     private static final double DUP_THRESHOLD = 0.85;
-    private static final int MAX_ATTEMPTS = 3;
+    /** 出题只调一次 LLM：推理模型每次要几十秒，重试代价太高；去重靠「优先未用 probe + 历史题干注入」 */
+    private static final int MAX_ATTEMPTS = 1;
     private static final int HISTORY_LIMIT = 10;
 
     private final QuestionBankRepository qbRepo;

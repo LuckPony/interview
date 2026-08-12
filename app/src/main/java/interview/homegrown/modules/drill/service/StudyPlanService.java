@@ -1,5 +1,6 @@
 package interview.homegrown.modules.drill.service;
 
+import interview.homegrown.common.ai.LlmRawClient;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.Corpus;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -63,7 +65,15 @@ public class StudyPlanService {
               * points：4-8 个知识点，每个含 name（知识点名）、layer（1-5 的真实认知层，不要虚高）、
                 note（一句话提示，可空）
             - 如果信息还不够，draft 必须填 null，继续用 reply 追问。
+            - title 必填：必须是一个简短的方向名（如「Go 后端」），不得为 null。
             - 只做规划，不要出具体面试题、不要给答案。严格遵循格式说明的 JSON。""";
+
+    /** 流式 intake：仅输出一句自然对话回复（plain text，不输出 JSON），由前端逐 token 展示 */
+    private static final String REPLY_SYSTEM_PROMPT = """
+            你是一位面试备考的「学习规划顾问」，正在通过简短对话弄清用户想学哪个方向、当前基础、目标。
+            针对用户最新一条消息，给出自然的中文回复：可以追问（基础/目标/范围），也可以肯定、澄清。
+            要求：只回复这一句对话（80 字内），不要列规划、不要输出 JSON、不要用 Markdown。
+            """;
 
     private final StudyPlanRepository planRepo;
     private final ConceptRepository conceptRepo;
@@ -71,16 +81,19 @@ public class StudyPlanService {
     private final CorpusRepository corpusRepo;
     private final CorpusService corpusService;
     private final StructuredOutputInvoker invoker;
+    private final LlmRawClient rawClient;
 
     public StudyPlanService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                             MasteryRepository masteryRepo, CorpusRepository corpusRepo,
-                            CorpusService corpusService, StructuredOutputInvoker invoker) {
+                            CorpusService corpusService, StructuredOutputInvoker invoker,
+                            LlmRawClient rawClient) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
         this.corpusRepo = corpusRepo;
         this.corpusService = corpusService;
         this.invoker = invoker;
+        this.rawClient = rawClient;
     }
 
     /** 无状态 intake：把前端发来的完整对话拼成 user prompt；若绑定了资料，把资料文本注入作为规划依据。 */
@@ -94,17 +107,49 @@ public class StudyPlanService {
         return invoker.invoke(SYSTEM_PROMPT, userPrompt, IntakeResponse.class);
     }
 
+    /**
+     * 流式 intake：先流式推一句对话回复（plain text），供前端逐 token 展示。
+     * 返回完整回复文本（供并入对话历史后提取草稿）。
+     */
+    public String intakeStream(List<ChatMessage> messages, Long corpusId, Consumer<String> onToken) {
+        String history = messages.stream()
+                .map(m -> (m.role().equals("user") ? "用户" : "顾问") + "：" + m.content())
+                .collect(Collectors.joining("\n"));
+        String ref = corpusService.referenceWithName(corpusId);
+        String userPrompt = (ref == null) ? history
+                : history + "\n\n【参考资料】用户上传了如下资料，请基于它的真实内容来规划学习方向，不要脱离资料空谈：\n" + ref;
+        StringBuilder buf = new StringBuilder();
+        rawClient.stream(REPLY_SYSTEM_PROMPT, userPrompt,
+                token -> {
+                    buf.append(token);
+                    try {
+                        onToken.accept(token);
+                    } catch (Exception ignored) {
+                    }
+                },
+                err -> log.warn("intake 流式回复失败: {}", err.getMessage()),
+                /* fallbackToReasoning */ false);
+        return buf.toString().trim();
+    }
+
+    /** 基于「完整对话（含刚流式的回复）」提取草稿；信息不够则 draft 为 null。 */
+    public StudyPlanDraft extractDraft(List<ChatMessage> messages, Long corpusId) {
+        IntakeResponse ir = intake(messages, corpusId);
+        return ir == null ? null : ir.draft();
+    }
+
     /** 确认落库：clamp layer∈[1,5]，同用户同名方向幂等（避免双击重复建），绑定资料。 */
     @Transactional
     public PlanView confirm(Long userId, StudyPlanDraft draft) {
-        if (draft == null || draft.title() == null || draft.title().isBlank()) {
-            throw new IllegalArgumentException("规划标题不能为空");
+        if (draft == null) {
+            throw new IllegalArgumentException("规划不能为空");
         }
-        StudyPlan plan = planRepo.findByUserIdAndTitle(userId, draft.title().trim())
+        String title = normalizeTitle(draft);
+        StudyPlan plan = planRepo.findByUserIdAndTitle(userId, title)
                 .orElseGet(() -> {
                     StudyPlan p = new StudyPlan();
                     p.setUserId(userId);
-                    p.setTitle(draft.title().trim());
+                    p.setTitle(title);
                     p.setGoal(draft.goal());
                     p.setStatus("ACTIVE");
                     return planRepo.save(p);
@@ -262,5 +307,22 @@ public class StudyPlanService {
         if (layer < LAYER_MIN) return LAYER_MIN;
         if (layer > LAYER_MAX) return LAYER_MAX;
         return layer;
+    }
+
+    /** 标题缺失时从目标/知识点推导一个简短方向名，避免模型漏填 title 导致 confirm 400。 */
+    private String normalizeTitle(StudyPlanDraft draft) {
+        if (draft.title() != null && !draft.title().isBlank()) {
+            return draft.title().trim();
+        }
+        if (draft.goal() != null && !draft.goal().isBlank()) {
+            String g = draft.goal().trim();
+            return g.length() <= 14 ? g : g.substring(0, 14) + "…";
+        }
+        if (draft.points() != null && !draft.points().isEmpty()
+                && draft.points().get(0).name() != null
+                && !draft.points().get(0).name().isBlank()) {
+            return draft.points().get(0).name().trim();
+        }
+        return "我的学习方向";
     }
 }

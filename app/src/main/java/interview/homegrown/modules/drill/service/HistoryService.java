@@ -1,5 +1,6 @@
 package interview.homegrown.modules.drill.service;
 
+import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillNote;
 import interview.homegrown.modules.drill.domain.DrillRun;
@@ -7,6 +8,7 @@ import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.GradeResult;
 import interview.homegrown.modules.drill.domain.QuestionBank;
+import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.DrillNoteRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
@@ -42,15 +44,17 @@ public class HistoryService {
     private final QuestionBankRepository qbRepo;
     private final DrillNoteRepository noteRepo;
     private final DrillTurnRepository turnRepo;
+    private final ConceptRepository conceptRepo;
 
     public HistoryService(DrillRunRepository runRepo, GradeResultRepository gradeRepo,
                           QuestionBankRepository qbRepo, DrillNoteRepository noteRepo,
-                          DrillTurnRepository turnRepo) {
+                          DrillTurnRepository turnRepo, ConceptRepository conceptRepo) {
         this.runRepo = runRepo;
         this.gradeRepo = gradeRepo;
         this.qbRepo = qbRepo;
         this.noteRepo = noteRepo;
         this.turnRepo = turnRepo;
+        this.conceptRepo = conceptRepo;
     }
 
     /** 列表按 questionId 聚合：一行一道题，展示最近一次 run 的状态 + 该题练过几轮 */
@@ -89,10 +93,20 @@ public class HistoryService {
                     hasNote,
                     latest.getQuestionId(),
                     runs.size(),
-                    latest.getStatus().name()
+                    latest.getStatus().name(),
+                    planIdOf(latest.getQuestionId())
             ));
         }
         return views;
+    }
+
+    /** 某道题的主概念所属学习方向（供按方向过滤问答记录）。 */
+    private Long planIdOf(Long questionId) {
+        QuestionBank q = qbRepo.findById(questionId).orElse(null);
+        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
+        return conceptRepo.findById(q.getConceptIds()[0].longValue())
+                .map(Concept::getStudyPlanId)
+                .orElse(null);
     }
 
     /**

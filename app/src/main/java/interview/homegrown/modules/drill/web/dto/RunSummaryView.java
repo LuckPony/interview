@@ -16,6 +16,7 @@ public record RunSummaryView(
         boolean hasNote,
         Long questionId,
         int runCount,
-        String status
+        String status,
+        Long planId
 ) {
 }

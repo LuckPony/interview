@@ -22,22 +22,23 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * DeepSeek 原生直连客户端（绕过 Spring AI 的 OpenAI 适配器）。
+ * 默认 Provider 的 OpenAI 兼容原生直连客户端（绕过 Spring AI 的 OpenAI 适配器）。
  *
  * <p>背景：Spring AI 2.0 的 OpenAiChatModel 只读 {@code content}、把 {@code reasoning_content} 丢弃。
- * 而 deepseek-v4-flash / v4-pro 是推理模型，偶发把最终答案塞进 {@code reasoning_content}、
+ * 而推理模型（如 deepseek-v4-flash）偶发把最终答案塞进 {@code reasoning_content}、
  * 让 {@code content} 为空 —— 这正是「出题 500 / LLM 返回为空」的根因。</p>
  *
  * <p>本客户端直连 {@code /chat/completions}，{@code content} 为空时回退读 {@code reasoning_content}，
- * 供 {@link StructuredOutputInvoker} 在 Spring AI 返回空时兜底，使结构化输出路径不再因推理模型而 500。</p>
+ * 供结构化输出与流式讲解使用。它<b>跟随 {@code default-provider} 配置</b>（base-url / api-key / model），
+ * 不是 DeepSeek 专用——切换模型只需改配置里的 default-provider 并填好对应 key。</p>
  *
  * <p>健壮性：若默认 Provider 配置不完整则<b>降级</b>（client 置空、complete 返回 null），
  * 绝不抛异常阻断应用启动。</p>
  */
 @Component
-public class DeepSeekRawClient {
+public class LlmRawClient {
 
-    private static final Logger log = LoggerFactory.getLogger(DeepSeekRawClient.class);
+    private static final Logger log = LoggerFactory.getLogger(LlmRawClient.class);
 
     private final HttpClient httpClient;
     private final String endpoint;
@@ -45,14 +46,14 @@ public class DeepSeekRawClient {
     private final String model;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public DeepSeekRawClient(AiConfigProperties config) {
+    public LlmRawClient(AiConfigProperties config) {
         var provider = config.getProviders().get(config.getDefaultProvider());
         if (provider == null || !provider.isAvailable()) {
             this.httpClient = null;
             this.endpoint = null;
             this.apiKey = null;
             this.model = null;
-            log.warn("DeepSeekRawClient 跳过初始化：默认 Provider 未配置完整，reasoning_content 兜底暂不可用");
+            log.warn("LlmRawClient 跳过初始化：默认 Provider 未配置完整，reasoning_content 兜底暂不可用");
             return;
         }
         this.model = provider.getModel();
@@ -64,7 +65,7 @@ public class DeepSeekRawClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        log.info("DeepSeekRawClient 初始化成功: model={}, endpoint={}", model, endpoint);
+        log.info("LlmRawClient 初始化成功: model={}, endpoint={}", model, endpoint);
     }
 
     /**
@@ -75,12 +76,16 @@ public class DeepSeekRawClient {
     public String complete(String system, String user) {
         if (httpClient == null) return null;
         try {
-            Map<String, Object> body = Map.of(
-                    "model", model,
-                    "messages", List.of(
-                            Map.of("role", "system", "content", system),
-                            Map.of("role", "user", "content", user)),
-                    "temperature", 0.7);
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("model", model);
+            body.put("messages", List.of(
+                    Map.of("role", "system", "content", system),
+                    Map.of("role", "user", "content", user)));
+            body.put("temperature", 0.7);
+            body.put("max_tokens", 4096);   // 设上限，防推理模型思考过长
+            // 关闭思考：一次性结构化输出（出题/判分/复盘）不需要模型"想"很久，
+            // thinking 关闭后直接作答，响应从几十秒降到几秒（DeepSeek 官方参数）。
+            body.put("thinking", Map.of("type", "disabled"));
             String resp = post(body, /*stream*/ false);
 
             JsonNode root = objectMapper.readTree(resp);
@@ -109,32 +114,35 @@ public class DeepSeekRawClient {
      *
      * @param onToken             收到一个 delta content token 时回调（不含换行）
      * @param onError             流式过程中出现异常时回调（仅一次）；为 null 则只 log
-     * @param fallbackToReasoning 当 {@code content} 为空时是否读取 {@code reasoning_content}。
-     *                            结构化输出/出题场景建议 true（deepseek 偶发把答案塞 reasoning_content）；
-     *                            面向用户的讲解/对话场景必须 false，否则会把模型内部思考（含 prompt 复述）暴露给用户。
+     * @param fallbackToReasoning 当 {@code content} 为空时是否把 reasoning_content 当正文：
+     *                            结构化输出/出题建议 true（deepseek 偶发把答案塞 reasoning_content）；
+     *                            已用 onReasoning 独立展示思考的场景可 false。
+     * @param onReasoning         收到 delta reasoning_content token 时回调（独立展示思考过程）；为 null 不推。
      */
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
-                       boolean fallbackToReasoning) {
+                       boolean fallbackToReasoning, Consumer<String> onReasoning) {
         if (httpClient == null) {
-            notifyError(onError, new IllegalStateException("DeepSeekRawClient 未初始化"));
+            notifyError(onError, new IllegalStateException("LlmRawClient 未初始化"));
             return;
         }
         try {
-            Map<String, Object> body = Map.of(
-                    "model", model,
-                    "messages", List.of(
-                            Map.of("role", "system", "content", system),
-                            Map.of("role", "user", "content", user)),
-                    "temperature", 0.7,
-                    "max_tokens", 4096,
-                    "stream", true);
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("model", model);
+            body.put("messages", List.of(
+                    Map.of("role", "system", "content", system),
+                    Map.of("role", "user", "content", user)));
+            body.put("temperature", 0.7);
+            // 思考模式：保持开启（模型更聪明），但 max_tokens 和超时要给足，
+            // 否则 reasoning_content 会吃掉额度截断回答 / 思考+回答超时。
+            body.put("max_tokens", 8192);
+            body.put("stream", true);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .header("Accept", "text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                    .timeout(Duration.ofSeconds(120))
+                    .timeout(Duration.ofSeconds(300))   // 思考模式耗时可能较长，放宽到 5 分钟
                     .build();
 
             // 关键：用 ofInputStream() 而不是 ofLines() —— JDK 的 ofLines() 是"全缓冲"的
@@ -159,16 +167,19 @@ public class DeepSeekRawClient {
                     try {
                         JsonNode node = objectMapper.readTree(payload);
                         JsonNode delta = node.path("choices").path(0).path("delta");
-                        // 教学讲解等面向用户的场景严禁回退 reasoning_content，否则会把模型内部思考
-                        // （常包含 prompt 复述）直接暴露给用户。
+                        // 推理内容独立推送（onReasoning 非空时走它，正文走 onToken，互不混用）。
                         // 注意：不能用 textOrNull 过滤"纯空白"的 delta —— 流式模型常把单独的换行
                         // （"\n"）作为独立 token 下发，isBlank() 会把它当空丢掉，导致代码/段落换行丢失、
                         // markdown 代码块缺行。这里只判缺失/空，纯空白 token 原样保留。
+                        String reasoning = streamText(delta.path("reasoning_content"));
+                        if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
+                            onReasoning.accept(reasoning);
+                        }
                         String text = streamText(delta.path("content"));
                         if (text == null && fallbackToReasoning) {
-                            text = streamText(delta.path("reasoning_content"));
+                            text = reasoning;
                         }
-                        if (text != null && !text.isEmpty()) onToken.accept(text);
+                        if (text != null && !text.isEmpty() && onToken != null) onToken.accept(text);
                     } catch (Exception e) {
                         log.debug("解析 SSE chunk 失败，跳过: {}", e.getMessage());
                     }
@@ -185,7 +196,13 @@ public class DeepSeekRawClient {
      * @see #stream(String, String, Consumer, Consumer, boolean)
      */
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError) {
-        stream(system, user, onToken, onError, true);
+        stream(system, user, onToken, onError, true, null);
+    }
+
+    /** 不单独展示思考（onReasoning 为 null）时用此重载。 */
+    public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
+                       boolean fallbackToReasoning) {
+        stream(system, user, onToken, onError, fallbackToReasoning, null);
     }
 
     private void notifyError(Consumer<Throwable> onError, Throwable t) {

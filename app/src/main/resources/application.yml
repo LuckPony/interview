@@ -1,5 +1,10 @@
 server:
   port: 8080
+  tomcat:
+    # SSE 流式响应跑在 servlet 异步线程上，Tomcat 默认 async 超时很短（~30s），
+    # 思考模式下模型"想"得久，响应易超时被掐断 → 客户端收到 terminated → 前端报"回复失败"。
+    # 放宽到 10 分钟，与 DeepSeek 流式 300s 超时对齐。
+    async-timeout: 600000
 
 spring:
   application:
@@ -68,7 +73,7 @@ app:
     default-provider: deepseek
     #结构化输出重试配置
     structured:
-      max-attempts: 2      #结构化输出解析失败时最多重试 1 次（for 循环共尝试 2 次）；Spring AI 内部重试已设为 0，避免两层相乘叠加
+      max-attempts: 1      #推理模型每次几十秒，解析失败不再重试（避免 3 分钟）；解析成功率靠原生直连 + extractJson 兜底
       include-last-error: true      #重试时将错误注入提示词
     #多Provider定义
     providers:

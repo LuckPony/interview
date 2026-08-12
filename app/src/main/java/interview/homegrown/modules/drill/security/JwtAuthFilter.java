@@ -28,6 +28,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        // SSE（StreamingResponseBody）会产生 servlet 异步二次分发，Spring Security 会重跑过滤器链。
+        // OncePerRequestFilter 默认在异步分发跳过本过滤器 → 重新鉴权缺失 → 匿名 → Access Denied，
+        // 长 SSE 响应被 RST、前端 fetch 读到 terminated 报"回复失败"。这里强制在异步分发也重新鉴权。
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
                                     @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {

@@ -2,7 +2,7 @@ package interview.homegrown.modules.drill.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.common.ai.DeepSeekRawClient;
+import interview.homegrown.common.ai.LlmRawClient;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,10 +32,10 @@ public class TutorGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(TutorGenerator.class);
 
-    private final DeepSeekRawClient rawClient;
+    private final LlmRawClient rawClient;
     private final ObjectMapper objectMapper;
 
-    public TutorGenerator(DeepSeekRawClient rawClient, ObjectMapper objectMapper) {
+    public TutorGenerator(LlmRawClient rawClient, ObjectMapper objectMapper) {
         this.rawClient = rawClient;
         this.objectMapper = objectMapper;
     }
@@ -81,10 +81,16 @@ public class TutorGenerator {
 
     /**
      * 流式版讲解：逐 token 回调 onToken；最终累积完整文本返回（失败/空为 null）。
-     * SSE 端点用此方法把生成结果实时推给前端，同时拿到完整文本写库。
+     * onReasoning 可选：收到模型思考内容（reasoning_content）时独立回调，供前端展示"思考过程"。
      */
     public String streamExplain(String stem, String pointsJson, String byConceptJson,
                                 String rawAnswer, java.util.function.Consumer<String> onToken) {
+        return streamExplain(stem, pointsJson, byConceptJson, rawAnswer, onToken, null);
+    }
+
+    public String streamExplain(String stem, String pointsJson, String byConceptJson,
+                                String rawAnswer, java.util.function.Consumer<String> onToken,
+                                java.util.function.Consumer<String> onReasoning) {
         String pointsText = formatPoints(pointsJson);
         String verdictsText = formatVerdicts(byConceptJson);
         String user = String.format("""
@@ -104,8 +110,8 @@ public class TutorGenerator {
                 """, stem, pointsText, verdictsText, rawAnswer == null ? "（未作答）" : rawAnswer);
 
         StringBuilder buf = new StringBuilder();
-        // 面向用户的教学讲解必须禁用 reasoning_content 回退，否则 deepseek 会把内部思考
-        // （常复述 system prompt）当成正文推给前端。
+        // 面向用户的教学讲解禁用 reasoning_content 回退（避免把内部思考混进正文）；
+        // 思考通过 onReasoning 独立推送，正文走 onToken。
         rawClient.stream(SYSTEM_PROMPT, user,
                 token -> {
                     buf.append(token);
@@ -116,7 +122,13 @@ public class TutorGenerator {
                     }
                 },
                 err -> log.warn("教学讲解流式生成失败: {}", err.getMessage()),
-                /* fallbackToReasoning */ false);
+                /* fallbackToReasoning */ false,
+                onReasoning == null ? null : r -> {
+                    try {
+                        onReasoning.accept(r);
+                    } catch (Exception ignored) {
+                    }
+                });
         String text = buf.toString().trim();
         return text.isEmpty() ? null : text;
     }
@@ -140,6 +152,12 @@ public class TutorGenerator {
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken) {
+        return streamChat(stem, pointsJson, turns, onToken, null);
+    }
+
+    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
+                             java.util.function.Consumer<String> onToken,
+                             java.util.function.Consumer<String> onReasoning) {
         String pointsText = formatPoints(pointsJson);
 
         // 对话历史只保留最近几轮，且每条文本截断到合理长度：
@@ -182,7 +200,13 @@ public class TutorGenerator {
                     }
                 },
                 err -> log.warn("对话式辅导流式生成失败: {}", err.getMessage()),
-                /* fallbackToReasoning */ false);
+                /* fallbackToReasoning */ false,
+                onReasoning == null ? null : r -> {
+                    try {
+                        onReasoning.accept(r);
+                    } catch (Exception ignored) {
+                    }
+                });
         String text = buf.toString().trim();
         return text.isEmpty() ? null : text;
     }
