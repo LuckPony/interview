@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { NotebookPen, Repeat2 } from 'lucide-react';
+import { NotebookPen, Repeat2, Trash2 } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Loading, Badge } from '../components/ui';
@@ -19,6 +19,7 @@ export function HistoryPage() {
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -45,6 +46,26 @@ export function HistoryPage() {
   const { activeId } = useActivePlan(plans);
   const itemsActive = items.filter((it) => it.planId === activeId);
 
+  /** 删除一道题的整条问答记录（级联删除追问场/判分/复盘/笔记），删除前二次确认 */
+  const del = async (questionId: number) => {
+    const it = items.find((x) => x.questionId === questionId);
+    if (!it) return;
+    const stemShort = it.stem.length > 36 ? it.stem.slice(0, 36) + '…' : it.stem;
+    if (!window.confirm(
+      `确定删除这道题的问答记录？\n\n「${stemShort}」\n\n该题的所有作答、判分、复盘与笔记都会被删除，且不可恢复。`,
+    )) return;
+    setDeletingId(questionId);
+    setErr('');
+    try {
+      await drill.deleteConversation(questionId);
+      setItems((prev) => prev.filter((x) => x.questionId !== questionId));
+    } catch (e) {
+      setErr(msg(e));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page-head">
@@ -67,38 +88,47 @@ export function HistoryPage() {
       ) : (
         <div className="hist-list">
           {itemsActive.map((it) => (
-            <button
-              className="hist-row"
-              key={it.questionId}
-              onClick={() =>
-                navigate('/drill', { state: { viewQuestionId: it.questionId }, replace: true })
-              }
-            >
-              <div className="hist-main">
-                <span className="hist-stem">{it.stem}</span>
-                <span className="hist-meta">
-                  {it.status !== 'GRADED' ? (
-                    <Badge kind="soft">进行中</Badge>
-                  ) : (
-                    <>
-                      <Badge kind={gradeClass(it.grade)}>{GRADE_LABEL[it.grade ?? ''] ?? '—'}</Badge>
-                      <span className="hist-score">{it.rawScore.toFixed(1)} 分</span>
-                    </>
-                  )}
-                  {it.runCount > 1 && (
-                    <span className="hist-count" title="该题练过多轮">
-                      <Repeat2 size={13} strokeWidth={1.7} /> {it.runCount} 轮
-                    </span>
-                  )}
-                  {it.hasNote && (
-                    <span className="hist-note" title="已写内化笔记">
-                      <NotebookPen size={14} strokeWidth={1.6} />
-                    </span>
-                  )}
-                </span>
-              </div>
-              <span className="hist-date">{fmtDate(it.answeredAt)}</span>
-            </button>
+            <div className="hist-row" key={it.questionId}>
+              <button
+                className="hist-open"
+                onClick={() =>
+                  navigate('/drill', { state: { viewQuestionId: it.questionId }, replace: true })
+                }
+              >
+                <div className="hist-main">
+                  <span className="hist-stem">{it.stem}</span>
+                  <span className="hist-meta">
+                    {it.status !== 'GRADED' ? (
+                      <Badge kind="soft">进行中</Badge>
+                    ) : (
+                      <>
+                        <Badge kind={gradeClass(it.grade)}>{GRADE_LABEL[it.grade ?? ''] ?? '—'}</Badge>
+                        <span className="hist-score">{it.rawScore.toFixed(1)} 分</span>
+                      </>
+                    )}
+                    {it.runCount > 1 && (
+                      <span className="hist-count" title="该题练过多轮">
+                        <Repeat2 size={13} strokeWidth={1.7} /> {it.runCount} 轮
+                      </span>
+                    )}
+                    {it.hasNote && (
+                      <span className="hist-note" title="已写内化笔记">
+                        <NotebookPen size={14} strokeWidth={1.6} />
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <span className="hist-date">{fmtDate(it.answeredAt)}</span>
+              </button>
+              <button
+                className="hist-delete"
+                title="删除这道题的问答记录"
+                onClick={() => del(it.questionId)}
+                disabled={deletingId === it.questionId}
+              >
+                <Trash2 size={14} strokeWidth={1.7} />
+              </button>
+            </div>
           ))}
         </div>
       )}

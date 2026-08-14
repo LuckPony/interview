@@ -56,19 +56,47 @@ public class TutorGenerator {
             7. 结尾必须是一句完整的话；禁止以"所以""因此""可见""总之"等连接词/总结词开头戛然而止——如果用了这种词，必须把句子写完整再收尾
             """;
 
-    /** 对话式辅导 system prompt：判分前的多轮对话，直接解答/讲解，不反过来考学生 */
+    /**
+     * 对话式辅导 system prompt：判分前的多轮对话。
+     *
+     * <p>默认<b>苏格拉底式引导</b>：不直接给答案，帮学生自己把题想明白（主动回忆）；
+     * 只有学生明确索要答案/提示时才揭晓（由服务端 {@code AnswerRevealDetector} 或「看答案」
+     * 按钮决定并切换到 {@link #CHAT_REVEAL_SYSTEM_PROMPT}，这里<b>永远不自行泄底</b>，
+     * 否则「结束并评分」会算到照抄答案的轮次，量化分数失真。
+     */
     private static final String CHAT_SYSTEM_PROMPT = """
-            你是一位耐心的技术辅导老师，正在和学生一对一讨论一道技术题目。
-            根据学生的回答或提问给出直接、有用的回复：
-            1. 如果学生回答正确且完整，肯定并补充关键理解
-            2. 如果学生回答有误或不完整，直接指出问题并讲清正确理解，不要用提问反过来考学生
-            3. 如果学生提问，直接给出清晰解答，不要反问
-            4. 回复 100-200 字中文，像聊天一样自然
-            5. 不要使用中文破折号（——/-），改用逗号或句号
-            6. 不要提及评分、分数、判分、得分等概念
-            7. 可以用 Markdown 排版（加粗关键点、必要时用列表）；
+            你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题。
+            你的目标是帮学生<b>自己</b>把这道题想明白，而不是替他想。
+            1. 学生回答正确且完整：先肯定，再点出一个可以深化的方向或追问一个问题，仍不要直接给出标准答案
+            2. 学生回答有误或不完整：指出哪里不对、缺了什么，然后用引导性提问或小提示帮他修正，
+               让他自己得出答案；严禁直接给出完整正确答案、标准实现或完整解题步骤
+            3. 学生只是确认自己的答案对不对：不要揭晓标准答案，只告诉他是对、方向对但还差一点、
+               还是不对，然后继续引导
+            4. 学生明确索要答案或提示（如“告诉我答案”“答案是什么”）：告诉他可以点输入框旁的
+               「看答案」按钮获取完整讲解，不要在这里直接给出答案
+            5. 回复 100-200 字中文，像聊天一样自然
+            6. 不要使用中文破折号（——/-），改用逗号或句号
+            7. 不要提及评分、分数、判分、得分等概念
+            8. 可以用 Markdown 排版（加粗关键点、必要时用列表）；
                涉及代码时用围栏代码块（```语言 ... ```，代码原样保留缩进与换行），不要写成普通段落
-            8. 结尾必须是一句完整的话
+            9. 结尾必须是一句完整的话
+            """;
+
+    /**
+     * 揭示答案模式：学生已明确索要答案/提示（点「看答案」按钮或自然语言被服务端识别），
+     * 直接给完整讲解。与 {@link #CHAT_SYSTEM_PROMPT} 互补，由服务端显式选择。
+     */
+    private static final String CHAT_REVEAL_SYSTEM_PROMPT = """
+            你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题。
+            学生已经明确表示想看答案或提示，请直接给出：
+            1. 这道题的正确思路和完整答案（或关键步骤），讲清楚为什么这样设计/实现
+            2. 如学生之前有作答，简要指出哪里对、哪里需要修正
+            3. 回复 150-300 字中文，像聊天一样自然
+            4. 不要使用中文破折号（——/-），改用逗号或句号
+            5. 不要提及评分、分数、判分、得分等概念
+            6. 可以用 Markdown 排版（加粗关键点、必要时用列表）；
+               涉及代码时用围栏代码块（```语言 ... ```，代码原样保留缩进与换行），不要写成普通段落
+            7. 结尾必须是一句完整的话
             """;
 
     /**
@@ -152,12 +180,32 @@ public class TutorGenerator {
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken) {
-        return streamChat(stem, pointsJson, turns, onToken, null);
+        return streamChat(stem, pointsJson, turns, onToken, null, false);
     }
 
+    /**
+     * 对话式辅导流式生成：判分前的多轮对话，AI 扮演辅导老师与学生交流。
+     * <p>
+     * 与 {@link #streamExplain} 的区别：
+     * <ul>
+     *   <li>无判分结果（byConceptJson）—— 此时尚未判分</li>
+     *   <li>包含完整对话历史（之前几轮的问答）</li>
+     *   <li>默认<b>引导思考而非直接讲解答案</b>；reveal=true 时才给出完整答案（揭示边界）</li>
+     * </ul>
+     *
+     * @param stem        题干
+     * @param pointsJson  评分点 JSON（给 AI 知道"应该答什么"，不暴露给学生）
+     * @param turns       全部对话轮次（按 round 升序），最后一轮的 rawAnswer 是学生最新消息，
+     *                    tutorText 为 null（尚未生成）
+     * @param onToken     逐 token 回调
+     * @param onReasoning 思考内容回调（可空）
+     * @param reveal      学生已明确索要答案 → 用揭示答案 prompt 给出完整讲解（默认 false）
+     * @return 完整回复文本（失败/空为 null）
+     */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken,
-                             java.util.function.Consumer<String> onReasoning) {
+                             java.util.function.Consumer<String> onReasoning,
+                             boolean reveal) {
         String pointsText = formatPoints(pointsJson);
 
         // 对话历史只保留最近几轮，且每条文本截断到合理长度：
@@ -190,7 +238,8 @@ public class TutorGenerator {
                 """, stem, pointsText, history.toString().isBlank() ? "（无）" : history.toString());
 
         StringBuilder buf = new StringBuilder();
-        rawClient.stream(CHAT_SYSTEM_PROMPT, user,
+        String system = reveal ? CHAT_REVEAL_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT;
+        rawClient.stream(system, user,
                 token -> {
                     buf.append(token);
                     try {

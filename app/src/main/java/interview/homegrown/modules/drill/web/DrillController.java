@@ -14,11 +14,13 @@ import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.service.AnswerService;
+import interview.homegrown.modules.drill.service.AnswerRevealDetector;
 import interview.homegrown.modules.drill.service.CorpusService;
 import interview.homegrown.modules.drill.service.DailyPlanService;
 import interview.homegrown.modules.drill.service.HistoryService;
 import interview.homegrown.modules.drill.service.NoteService;
 import interview.homegrown.modules.drill.service.ProfileService;
+import interview.homegrown.modules.drill.service.RecordCleanupService;
 import interview.homegrown.modules.drill.service.QuestionService;
 import interview.homegrown.modules.drill.service.RehearsalService;
 import interview.homegrown.modules.drill.service.ReviewService;
@@ -46,6 +48,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,6 +61,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -92,6 +96,7 @@ public class DrillController {
     private final RehearsalService rehearsalService;
     private final NoteService noteService;
     private final HistoryService historyService;
+    private final RecordCleanupService recordCleanupService;
     private final CorpusService corpusService;
     private final DrillRunRepository runRepo;
     private final QuestionBankRepository questionBankRepo;
@@ -105,7 +110,8 @@ public class DrillController {
     public DrillController(SelectionService selectionService, QuestionService questionService,
                            AnswerService answerService, ProfileService profileService,
                            RehearsalService rehearsalService, NoteService noteService,
-                           HistoryService historyService, CorpusService corpusService,
+                           HistoryService historyService, RecordCleanupService recordCleanupService,
+                           CorpusService corpusService,
                            DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
                            DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
                            TutorGenerator tutorGenerator, ObjectMapper objectMapper,
@@ -116,6 +122,7 @@ public class DrillController {
         this.profileService = profileService;
         this.rehearsalService = rehearsalService;
         this.noteService = noteService;
+        this.recordCleanupService = recordCleanupService;
         this.historyService = historyService;
         this.corpusService = corpusService;
         this.runRepo = runRepo;
@@ -487,14 +494,33 @@ public class DrillController {
             runRepo.save(run);
         }
 
+        // —— 答案揭示边界（“得到答案之前”的评分依据）——
+        // 用户点「看答案」按钮（reveal=true）或自然语言明确索要答案/提示 →
+        // 记录首次揭示所在轮次；此后 AI 转完整讲解模式，finish 评分只拼接该轮之前的回答。
+        // 仅判分前（READY/ANSWERING）写入；已 GRADED 后的继续追问不改变边界。
+        boolean reveal = Boolean.TRUE.equals(req.reveal())
+                || AnswerRevealDetector.isRevealRequest(req.rawAnswer());
+        boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
+                || run.getStatus() == DrillRunStatus.ANSWERING;
+        if (reveal && isPreGraded && run.getAnswerRevealedRound() == null) {
+            run.setAnswerRevealedRound(nextRound);
+            runRepo.save(run);
+        }
+
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
         final DrillTurn fTurn = turn;
+        final boolean fReveal = reveal;
 
         StreamingResponseBody body = out -> {
             try {
+                // 揭示边界触发：先推 event:reveal，前端在聊天线程里渲染“参考答案”分隔线
+                if (fReveal && isPreGraded) {
+                    out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                }
                 String full = tutorGenerator.streamChat(stem, pointsJson, allTurns,
                         token -> {
                             try {
@@ -505,7 +531,8 @@ public class DrillController {
                                 log.debug("chat SSE token 推送异常（已吞）: {}", e.getMessage());
                             }
                         },
-                        r -> sseReasoning(out, r));;
+                        r -> sseReasoning(out, r),
+                        fReveal);;
 
                 // 完整文本写回 turn
                 if (full != null) {
@@ -809,6 +836,28 @@ public class DrillController {
     @GetMapping("/history/conversation/{questionId}")
     public ConversationView conversation(@PathVariable Long questionId) {
         return historyService.conversation(currentUserId(), questionId);
+    }
+
+    /**
+     * 删除一道题的整条问答记录（级联：追问场 / 判分 / 复盘 / 笔记）。
+     * 只删记录，不动掌握度与题库。删除前由前端二次确认。
+     */
+    @DeleteMapping("/history/conversation/{questionId}")
+    public Map<String, Object> deleteConversation(@PathVariable Long questionId) {
+        Long uid = currentUserId();
+        int deleted = recordCleanupService.deleteConversation(uid, questionId);
+        return Map.of("ok", true, "deleted", deleted);
+    }
+
+    /**
+     * 删除单条作答记录及其全部关联数据（追问场 / 判分 / 复盘 / 笔记）。
+     * 供「内化复盘」页删除欠账 / 复盘数据。删除前由前端二次确认。
+     */
+    @DeleteMapping("/runs/{runId}")
+    public Map<String, Object> deleteRun(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        int deleted = recordCleanupService.deleteRun(uid, runId);
+        return Map.of("ok", true, "deleted", deleted);
     }
 
     @GetMapping("/{runId}")

@@ -104,4 +104,7 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
     /** 列表：某用户所有 LEARN run（含进行中），按 id 倒序（最新在前） */
     List<DrillRun> findByUserIdAndModeOrderByIdDesc(Long userId, DrillMode mode);
+
+    /** 追问场：source_run_id 指向指定 run 的 REHEARSAL run（记录清理时先删它们再删本 run） */
+    List<DrillRun> findBySourceRunId(Long sourceRunId);
 }

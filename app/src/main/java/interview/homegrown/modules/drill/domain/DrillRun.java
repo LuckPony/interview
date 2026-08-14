@@ -44,6 +44,13 @@ public class DrillRun {
 
     private Integer activeSeconds;  // 有效作答时长（心跳累计）
 
+    /**
+     * 答案揭示边界：首次明确索要答案/提示的轮次（drill_turn.round）。
+     * null=从未索要，finish 评分拼接全部用户回答；非空=只拼接该轮之前的回答
+     * （之后可能是照着答案复述，不计入量化评分）。由 chat 端点在判分前写入。
+     */
+    private Integer answerRevealedRound;
+
     @Column(columnDefinition = "text")
     private String transcript;       // SPEAK 预留
 
