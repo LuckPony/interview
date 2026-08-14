@@ -64,6 +64,11 @@ public class LlmRawClient {
                 && c.model() != null && !c.model().isBlank();
     }
 
+    /** 当前请求链路是否具备可用配置（请求头 X-LLM-Key / 登录用户设置 / 启动配置任一有 key）。 */
+    public boolean availableForCurrentRequest() {
+        return available();
+    }
+
     private String endpoint() {
         String base = cfg().baseUrl();
         return base.endsWith("/chat/completions") ? base
@@ -124,7 +129,7 @@ public class LlmRawClient {
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
                        boolean fallbackToReasoning, Consumer<String> onReasoning) {
         if (!available()) {
-            notifyError(onError, new IllegalStateException("LlmRawClient 未初始化"));
+            notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
         }
         try {

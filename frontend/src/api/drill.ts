@@ -500,11 +500,12 @@ export const studyPlan = {
 };
 
 // AI 设置：模型 / api-key / base-url（设置页，改完立即生效）
+// 注意：后端【不回显 key 的任何片段】，只告知是否已配置（hasApiKey）
 export interface AiSettingsView {
   provider: string;
   baseUrl: string;
   model: string;
-  apiKeyMasked: string;
+  hasApiKey: boolean;
   temperature: number;
 }
 export const aiSettings = {

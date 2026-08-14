@@ -88,6 +88,13 @@ export function Settings() {
 
       {err && <div className="banner info">{err}</div>}
 
+      {cfg !== null && !cfg.hasApiKey && (
+        <div className="banner warn">
+          尚未配置 API Key：AI 出题、判分、复盘、计划生成等都会不可用。请先在下表填写你自己的
+          API Key（Web 端按账号保存，互不可见；桌面端只存本机）。
+        </div>
+      )}
+
       {cfg === null ? (
         <Loading label="读取设置…" />
       ) : (
@@ -114,7 +121,7 @@ export function Settings() {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={cfg.apiKeyMasked ? `当前：${cfg.apiKeyMasked}（留空则不变）` : '填写 API Key'}
+              placeholder={cfg.hasApiKey ? '已配置（留空则不变）' : '填写 API Key'}
               autoComplete="off"
             />
           </label>

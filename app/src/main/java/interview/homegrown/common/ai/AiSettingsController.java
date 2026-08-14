@@ -26,7 +26,8 @@ public class AiSettingsController {
                 "provider", c.provider(),
                 "baseUrl", c.baseUrl(),
                 "model", c.model(),
-                "apiKeyMasked", mask(c.apiKey()),
+                // 不回显 key 的任何片段（连掩码都不给），只告诉前端「有没有配置」
+                "hasApiKey", c.apiKey() != null && !c.apiKey().isBlank(),
                 "temperature", c.temperature());
     }
 
@@ -38,11 +39,5 @@ public class AiSettingsController {
         }
         settings.update(userId, cfg);
         return Map.of("ok", true, "provider", cfg.provider(), "model", cfg.model());
-    }
-
-    private String mask(String key) {
-        if (key == null || key.isEmpty()) return "";
-        if (key.length() <= 4) return "****";
-        return "****" + key.substring(key.length() - 4);
     }
 }
