@@ -507,10 +507,13 @@ export const corpus = {
     form.append('file', file);
     return apiFetch<CorpusView>('/corpus/upload', { method: 'POST', body: form });
   },
-  // 桌面态：直接把本地路径交给后端读盘，免上传（解大项目痛点）
+  // 桌面态：直接把本地路径交给后端读盘，免上传（解大项目痛点；仅本地部署有意义）
   fromPath: (path: string) =>
     apiFetch<CorpusView>('/corpus/from-path', {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  // 云端桌面态：Electron 在本机读好的文件字节传上来，服务端 Tika 解析合并
+  fromFiles: (form: FormData) =>
+    apiFetch<CorpusView>('/corpus/from-files', { method: 'POST', body: form }),
 };

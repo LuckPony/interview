@@ -133,20 +133,55 @@ public class CorpusService {
             throw new IllegalArgumentException("遍历路径失败：" + e.getMessage());
         }
 
-        if (fileCount == 0 || sb.length() == 0) {
+        return persistMerged(root.getFileName() != null ? root.getFileName().toString() : path,
+                "LOCAL_PATH", sb, fileCount, userId);
+    }
+
+    /**
+     * 云端模式：后端在服务器上读不到用户本机路径，改由 Electron 在本机把支持的文件
+     * 读成字节传上来，这里统一 Tika 解析合并。与 {@link #fromPath} 共用解析/截断/存库逻辑。
+     */
+    public Corpus fromFiles(MultipartFile[] files, String folderName, Long userId) {
+        if (files == null || files.length == 0) {
+            throw new IllegalArgumentException("请选择文件");
+        }
+        StringBuilder sb = new StringBuilder();
+        int fileCount = 0;
+        for (MultipartFile f : files) {
+            if (f == null || f.isEmpty()) continue;
+            String name = f.getOriginalFilename();
+            if (name == null || !isSupportedName(name)) continue;
+            if (f.getSize() > MAX_FILE_BYTES) continue;
+            try {
+                String text = parser.parse(f.getInputStream(), name);
+                if (text.isBlank()) continue;
+                sb.append("\n\n## ").append(name).append("\n").append(text);
+                fileCount++;
+                if (sb.length() > MAX_PATH_CHARS) break;
+            } catch (IOException e) {
+                // 单个文件解析失败不致命，跳过
+            }
+        }
+        return persistMerged(folderName != null && !folderName.isBlank() ? folderName : "本地资料",
+                "LOCAL_FILES", sb, fileCount, userId);
+    }
+
+    /** 合并解析结果 → 截断 → 存库（fromPath / fromFiles 共用）。 */
+    private Corpus persistMerged(String name, String sourceType, StringBuilder sb,
+                                 int fileCount, Long userId) {
+        if (fileCount == 0 || sb.isEmpty()) {
             throw new IllegalArgumentException(
-                    "在该路径下没找到可解析的资料（支持 pdf / txt / md / docx，且需带文字层）。");
+                    "没有可解析的资料（支持 pdf / txt / md / docx，且需带文字层）。");
         }
         String merged = sb.toString().trim();
         if (merged.length() > MAX_PATH_CHARS) {
             merged = merged.substring(0, MAX_PATH_CHARS)
                     + "\n…（资料较长，已截断到前 " + MAX_PATH_CHARS + " 字）";
         }
-
         Corpus c = new Corpus();
         c.setUserId(userId);
-        c.setName(root.getFileName() != null ? root.getFileName().toString() : path);
-        c.setSourceType("LOCAL_PATH");
+        c.setName(name);
+        c.setSourceType(sourceType);
         c.setText(merged);
         c.setCharCount(merged.length());
         return corpusRepo.save(c);
@@ -160,7 +195,11 @@ public class CorpusService {
     }
 
     private boolean isSupported(Path p) {
-        String name = p.getFileName().toString().toLowerCase();
+        return isSupportedName(p.getFileName().toString());
+    }
+
+    private boolean isSupportedName(String fileName) {
+        String name = fileName.toLowerCase();
         int dot = name.lastIndexOf('.');
         return dot >= 0 && SUPPORTED_EXT.contains(name.substring(dot + 1));
     }

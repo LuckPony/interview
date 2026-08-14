@@ -58,7 +58,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string> | undefined),
   };
-  if (init?.body != null) {
+  if (init?.body != null && !(init.body instanceof FormData)) {
+    // FormData 由浏览器自动带 multipart boundary，不能手动设 Content-Type
     headers['Content-Type'] = 'application/json';
   }
   Object.assign(headers, await buildAuthHeaders());

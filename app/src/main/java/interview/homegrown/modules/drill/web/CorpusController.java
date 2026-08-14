@@ -39,6 +39,14 @@ public class CorpusController {
         return new CorpusView(c.getId(), c.getName(), c.getCharCount());
     }
 
+    /** 云端桌面端：Electron 在本机读好文件字节传上来，服务端 Tika 解析合并。 */
+    @PostMapping("/from-files")
+    public CorpusView fromFiles(@RequestParam("files") MultipartFile[] files,
+                                @RequestParam(value = "folderName", required = false) String folderName) {
+        Corpus c = service.fromFiles(files, folderName, currentUserId());
+        return new CorpusView(c.getId(), c.getName(), c.getCharCount());
+    }
+
     private Long currentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof Long)) {

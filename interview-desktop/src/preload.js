@@ -5,6 +5,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
+  // 云模式（后端在服务器）：在本机读文件夹字节交给服务器解析（服务器读不到本机路径）
+  collectPath: (path) => ipcRenderer.invoke('fs:collectPath', path),
+  // 当前是否云模式：决定选本地文件夹时走后端读盘还是本机读盘
+  isCloud: () => ipcRenderer.invoke('app:isCloud'),
   // LLM key 本机存取：key 只存在用户桌面，不发给服务器持久化（随请求临时带上）
   getLlmKey: () => ipcRenderer.invoke('llm:getKey'),
   setLlmKey: (key) => ipcRenderer.invoke('llm:setKey', key),

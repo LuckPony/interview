@@ -46,18 +46,44 @@ export function IntakeChat() {
     setCorpusName('');
   };
 
-  // 桌面端（Electron）下可免上传，直接把本地路径交给后端读盘
+  // 桌面端（Electron）下可免上传：本地模式直接把路径交给后端读盘；
+  // 云模式（后端在服务器）下服务器读不到本机路径，改由 Electron 自己读字节传上来。
   const hasElectron = typeof window !== 'undefined' && !!window.electronAPI?.pickFolder;
+  const [isCloud, setIsCloud] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (hasElectron) {
+      window.electronAPI?.isCloud().then(setIsCloud).catch(() => setIsCloud(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ingestPath = async (path: string) => {
     setUploading(true);
     setErr('');
     try {
-      const res = await corpus.fromPath(path);
-      setCorpusId(res.id);
-      setCorpusName(res.name);
+      if (isCloud && window.electronAPI?.collectPath) {
+        // 云模式：本机读盘 → 字节传给服务器解析
+        const local = await window.electronAPI.collectPath(path);
+        if ('error' in local) throw new Error(local.error);
+        const form = new FormData();
+        form.append('folderName', local.name);
+        for (const f of local.files) {
+          const bin = atob(f.data);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          form.append('files', new Blob([bytes]), f.name);
+        }
+        const res = await corpus.fromFiles(form);
+        setCorpusId(res.id);
+        setCorpusName(res.name);
+      } else {
+        // 本地模式：后端直接读盘，免上传
+        const res = await corpus.fromPath(path);
+        setCorpusId(res.id);
+        setCorpusName(res.name);
+      }
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : '读取本地文件失败');
+      setErr(e2 instanceof ApiError ? e2.message : e2 instanceof Error ? e2.message : '读取本地文件失败');
     } finally {
       setUploading(false);
     }
@@ -151,16 +177,20 @@ export function IntakeChat() {
             </label>
             {hasElectron && (
               <div className="path-actions">
-                <button type="button" className="upload-btn" onClick={pickFile} disabled={uploading}>
+                <button type="button" className="upload-btn" onClick={pickFile} disabled={uploading || isCloud === null}>
                   选择本地文件
                 </button>
-                <button type="button" className="upload-btn" onClick={pickFolder} disabled={uploading}>
+                <button type="button" className="upload-btn" onClick={pickFolder} disabled={uploading || isCloud === null}>
                   选择本地文件夹
                 </button>
               </div>
             )}
             {hasElectron && (
-              <p className="upload-hint">大项目直接选文件夹，后端在你本机读盘解析，免上传。</p>
+              <p className="upload-hint">
+                {isCloud
+                  ? '云模式下由桌面端在你本机读盘，解析后上传服务器（大文件夹请控制在 40MB 以内）。'
+                  : '大项目直接选文件夹，后端在你本机读盘解析，免上传。'}
+              </p>
             )}
           </>
         ) : (

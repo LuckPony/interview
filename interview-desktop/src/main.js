@@ -267,6 +267,74 @@ ipcMain.handle('dialog:pickFolder', async () => {
   return canceled || filePaths.length === 0 ? null : filePaths[0];
 });
 
+// —— 云模式读盘桥：后端在服务器上读不到用户本机路径 ——
+// Electron 在自己机器上遍历文件夹，把支持的文件读成字节（base64）交给服务器 Tika 解析合并。
+// 常量与后端 CorpusService 保持同步（SYSTEM_ROOTS / SKIP_DIRS / SUPPORTED_EXT / MAX_FILE_BYTES）。
+const PATH_SUPPORTED_EXT = new Set(['pdf', 'txt', 'md', 'markdown', 'mdx', 'docx']);
+const PATH_SKIP_DIRS = new Set([
+  '.git', 'node_modules', 'target', 'build', 'dist', 'out',
+  '.next', 'coverage', '.idea', '.vscode', '__pycache__',
+]);
+const PATH_SYSTEM_ROOTS = [
+  '/System', '/usr', '/bin', '/sbin', '/etc',
+  '/private/var', '/private/etc', '/Library', '/Applications',
+  'C:\\Windows', 'C:\\Program Files', 'C:\\ProgramData',
+];
+const PATH_MAX_FILE_BYTES = 20 * 1024 * 1024;
+const PATH_MAX_TOTAL_BYTES = 40 * 1024 * 1024; // 服务器 multipart 上限 50MB，留表单开销余量
+
+async function collectPathFiles(root) {
+  const out = [];
+  let total = 0;
+  const walk = async (dir) => {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!PATH_SKIP_DIRS.has(e.name)) await walk(full);
+      } else if (e.isFile()) {
+        const ext = path.extname(e.name).slice(1).toLowerCase();
+        if (!PATH_SUPPORTED_EXT.has(ext)) continue;
+        const st = await fs.promises.stat(full);
+        if (st.size > PATH_MAX_FILE_BYTES) continue;
+        if (total + st.size > PATH_MAX_TOTAL_BYTES) {
+          throw new Error(
+            `所选内容总大小超过 40MB，超出服务器上传上限。请精简文件夹，或改用本地模式（后端在本机直接读盘）。`
+          );
+        }
+        const buf = await fs.promises.readFile(full);
+        out.push({ name: e.name, data: buf.toString('base64') });
+        total += st.size;
+      }
+    }
+  };
+  await walk(root);
+  return { name: path.basename(root), files: out };
+}
+
+ipcMain.handle('fs:collectPath', async (_e, p) => {
+  try {
+    if (!p || typeof p !== 'string') return { error: '缺少路径' };
+    const real = fs.realpathSync(p);
+    if (!fs.existsSync(real)) return { error: `路径无法访问或不存在：${p}` };
+    for (const sys of PATH_SYSTEM_ROOTS) {
+      if (real === sys || real.startsWith(sys + path.sep)) {
+        return { error: `出于安全考虑，不能读取系统目录：${real}` };
+      }
+    }
+    const { name, files } = await collectPathFiles(real);
+    if (files.length === 0) {
+      return { error: '在该路径下没找到可解析的资料（支持 pdf / txt / md / docx）。' };
+    }
+    return { name, files };
+  } catch (e) {
+    return { error: (e && e.message) || '读取本地文件失败' };
+  }
+});
+
+// 云模式标记：渲染进程据此决定「选本地文件夹」是走后端读盘还是本机读盘
+ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
+
 app.whenReady().then(() => {
   if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
   createWindow();
