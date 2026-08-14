@@ -77,6 +77,30 @@
   white-space: pre;
 }
 
+/* 语法高亮代码块（react-syntax-highlighter，PrismAsyncLight）：
+   外层 div 由组件 customStyle 控制（浅灰底 + 圆角 + 边框，与 .md pre 同款视觉），
+   内部不再有 <pre>，这里只处理语言角标与内部 code 的复位。 */
+.md-code-block {
+  position: relative;
+  margin: 0.75em 0;
+}
+.md-code-lang {
+  position: absolute;
+  top: 9px;
+  right: 13px;
+  font: 600 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--ink) 42%, transparent);
+  user-select: none;
+  pointer-events: none;
+}
+.md-code-block code {
+  white-space: pre;
+  overflow-x: auto;
+  display: block;
+}
+
 .md blockquote {
   margin: 0.7em 0;
   padding: 0.15em 0 0.15em 0.9em;

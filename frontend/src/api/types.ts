@@ -92,7 +92,7 @@ export interface DailyTaskView {
   conceptId: number;
   conceptName: string;
   layer: number;
-  status: 'PENDING' | 'READY' | 'DONE';
+  status: 'PENDING' | 'READY' | 'DONE' | 'SKIPPED';
   questionId: number | null;
   stem: string | null;
   probeType: string | null;

@@ -58,6 +58,8 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
@@ -228,11 +230,13 @@ public class DrillController {
     @PostMapping("/task/{taskId}/start")
     public QuestionView startTask(@PathVariable Long taskId) {
         Long uid = currentUserId();
-        boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
         dailyPlanService.ensureReady(uid, taskId);
         DailyTask t = dailyPlanService.requireTask(uid, taskId);
+        // 记录开 run 前的活跃 run：只有本次真正开了新 run（而非恢复了旧的活跃作答）才消费任务，
+        // 否则用户手头挂着别的未完成作答时（即使会被搁置）任务永远不置 DONE，导致已学的题反复出现。
+        Set<Long> activeBefore = activeLearnIds(uid);
         QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId());
-        if (!hadActive) {
+        if (!activeBefore.contains(view.runId())) {
             dailyPlanService.markDone(taskId);
         }
         return view;
@@ -248,14 +252,20 @@ public class DrillController {
             throw new ResponseStatusException(NOT_FOUND, "今日任务已全部完成，去自由练习吧");
         }
         DailyTask t = ready.get(0);
-        boolean hadActive = !runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN).isEmpty();
         dailyPlanService.ensureReady(uid, t.getId());
         t = dailyPlanService.requireTask(uid, t.getId());
+        Set<Long> activeBefore = activeLearnIds(uid);
         QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId());
-        if (!hadActive) {
+        if (!activeBefore.contains(view.runId())) {
             dailyPlanService.markDone(t.getId());
         }
         return view;
+    }
+
+    /** 当前用户所有活跃 LEARN run 的 id（READY / ANSWERING）。 */
+    private Set<Long> activeLearnIds(Long uid) {
+        return runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN)
+                .stream().map(DrillRun::getId).collect(Collectors.toSet());
     }
 
     private static final List<DrillRunStatus> ACTIVE_STATUSES = List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING);
