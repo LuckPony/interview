@@ -509,6 +509,14 @@ public class DrillController {
 
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
+        // 追问安全阀（仅判分前）：学生已作答的轮数。
+        // 判分后（继续对话 = 用户向 AI 提问）传 -1，走通用苏格拉底引导、不限小问。
+        // reveal 时该值不影响：reveal 模式优先，直接给完整讲解、不再追问。
+        // 正常流程由 AI 按「小问 ≤ 4 个、确认理解后才出下一问」自行控制，这里只是兜底。
+        int followupIndex = isPreGraded
+                ? (int) allTurns.stream().filter(t -> t.getRawAnswer() != null
+                        && !t.getRawAnswer().isBlank()).count()
+                : -1;
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
         final DrillTurn fTurn = turn;
@@ -532,7 +540,7 @@ public class DrillController {
                             }
                         },
                         r -> sseReasoning(out, r),
-                        fReveal);;
+                        fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
 
                 // 完整文本写回 turn
                 if (full != null) {

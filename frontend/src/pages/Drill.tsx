@@ -696,7 +696,7 @@ export function Drill() {
                     ? '题目生成中…'
                     : resumedGraded
                       ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。'
-                      : '写下你的回答，AI 会引导你思考；想直接看答案可点「看答案」。完成后点「结束并评分」。'
+                      : '先回答主问题；AI 确认你理解后，会针对薄弱点逐条追问（最多 4 个小问）。想直接看答案可点「看答案」。'
                 }
                 value={input}
                 disabled={phase === 'generating'}

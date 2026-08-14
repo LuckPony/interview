@@ -83,8 +83,47 @@ public class TutorGenerator {
             """;
 
     /**
+     * 追问模式：判分前对话的默认行为（取代旧 CHAT_SYSTEM_PROMPT 的泛化引导）。
+     *
+     * <p>主问之后，每次学生作答，AI 都要：先一句简短点评，再针对学生回答里暴露的<b>薄弱点</b>
+     * 提出<b>恰好一个</b>新的追问（递进、紧扣评分要点）。小问总数由服务端封顶
+     * {@link #MAX_FOLLOWUPS} 个，AI 无权自行多问。
+     */
+    private static final String CHAT_FOLLOWUP_SYSTEM_PROMPT = """
+            你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题（主问之后逐条追问）。
+            每次回复只做两件事：
+            1. 用 1-2 句简短点评学生刚才的回答：对在哪、缺在哪、哪里理解偏了；
+            2. 针对学生回答里暴露出的<b>薄弱点</b>，提出<b>恰好一个</b>新的追问：
+               - 追问要递进、紧扣题目的评分要点，专挑他还没讲透的地方；
+               - 追问必须能独立作答，不要问多选/并列多个问题；
+               - 如果学生答得已经很完整，可以往更深一层追问（边界、权衡、反例、为什么这样设计）。
+            3. 严禁直接给出完整正确答案、标准实现或完整解题步骤（还在追问阶段，答案留到
+               学生点「看答案」或「结束并评分」后再给）。
+            4. 回复 100-200 字中文，像聊天一样自然，不要使用中文破折号（——/-），
+               不要提及评分、分数、判分、得分等概念。
+            5. 可以用 Markdown 排版（加粗关键点、必要时用列表）；涉及代码时用围栏代码块
+               （```语言 ... ```，代码原样保留缩进与换行），不要写成普通段落。
+            6. 结尾必须是一句完整的话。
+            """;
+
+    /**
+     * 追问收尾模式：追问已到服务端封顶（{@link #MAX_FOLLOWUPS} 个）。
+     * AI 不再提新问题，而是做整体点评并引导学生去「结束并评分」，答案同样留到揭示后再给。
+     */
+    private static final String CHAT_WRAPUP_SYSTEM_PROMPT = """
+            你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题。
+            这道题的小问已经全部问完（服务端封顶），现在请你：
+            1. 用 100-200 字中文做整体点评：把学生这轮回答里最值得肯定的点和最需要补的地方
+               各说一点，帮他对全局有个印象；
+            2. 明确提示他可以点「结束并评分」结束这道题（或点「看答案」看完整讲解）；
+            3. 严禁再提出新的问题，也严禁直接给出完整正确答案、标准实现或完整解题步骤。
+            4. 不要使用中文破折号（——/-），不要提及分数、判分、得分等概念；
+               可以用 Markdown 排版，结尾必须是一句完整的话。
+            """;
+
+    /**
      * 揭示答案模式：学生已明确索要答案/提示（点「看答案」按钮或自然语言被服务端识别），
-     * 直接给完整讲解。与 {@link #CHAT_SYSTEM_PROMPT} 互补，由服务端显式选择。
+     * 直接给完整讲解；此时<b>不再有后续小问</b>。与 {@link #CHAT_FOLLOWUP_SYSTEM_PROMPT} 互补，由服务端显式选择。
      */
     private static final String CHAT_REVEAL_SYSTEM_PROMPT = """
             你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题。
@@ -161,6 +200,11 @@ public class TutorGenerator {
         return text.isEmpty() ? null : text;
     }
 
+    /** 判分前主问之后的小问封顶（提示词约束 AI 最多问 4 个小问，问满即收尾） */
+    public static final int MAX_FOLLOWUPS = 4;
+    /** 判分前对话安全阀：学生回答超过此轮数强制收尾（防 AI 不听话无限追问，正常流程到不了） */
+    public static final int SAFETY_ANSWER_CAP = 12;
+
     /**
      * 对话式辅导流式生成：判分前的多轮对话，AI 扮演辅导老师与学生交流。
      * <p>
@@ -168,7 +212,8 @@ public class TutorGenerator {
      * <ul>
      *   <li>无判分结果（byConceptJson）—— 此时尚未判分</li>
      *   <li>包含完整对话历史（之前几轮的问答）</li>
-     *   <li>引导思考而非直接讲解答案</li>
+     *   <li>主问之后逐条追问：学生弄懂当前小问且表明理解后，才基于上下文出下一个小问
+     *       （封顶 {@link #MAX_FOLLOWUPS} 个）</li>
      * </ul>
      *
      * @param stem        题干
@@ -180,7 +225,7 @@ public class TutorGenerator {
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken) {
-        return streamChat(stem, pointsJson, turns, onToken, null, false);
+        return streamChat(stem, pointsJson, turns, onToken, null, false, 1, SAFETY_ANSWER_CAP);
     }
 
     /**
@@ -200,12 +245,16 @@ public class TutorGenerator {
      * @param onToken     逐 token 回调
      * @param onReasoning 思考内容回调（可空）
      * @param reveal      学生已明确索要答案 → 用揭示答案 prompt 给出完整讲解（默认 false）
+     * @param followupIndex 判分前学生已作答的轮数（含当前这条），仅作<b>安全阀</b>：
+     *                      超过 {@code maxAnswers} 强制收尾（正常流程由 AI 自行按 4 个小问封顶）；
+     *                      判分后自由问答传 -1
+     * @param maxAnswers    判分前回答轮数安全阀（超过则不再追问，走收尾）
      * @return 完整回复文本（失败/空为 null）
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
-                             boolean reveal) {
+                             boolean reveal, int followupIndex, int maxAnswers) {
         String pointsText = formatPoints(pointsJson);
 
         // 对话历史只保留最近几轮，且每条文本截断到合理长度：
@@ -238,7 +287,19 @@ public class TutorGenerator {
                 """, stem, pointsText, history.toString().isBlank() ? "（无）" : history.toString());
 
         StringBuilder buf = new StringBuilder();
-        String system = reveal ? CHAT_REVEAL_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT;
+        // 模式选择：reveal 优先（答案已揭示 → 完整讲解，不再追问）；
+        // 判分后自由问答（followupIndex=-1）走通用苏格拉底引导；
+        // 判分前：未超安全阀 → 追问模式（AI 自行判断是否出下一小问）；已超 → 收尾提示结束。
+        String system;
+        if (reveal) {
+            system = CHAT_REVEAL_SYSTEM_PROMPT;
+        } else if (followupIndex < 0) {
+            system = CHAT_SYSTEM_PROMPT;
+        } else if (followupIndex <= maxAnswers) {
+            system = CHAT_FOLLOWUP_SYSTEM_PROMPT;
+        } else {
+            system = CHAT_WRAPUP_SYSTEM_PROMPT;
+        }
         rawClient.stream(system, user,
                 token -> {
                     buf.append(token);
