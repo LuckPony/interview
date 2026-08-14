@@ -26,18 +26,12 @@
   gap: var(--s-3);
   padding: var(--s-2) var(--s-3) var(--s-5);
 }
-.brand-mark {
+.brand-logo {
   width: 42px;
   height: 42px;
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--cinnabar);
-  border: 1.5px solid var(--cinnabar);
+  object-fit: cover;
   border-radius: var(--r-md);
-  background: var(--cinnabar-wash);
+  flex-shrink: 0;
 }
 .brand-text {
   display: flex;

@@ -8,6 +8,9 @@ files:
   - package.json
   - config.json
   - app-dist/**/*
+# 应用图标：build/icon.png（1024x1024）会由 electron-builder 自动转换为各平台的
+# .icns（mac）/ .ico（win）打包进安装包，同时作为运行时窗口图标（src/icon.png 同源）。
+icon: build/icon.png
 # 自动更新源：electron-updater 启动时从这里拉 latest.yml 检查新版本。
 # 上线前把 url 改成你的更新服务器目录（放 exe/dmg/zip + latest*.yml），
 # 或用 GitHub Releases：provider 换成 github、owner: LuckPony、repo: interview（仓库需公开）

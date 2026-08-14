@@ -1,6 +1,8 @@
 <div align="center">
 
-# 😎 面霸
+<img src="frontend/public/logo.png" alt="面霸" width="88" />
+
+# 面霸
 
 **AI 学习 / 面试备考平台 —— 把「教学决策权」从 LLM 手里拿回来**
 
@@ -182,7 +184,9 @@ npm run dev         # http://localhost:5173，/api 已代理到 8080
 
 ### 6. 桌面端（可选）
 
-本地模式（自己跑后端）：
+桌面端是一个 Electron 壳：加载 `frontend` 构建出的静态 SPA，并负责拉起本地后端（本地模式）或直连你的服务器（云端模式）。应用图标取自 `frontend/src/logo.png`，打包时自动生成各平台图标（mac 的 `.icns` / Windows 的 `.ico`，见 `interview-desktop/build/icon.png`）。
+
+**本地开发运行**（自己跑后端，见上方第 3 步）：
 
 ```bash
 cd interview-desktop
@@ -190,17 +194,41 @@ npm install
 npm start          # 自动拉起本地 Spring Boot，等待就绪后加载界面
 ```
 
-云端模式（直连你的后端服务器，打包给别人下载）：
+**打包 macOS 安装包（DMG）**：
 
 ```bash
 cd interview-desktop
-MIANBA_SERVER=https://你的服务器 npm run dist:cloud    # macOS → dist-electron/*.dmg
-MIANBA_SERVER=https://你的服务器 npm run dist:win      # Windows → dist-electron/*.exe
+npm install
+MIANBA_SERVER=https://你的服务器 npm run dist:cloud   # 云端模式：应用直连你的服务器，适合发给你朋友
+npm run dist                                          # 本地模式：应用启动时自己拉起本地后端
 ```
 
-云端构建会把服务器地址烘焙进应用：**启动时不再拉起本地后端，界面直连你的服务器**。Windows 包建议在 Windows 或 GitHub Actions CI 上构建（mac 交叉构建 nsis 依赖 wine）。
+产物在 `interview-desktop/dist-electron/`：
 
-> **注意**：`sync-spa` / 云端构建都会构建 `../frontend`（前端目录）并复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
+- `面霸-0.1.0-arm64.dmg` —— 双击拖入 Applications 安装（Apple Silicon）
+- `面霸-0.1.0-arm64-mac.zip` + `latest-mac.yml` —— 自动更新用
+
+**打包 Windows 安装包（EXE）**：
+
+```bash
+cd interview-desktop
+npm install
+MIANBA_SERVER=https://你的服务器 npm run dist:win      # 云端模式
+npm run dist -- --win                                   # 本地模式
+```
+
+产物在 `interview-desktop/dist-electron/`：
+
+- `面霸 Setup 0.1.0.exe` —— NSIS 安装程序，双击安装
+- `面霸-0.1.0-win.zip` —— 便携版（解压即用）
+
+**打包注意事项：**
+
+- **DMG 只能在 macOS 上打包**（需要 Xcode 命令行工具）。
+- **EXE 建议在 Windows 机器或 GitHub Actions CI 上构建** —— macOS 交叉构建 NSIS 依赖 wine，容易踩坑。
+- 云端模式会把服务器地址烘焙进应用（写入 `interview-desktop/config.json`）：**启动时不再拉起本地后端，界面直连你的服务器**。
+- 所有 `dist` 系列命令都会先构建 `../frontend` 并复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
+- 发新版本改 `interview-desktop/package.json` 的 `version` 字段（如 `0.1.0 → 0.1.1`），electron-updater 按它检查更新。
 
 ### 7. 云端部署（后端）
 
@@ -222,7 +250,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 3. **启动**：把 `.env` 里的环境变量传进去后 `java -jar app/build/libs/app-0.0.1-SNAPSHOT.jar`。
 
 **公网**：用 Nginx / Caddy 反代 8080 并配 HTTPS。桌面端 SPA 从 `file://` 请求，跨域已放行（CORS `*`）。
-5. **打包分发**：`MIANBA_SERVER=https://你的域名 npm run dist:cloud`，把 `dist-electron/*.dmg` / `*.exe` 发给别人。
+5. **打包分发**：见上方第 6 节「桌面端」—— `MIANBA_SERVER=https://你的域名 npm run dist:cloud`，把 `dist-electron/` 下的 `.dmg` / `.exe` 发给别人。
 
 ## 🏗️ 架构设计
 

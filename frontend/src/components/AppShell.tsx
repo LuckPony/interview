@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import logo from '../logo.png';
 import {
   LayoutDashboard,
   Compass,
@@ -46,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-frame">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">面</span>
+          <img src={logo} alt="面霸" className="brand-logo" />
           <span className="brand-text">
             <strong>面霸</strong>
             <small>面试备考</small>

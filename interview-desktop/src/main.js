@@ -1,7 +1,7 @@
 // 桌面壳主进程：拉起本地 Spring Boot 后端 → 探活闸门 → 加载 React SPA → 退出清理。
 // 仅做「启动器 + 本地 fs 桥」，不打包 JVM / Docker（见 README 的诚实说明）。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -14,6 +14,9 @@ app.commandLine.appendSwitch('no-proxy-server');
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 8080;
 const HEALTH_TIMEOUT_MS = 90_000;
+
+// 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）
+const APP_ICON = path.join(__dirname, 'icon.png');
 
 let backend = null;
 
@@ -58,12 +61,13 @@ const SPLASH_HTML = `<!doctype html>
   .row span { display: inline-block; animation: bounce 1.6s infinite ease-in-out; }
   .row span:nth-child(2) { animation-delay: 0.2s; }
   .row span:nth-child(3) { animation-delay: 0.4s; }
+  .boss img { width: 88px; height: 88px; border-radius: 20px; display: block; box-shadow: 0 8px 24px -12px rgba(35, 43, 54, 0.35); }
   small { display: block; margin-top: 20px; color: #8B95A5; font-size: 12.5px; }
 </style>
 </head>
 <body>
   <div class="card">
-    <span class="boss">😎</span>
+    <span class="boss">__LOGO_OR_EMOJI__</span>
     <h1>面霸 · 启动中</h1>
     <p class="sub">面试霸主正在热身，本地服务马上就好…</p>
     <div class="spinner" role="status"></div>
@@ -176,6 +180,7 @@ function createWindow() {
     width: 1200,
     height: 840,
     backgroundColor: '#F6F8FB',
+    icon: APP_ICON, // Windows/Linux 的窗口/任务栏图标；macOS 用打包进 .app 的图标
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -198,7 +203,13 @@ function createWindow() {
   } else {
     // 本地模式：先显示启动封面，等本地后端就绪后再换 SPA
     // 注意：data: URL 必须声明 charset=utf-8，否则 Chromium 默认按 Latin-1 解码中文会乱码
-    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML));
+    // 启动封面右上角换成产品 logo（读不到就用原来的 😎 兜底）
+    const logoImg = nativeImage.createFromPath(APP_ICON);
+    const logoHtml = logoImg.isEmpty()
+      ? '😎'
+      : `<img src="${logoImg.resize({ width: 128, height: 128 }).toDataURL()}" alt="面霸">`;
+    const splash = SPLASH_HTML.replace('__LOGO_OR_EMOJI__', logoHtml);
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splash));
     waitForBackend(HEALTH_TIMEOUT_MS)
       .then(loadSpa)
       .catch((e) => {
