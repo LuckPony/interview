@@ -45,20 +45,35 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: 3000ms
+  mail:
+    # 邮箱验证：不配 MAIL_HOST/FROM 则注册自动通过（本地/演示）
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
       lettuce:
         pool:
           max-active: 16
           max-idle: 8
           min-idle: 2
 springdoc:
+  # 生产默认关闭（避免把全部接口结构暴露给公网）；本地开发设 APP_SWAGGER_ENABLED=true 打开
+  api-docs:
+    enabled: ${APP_SWAGGER_ENABLED:false}
+    path: /v3/api-docs
   swagger-ui:
+    enabled: ${APP_SWAGGER_ENABLED:false}
     path: /swagger
     tags-sorter: alpha
     operations-sorter: alpha
     try-it-out-enabled: true
     persist-authorization: true
-  api-docs:
-    path: /v3/api-docs
   packages-to-scan: interview.homegrown.modules
 
 app:
@@ -86,8 +101,9 @@ app:
         temperature: 0.7
       deepseek:
         base-url: https://api.deepseek.com
-        # 用户的 key 在 .env 的 API_KEY 里（DeepSeek 的 key）
-        api-key: ${API_KEY}
+        # 云端不再共享服务器 key：留空则本 provider 不初始化，每个用户在「设置」页用自己的 key
+        # （桌面端 key 仅存本机、随请求临时传入；本地模式可继续用 .env 的 API_KEY）
+        api-key: ${API_KEY:}
         # 读 .env 里的 MODEL_NAME；未设则退回默认值
         model: ${MODEL_NAME:deepseek-chat}
         temperature: 0.7
@@ -107,6 +123,8 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET:drill-dev-secret-change-me-please-32bytes}
     expiration-ms: 86400000   # 24h
+  mail:
+    from: ${MAIL_FROM:}
 
 interview:
   follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:2}

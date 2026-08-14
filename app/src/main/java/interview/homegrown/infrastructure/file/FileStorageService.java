@@ -24,10 +24,19 @@ public class FileStorageService {
     private static final Logger log = LoggerFactory.getLogger(FileStorageService.class);
     private final S3Client s3Client;
     private final String bucket;
+    /** 对象存储是否可用。MinIO 未启动时应用照常启动，仅文件上传类功能受限。 */
+    private volatile boolean storageAvailable = true;
+
     public FileStorageService(S3Client s3Client, AppConfigProperties appConfig) {
         this.s3Client = s3Client;
         this.bucket = appConfig.getStorage().getBucket();
-        ensureBucketExists();
+        try {
+            ensureBucketExists();
+        } catch (Exception e) {
+            // 对象存储不可用不阻塞应用启动：核心学习功能（练习/复习/每日任务等）不依赖 MinIO。
+            storageAvailable = false;
+            log.warn("对象存储（MinIO/S3）未就绪，文件上传功能暂不可用，核心功能不受影响：{}", e.getMessage());
+        }
     }
 
     /**
@@ -39,6 +48,20 @@ public class FileStorageService {
      * @return 存储的唯一 Key
      */
     public String upload(byte[] bytes, String fileName, String mimeType) {
+        // 惰性重试：MinIO 恢复后，首次上传时自动重新初始化，无需重启应用。
+        if (!storageAvailable) {
+            synchronized (this) {
+                if (!storageAvailable) {
+                    try {
+                        ensureBucketExists();
+                        storageAvailable = true;
+                        log.info("对象存储已就绪，文件上传能力恢复");
+                    } catch (Exception e) {
+                        throw new IllegalStateException("对象存储未就绪（MinIO 未启动？），无法上传文件：" + e.getMessage());
+                    }
+                }
+            }
+        }
         //生成唯一存储路径：UUID + 原始拓展名
         String ext = "";
         int dotIndex = fileName.lastIndexOf('.');

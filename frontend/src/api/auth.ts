@@ -1,11 +1,25 @@
-import { apiFetch, setSession } from './client';
+import { apiFetch } from './client';
 import type { LoginResp } from './types';
 
-// 后端为演示用：POST /api/auth/login?userId= 直接签发 JWT，无注册流程。
-export async function login(userId: string): Promise<LoginResp> {
-  const resp = await apiFetch<LoginResp>(`/auth/login?userId=${encodeURIComponent(userId)}`, {
+// 真实账号体系：邮箱 + 密码，注册可选邮箱验证。成功后后端签发 JWT。
+// setSession 由 AuthContext / 登录页在拿到 resp 后统一调用（注册未验证时不入库）。
+export async function login(email: string, password: string): Promise<LoginResp> {
+  return apiFetch<LoginResp>('/auth/login', {
     method: 'POST',
+    body: JSON.stringify({ email, password }),
   });
-  setSession(resp.token, resp.userId);
-  return resp;
+}
+
+export async function register(email: string, password: string): Promise<LoginResp> {
+  return apiFetch<LoginResp>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function verify(email: string, code: string): Promise<LoginResp> {
+  return apiFetch<LoginResp>('/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
 }

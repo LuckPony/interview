@@ -1,0 +1,69 @@
+# ===== 面霸 · 生产部署 =====
+# 核心学习功能只需 Postgres；Redis 供简历/面试会话等模块，MinIO 供简历文件存储（可选）。
+#
+# 用法：
+#   cp .env.example .env    # 然后按需填 API_KEY / APP_JWT_SECRET / MAIL_* 等
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# 上线前务必改：POSTGRES_PASSWORD、APP_JWT_SECRET。
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mianba}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-interview}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mianba} -d ${POSTGRES_DB:-interview}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mianba}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-interview}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # —— LLM（可选；留空则服务器不带共享 key，每个用户用自己的 key，见 README「取消默认 key」）——
+      API_KEY: ${API_KEY:-}
+      APP_SWAGGER_ENABLED: ${APP_SWAGGER_ENABLED:-false}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      PROVIDER_KIMI_API_KEY: ${PROVIDER_KIMI_API_KEY:-}
+      # —— 鉴权 ——
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}
+      # —— 邮箱验证（可选）——
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      # —— 对象存储 MinIO（可选，简历上传用；不配则上传功能不可用，核心功能不受影响）——
+      APP_STORAGE_ENDPOINT: ${APP_STORAGE_ENDPOINT:-}
+      APP_STORAGE_ACCESS_KEY: ${APP_STORAGE_ACCESS_KEY:-}
+      APP_STORAGE_SECRET_KEY: ${APP_STORAGE_SECRET_KEY:-}
+      APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:

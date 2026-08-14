@@ -1,4 +1,4 @@
-import { apiFetch, getToken } from './client';
+import { apiFetch, getToken, getLlmKeyHeader } from './client';
 import type {
   QuestionView,
   QuestionMeta,
@@ -64,7 +64,13 @@ function openSse(url: string, init: RequestInit, handlers: SseHandlers): TutorSt
   let cancelled = false;
   (async () => {
     try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
+      // 桌面端本机 LLM key：随 SSE 请求临时带给后端（Authorization 已由调用方带上）
+      const llmKey = await getLlmKeyHeader();
+      const headers: Record<string, string> = {
+        ...(init.headers as Record<string, string> | undefined),
+        ...(llmKey ? { 'X-LLM-Key': llmKey } : {}),
+      };
+      const res = await fetch(url, { ...init, headers, signal: controller.signal });
       if (!res.ok || !res.body) {
         let msg = '';
         try { msg = await res.text(); } catch { /* ignore */ }

@@ -122,11 +122,16 @@ cp .env.example .env
 `.env` 关键项：
 
 ```bash
-# LLM Provider（DeepSeek 必配，其余可选，留空自动跳过）
-API_KEY=sk-deepseek-xxx
+# LLM Provider（可选；不配则服务器不带任何共享 key，每个用户在「设置」页用自己的 key）
+# 云端多用户：建议全部留空 —— 桌面端用户 key 仅存本机（随请求临时传入，不落服务器）；
+# Web 端用户在「设置」页填自己的 key（服务器按用户隔离存储）。本地单机模式可继续填 API_KEY。
+API_KEY=sk-deepseek-xxx   # 本地单机用；云端多用户建议留空
 DASHSCOPE_API_KEY=sk-dashscope-xxx
 PROVIDER_KIMI_API_KEY=sk-kimi-xxx
 MODEL_NAME=deepseek-chat          # 可选，默认 deepseek-chat
+
+# Swagger（生产默认关，本地开发想开就设 true）
+APP_SWAGGER_ENABLED=false
 
 # 基础设施（与 docker-compose.dev.yml 默认一致，可省略）
 POSTGRES_HOST=localhost
@@ -145,6 +150,13 @@ APP_STORAGE_BUCKET=interview
 
 # JWT 密钥（生产环境务必修改）
 APP_JWT_SECRET=change-me-to-a-long-random-string
+
+# 邮箱验证（可选：不配则注册自动通过；密码填邮箱的「授权码」）
+MAIL_HOST=
+MAIL_PORT=587
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_FROM=面霸 <你的发件邮箱>
 ```
 
 ### 3. 启动后端
@@ -164,15 +176,53 @@ npm install
 npm run dev         # http://localhost:5173，/api 已代理到 8080
 ```
 
-### 5. 桌面端（可选）
+### 5. 账号（注册 / 登录）
+
+注册采用 **邮箱 + 密码**（密码 BCrypt 存储）。若配置了 `MAIL_HOST` / `MAIL_FROM`，注册后会给邮箱发 6 位验证码，应用内输码完成验证；**未配置 SMTP 时注册自动通过**（本地 / 演示）。
+
+### 6. 桌面端（可选）
+
+本地模式（自己跑后端）：
 
 ```bash
 cd interview-desktop
 npm install
-npm start
+npm start          # 自动拉起本地 Spring Boot，等待就绪后加载界面
 ```
 
-> **注意**：桌面端的 `sync-spa` 脚本会构建 `../frontend`（前端目录）并把产物复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
+云端模式（直连你的后端服务器，打包给别人下载）：
+
+```bash
+cd interview-desktop
+MIANBA_SERVER=https://你的服务器 npm run dist:cloud    # macOS → dist-electron/*.dmg
+MIANBA_SERVER=https://你的服务器 npm run dist:win      # Windows → dist-electron/*.exe
+```
+
+云端构建会把服务器地址烘焙进应用：**启动时不再拉起本地后端，界面直连你的服务器**。Windows 包建议在 Windows 或 GitHub Actions CI 上构建（mac 交叉构建 nsis 依赖 wine）。
+
+> **注意**：`sync-spa` / 云端构建都会构建 `../frontend`（前端目录）并复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
+
+### 7. 云端部署（后端）
+
+桌面端「云端模式」要连上的服务器，后端这样跑：
+
+**方式 A · Docker（推荐，一条命令）**
+
+```bash
+cp .env.example .env     # 填 API_KEY / APP_JWT_SECRET / MAIL_* 等
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+自带 Postgres + Redis + 后端镜像。**上线前务必改 `POSTGRES_PASSWORD` 和 `APP_JWT_SECRET`**。核心学习功能只用 Postgres；MinIO 可选（简历上传用，不配则上传功能不可用、核心不受影响）。
+
+**方式 B · 裸 jar**
+
+1. **构建可执行 jar**：`./gradlew :app:bootJar`，产物在 `app/build/libs/`。
+2. **服务器上准备**：PostgreSQL（必需）；Redis / MinIO 可选（见上文，核心功能不依赖）。
+3. **启动**：把 `.env` 里的环境变量传进去后 `java -jar app/build/libs/app-0.0.1-SNAPSHOT.jar`。
+
+**公网**：用 Nginx / Caddy 反代 8080 并配 HTTPS。桌面端 SPA 从 `file://` 请求，跨域已放行（CORS `*`）。
+5. **打包分发**：`MIANBA_SERVER=https://你的域名 npm run dist:cloud`，把 `dist-electron/*.dmg` / `*.exe` 发给别人。
 
 ## 🏗️ 架构设计
 

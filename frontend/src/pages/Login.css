@@ -51,6 +51,19 @@
   margin: var(--s-2) 0 var(--s-5);
   font-size: var(--fs-sm);
 }
+.login-switch {
+  margin-top: var(--s-5);
+  text-align: center;
+  font-size: var(--fs-sm);
+}
+.login-switch button {
+  color: var(--ink-faint);
+  transition: color 0.3s var(--ease-out);
+}
+.login-switch button:hover {
+  color: var(--cinnabar-deep);
+  text-decoration: underline;
+}
 .field {
   display: block;
   margin-bottom: var(--s-4);

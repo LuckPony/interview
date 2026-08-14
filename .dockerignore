@@ -1,0 +1,15 @@
+# 构建产物 / 缓存
+**/build
+.gradle
+# 本地 / 无关目录
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+*.log
+.env
+.env.*
+frontend
+interview-desktop
+docs

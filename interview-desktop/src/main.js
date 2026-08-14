@@ -1,11 +1,12 @@
 // 桌面壳主进程：拉起本地 Spring Boot 后端 → 探活闸门 → 加载 React SPA → 退出清理。
 // 仅做「启动器 + 本地 fs 桥」，不打包 JVM / Docker（见 README 的诚实说明）。
 
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 // 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
 app.commandLine.appendSwitch('no-proxy-server');
@@ -72,6 +73,21 @@ const SPLASH_HTML = `<!doctype html>
 </body>
 </html>`;
 
+// —— 云/本地双模式 ——
+// 打包时写入 config.json（见 sync-spa:cloud 脚本）。serverUrl 非空且非 localhost → 云模式：
+// 不拉本地后端，直接加载 SPA（VITE_API_BASE 已在构建时烘焙为服务器地址）。
+function loadConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'config.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+function isCloud(cfg) {
+  const url = (cfg.serverUrl || '').trim();
+  return url && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url);
+}
+
 function spawnBackend() {
   // detached + 进程组，退出时才能连 JVM 一起杀掉（光 kill 直接子进程杀不掉 gradle→JVM）
   // 后端日志（含异常堆栈）重定向到 backend.log，否则 stdio:'ignore' 会把 500 堆栈吞掉，难以排查
@@ -124,6 +140,37 @@ function waitForBackend(timeoutMs) {
   });
 }
 
+// —— 自动更新：仅「云模式 + 打包版」启用 ——
+// 更新源在构建时由 electron-builder.yml 的 publish.url 写入 app-update.yml（electron-updater 自动读取）。
+// Windows：NSIS 安装包可直接自动更新（未签名也能跑，首次安装会有 SmartScreen 提示）。
+// macOS：自动更新需要开发者签名（Apple Developer 证书，$99/年）；未签名时本段自动跳过，只能手动重新下载。
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', (info) => {
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: '发现新版本',
+        message: `新版本 v${info.version} 已下载完成`,
+        detail: '重启应用即可完成更新。',
+        buttons: ['立即重启', '稍后再说'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+  });
+
+  // 静默检查：无更新 / 网络失败都只是日志，不打扰用户
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 8000); // 等窗口起来再查，避免拖慢首屏
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -137,23 +184,63 @@ function createWindow() {
     },
   });
 
-  // 先给个加载页，后端就绪后再换 SPA
-  // 注意：data: URL 必须声明 charset=utf-8，否则 Chromium 默认按 Latin-1 解码中文会乱码
-  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML));
-
   const spaPath = path.join(app.getAppPath(), 'app-dist', 'index.html');
-  waitForBackend(HEALTH_TIMEOUT_MS)
-    .then(() => {
-      if (fs.existsSync(spaPath)) win.loadFile(spaPath);
-      else win.loadURL('http://localhost:5173'); // 没构建 SPA 时回退 dev server
-    })
-    .catch((e) => {
-      dialog.showErrorBox('启动失败', e.message);
-      app.quit();
-    });
+  const loadSpa = () => {
+    if (fs.existsSync(spaPath)) win.loadFile(spaPath);
+    else win.loadURL('http://localhost:5173'); // 没构建 SPA 时回退 dev server
+  };
+
+  const cfg = loadConfig();
+  if (isCloud(cfg)) {
+    // 云模式：不拉本地后端、不显示启动封面，直接加载 SPA（API 直连云端）
+    loadSpa();
+    setupAutoUpdate();
+  } else {
+    // 本地模式：先显示启动封面，等本地后端就绪后再换 SPA
+    // 注意：data: URL 必须声明 charset=utf-8，否则 Chromium 默认按 Latin-1 解码中文会乱码
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML));
+    waitForBackend(HEALTH_TIMEOUT_MS)
+      .then(loadSpa)
+      .catch((e) => {
+        dialog.showErrorBox('启动失败', e.message);
+        app.quit();
+      });
+  }
 
   return win;
 }
+
+// —— 本地 LLM key 桥：用户的 AI key 只存本机（Electron userData），不落服务器 ——
+// 渲染进程每次请求时读出并带 X-LLM-Key 头，后端「只用不存」。
+// 系统支持（macOS Keychain / Windows DPAPI）时用 safeStorage 加密落盘，否则明文。
+const LLM_KEY_FILE = () => path.join(app.getPath('userData'), 'llm-key.json');
+function readLlmKey() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(LLM_KEY_FILE(), 'utf8'));
+    if (!raw.key) return '';
+    if (raw.enc && safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(Buffer.from(raw.key, 'base64'));
+    }
+    return raw.key;
+  } catch {
+    return '';
+  }
+}
+function writeLlmKey(key) {
+  const k = key || '';
+  try {
+    if (k && safeStorage.isEncryptionAvailable()) {
+      fs.writeFileSync(LLM_KEY_FILE(), JSON.stringify({ enc: true, key: safeStorage.encryptString(k).toString('base64') }));
+    } else {
+      fs.writeFileSync(LLM_KEY_FILE(), JSON.stringify({ enc: false, key: k }));
+    }
+  } catch (e) {
+    console.error('保存 LLM key 失败:', e.message);
+  }
+  return true;
+}
+ipcMain.handle('llm:getKey', () => readLlmKey());
+ipcMain.handle('llm:setKey', (_e, key) => writeLlmKey(key));
 
 // —— 本地 fs 桥：渲染进程调 window.electronAPI.pickFile / pickFolder ——
 ipcMain.handle('dialog:pickFile', async () => {
@@ -170,7 +257,7 @@ ipcMain.handle('dialog:pickFolder', async () => {
 });
 
 app.whenReady().then(() => {
-  spawnBackend();
+  if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
   createWindow();
 
   app.on('activate', () => {

@@ -3,6 +3,8 @@
 export interface LoginResp {
   token: string;
   userId: string;
+  /** 邮箱是否已验证；注册后 false 需先去验证 */
+  verified: boolean;
 }
 
 export interface QuestionView {

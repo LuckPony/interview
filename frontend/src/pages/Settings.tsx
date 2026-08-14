@@ -9,7 +9,11 @@ function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '保存失败';
 }
 
-/** 设置页：配置 AI 模型 provider / base-url / api-key / model / temperature。 */
+/** 是否运行在桌面端（Electron 提供了本机 key 桥）。 */
+const isDesktop = typeof window !== 'undefined' && !!window.electronAPI?.getLlmKey;
+
+/** 设置页：配置 AI 模型 provider / base-url / api-key / model / temperature。
+ *  桌面端：key 只存在本机（不传服务器）；Web 端：key 按登录用户保存到服务器（每人一份，互不可见）。 */
 export function Settings() {
   const [cfg, setCfg] = useState<AiSettingsView | null>(null);
   const [provider, setProvider] = useState('');
@@ -39,14 +43,27 @@ export function Settings() {
     setErr('');
     setSaved(false);
     try {
-      // apiKey 留空 = 沿用当前已存的 key（后端处理）
-      await aiSettings.update({
-        provider: provider.trim(),
-        baseUrl: baseUrl.trim(),
-        model: model.trim(),
-        apiKey: apiKey.trim(),
-        temperature: Number(temperature) || 0.7,
-      });
+      const trimmed = apiKey.trim();
+      if (isDesktop && trimmed) {
+        // 桌面端：key 只存本机；模型设置同步到服务器（key 留空 = 服务器不存/不改 key）
+        await window.electronAPI!.setLlmKey!(trimmed);
+        await aiSettings.update({
+          provider: provider.trim(),
+          baseUrl: baseUrl.trim(),
+          model: model.trim(),
+          apiKey: '',
+          temperature: Number(temperature) || 0.7,
+        });
+      } else {
+        // Web 端 / 桌面端留空：key 存到当前账号（服务器按用户隔离）
+        await aiSettings.update({
+          provider: provider.trim(),
+          baseUrl: baseUrl.trim(),
+          model: model.trim(),
+          apiKey: trimmed,
+          temperature: Number(temperature) || 0.7,
+        });
+      }
       setSaved(true);
       setApiKey('');
       // 刷新掩码
@@ -63,7 +80,10 @@ export function Settings() {
       <header className="page-head">
         <span className="eyebrow">设置 · SETTINGS</span>
         <h1>模型设置</h1>
-        <p>配置你要用的 AI 模型与密钥。支持任何 OpenAI 兼容接口（DeepSeek / 阿里 DashScope / Kimi / 自建等）。改完立即生效，无需重启。</p>
+        <p>
+          配置你要用的 AI 模型与密钥。支持任何 OpenAI 兼容接口（DeepSeek / 阿里 DashScope / Kimi / 自建等）。改完立即生效，无需重启。
+          {isDesktop ? ' 当前为桌面端：API Key 仅保存在本机，不会上传服务器。' : ' 当前为 Web 端：API Key 将保存到你的账号下（服务器按用户隔离，不共享默认 key）。'}
+        </p>
       </header>
 
       {err && <div className="banner info">{err}</div>}

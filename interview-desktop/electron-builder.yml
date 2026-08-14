@@ -1,14 +1,25 @@
-appId: com.yan.interview.desktop
-productName: Interview 备考
+appId: com.mianba.desktop
+productName: 面霸
 directories:
   output: dist-electron
   buildResources: build
 files:
   - src/**/*
   - package.json
+  - config.json
   - app-dist/**/*
+# 自动更新源：electron-updater 启动时从这里拉 latest.yml 检查新版本。
+# 上线前把 url 改成你的更新服务器目录（放 exe/dmg/zip + latest*.yml），
+# 或用 GitHub Releases：provider 换成 github、owner: LuckPony、repo: interview（仓库需公开）
+publish:
+  provider: generic
+  url: https://your-domain.com/updates/
 mac:
   category: public.app-category.education
   target:
     - dmg
+    - zip
+win:
+  target:
+    - nsis
     - zip

@@ -53,9 +53,9 @@ public class LlmRawClient {
         log.info("LlmRawClient 就绪: provider={}, model={}", cfg.provider(), cfg.model());
     }
 
-    /** 当前用户配置（设置页可改，改完立即生效） */
+    /** 当前生效配置：桌面端请求头 X-LLM-Key（只用不存）> 当前登录用户个人配置 > 启动配置（.env）。 */
     private AiConfig cfg() {
-        return settings.currentProvider();
+        return settings.currentProviderForRequest();
     }
 
     private boolean available() {
