@@ -83,7 +83,18 @@ CREATE TABLE IF NOT EXISTS mastery (
     CONSTRAINT uni_mastery_user_concept UNIQUE (user_id, concept_id)
 );
 
--- ============ updated_at 触发器（沿用 V1 的 update_updated_at_column） ============
+-- ============ updated_at 触发器 ============
+-- 注意：V1__init_schema.sql 已被删除（重构），原函数定义内嵌于此，
+-- 保证干净库（无 V1 残留）也能跑通本迁移；CREATE OR REPLACE 幂等，
+-- 即使某环境仍保留 V1 也不冲突。
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER trg_concept_updated_at
     BEFORE UPDATE ON concept FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_question_bank_updated_at
