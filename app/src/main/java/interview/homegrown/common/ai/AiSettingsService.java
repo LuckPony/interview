@@ -15,14 +15,15 @@ import java.util.List;
 /**
  * AI 运行设置：provider / base-url / api-key / model / temperature，<b>按用户隔离</b>。
  *
- * <p>LLM 每次调用实时解析，三层取值优先级（改完立即生效，无需重启）：</p>
+ * <p>LLM 每次调用实时解析，两层取值优先级（改完立即生效，无需重启）：</p>
  * <ol>
  *   <li><b>请求头 X-LLM-Key</b> —— 桌面端「仅本机保存」的 key，随请求带给后端，<b>只用不存</b>；</li>
- *   <li><b>当前登录用户的个人配置</b> —— Web 端保存到 user_ai_setting 表（每人一行，互不可见）；</li>
- *   <li><b>启动配置</b> —— application.yml / .env（本地模式 = 用户自己机器的 key；云端不配则为空）。</li>
+ *   <li><b>当前登录用户的个人配置</b> —— Web 端保存到 user_ai_setting 表（每人一行，互不可见）。</li>
  * </ol>
  *
- * <p>服务端不再使用「全站共享」的默认 key；老 ai_setting 全局表不再参与取值（防止共享 key 复活）。</p>
+ * <p>不再支持「服务器级 / 共享 key」（application.yml 的 providers 不配 key、
+ * 老 ai_setting 全局表已清空且不参与取值）：用户没存 key 时，LLM 调用会明确提示先去设置页填写，
+ * 而不是静默使用任何默认 key。</p>
  */
 @Service
 public class AiSettingsService {
@@ -54,7 +55,8 @@ public class AiSettingsService {
         return base;
     }
 
-    /** 启动配置兜底（application.yml / .env），供无登录上下文的后台任务与老模块使用。 */
+    /** 启动配置兜底：只提供默认 base-url / model 供设置页预填，【key 恒为空】——
+     *  不再支持服务器级/共享 key，无用户配置时必须提示用户自己去填 key。 */
     public AiConfig currentProvider() {
         return startupConfig();
     }
@@ -109,7 +111,7 @@ public class AiSettingsService {
         var cfg = startup.getProviders().get(startup.getDefaultProvider());
         return cfg == null
                 ? new AiConfig(startup.getDefaultProvider(), "", "", "", 0.7)
-                : new AiConfig(startup.getDefaultProvider(), cfg.getBaseUrl(), cfg.getApiKey(),
+                : new AiConfig(startup.getDefaultProvider(), cfg.getBaseUrl(), "",
                         cfg.getModel(), cfg.getTemperature());
     }
 }

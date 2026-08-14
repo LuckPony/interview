@@ -129,6 +129,11 @@ public class GradingService {
      * 与 {@link #grade} 的区别：turns 已由 /chat 端点逐轮创建，这里不新建 turn，
      * 而是把所有用户回答拼接成 combined answer 交给 grader，然后把判分结果写回 round=0 的 turn。
      *
+     * <p><b>评分基准只取「得到答案之前」的回答</b>：run.answerRevealedRound 记录首次
+     * 索要答案/提示的轮次（V14 迁移 + chat 端点写入），该轮之后的回答可能是照着答案复述，
+     * 不计入量化评分；从未索要则拼接全部用户回答。若用户一上来就索要答案（没有揭示前的作答），
+     * 回退到整轮对话判分，让判分如实给出低分，而非报错。
+     *
      * @param userId 当前用户
      * @param runId  作答 ID
      * @return 判分结果
@@ -152,13 +157,24 @@ public class GradingService {
             throw new ResponseStatusException(BAD_REQUEST, "尚无对话记录，无法评分");
         }
 
+        // —— 评分基准：只取「得到答案之前」的回答 ——
+        Integer revealRound = run.getAnswerRevealedRound();
+        List<DrillTurn> gradeTurns = turns;
+        if (revealRound != null) {
+            List<DrillTurn> preReveal = turns.stream()
+                    .filter(t -> t.getRound() < revealRound)
+                    .toList();
+            boolean preRevealHasAnswer = preReveal.stream()
+                    .anyMatch(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank());
+            if (preRevealHasAnswer) gradeTurns = preReveal;
+        }
+
         // 把所有用户回答拼接成 combined answer 供 grader 判分。
         // 聊天不限轮数，若整段对话过长，判分 LLM 会撑爆上下文 → 500；
         // 这里保留最近 MAX 字符（近期内容对判分最相关），避免因长对话而崩溃。
         int MAX_COMBINED = 8000;
         StringBuilder combined = new StringBuilder();
-        for (int i = 0; i < turns.size(); i++) {
-            DrillTurn t = turns.get(i);
+        for (DrillTurn t : gradeTurns) {
             if (t.getRawAnswer() != null && !t.getRawAnswer().isBlank()) {
                 if (!combined.isEmpty()) combined.append("\n\n");
                 combined.append(t.getRawAnswer());

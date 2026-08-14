@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft, Check, Trash2 } from 'lucide-react';
 import { drill } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
@@ -25,6 +25,7 @@ export function ReviewPage() {
   const [nextAction, setNextAction] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<NoteView | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const id = Number(runId);
@@ -39,6 +40,23 @@ export function ReviewPage() {
       .catch((e) => setErr(msg(e)))
       .finally(() => setLoading(false));
   }, [runId]);
+
+  /** 删除这条作答记录（级联删除判分/复盘/笔记），删除前二次确认 */
+  const del = async () => {
+    if (!review) return;
+    if (!window.confirm(
+      '确定删除这条作答记录？\n\n它的判分、AI 复盘与笔记都会被删除，且不可恢复。',
+    )) return;
+    setDeleting(true);
+    setErr('');
+    try {
+      await drill.deleteRun(review.runId);
+      navigate('/notes');
+    } catch (e) {
+      setErr(msg(e));
+      setDeleting(false);
+    }
+  };
 
   const submit = async () => {
     if (!review) return;
@@ -167,6 +185,16 @@ export function ReviewPage() {
               </Button>
             </div>
           </Card>
+
+          {/* 删除这条记录：清掉判分/复盘/笔记，不可恢复 */}
+          <div className="review-delete">
+            <span className="review-delete-hint">
+              不要这条记录了？删除后判分、AI 复盘与笔记一并清除，且不可恢复。
+            </span>
+            <Button variant="danger" onClick={del} disabled={deleting}>
+              <Trash2 size={14} strokeWidth={1.8} /> {deleting ? '删除中…' : '删除这条记录'}
+            </Button>
+          </div>
         </div>
       )}
     </div>

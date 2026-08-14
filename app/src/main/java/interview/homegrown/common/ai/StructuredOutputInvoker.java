@@ -51,7 +51,21 @@ public class StructuredOutputInvoker {
     public <T> T invoke(String systemPrompt, String userPrompt, Class<T> outputClass, String provider){
 
         var converter = new BeanOutputConverter<>(outputClass);
-        ChatClient client = registry.getChatClientOrDefault(provider);
+
+        // 注册中心只持有服务器级 key（本地模式 = .env 的 API_KEY）。
+        // 云端后端故意不配服务器级 key（每个用户用自己的），registry 为空是常态——
+        // 此时不能直接抛错，改走 LlmRawClient（当前用户/请求头 X-LLM-Key 里的 key）。
+        ChatClient client = null;
+        try {
+            client = registry.getChatClientOrDefault(provider);
+        } catch (IllegalStateException e) {
+            log.warn("注册中心无可用 Provider（云端无服务器级 key），改用用户配置的直连客户端: {}", e.getMessage());
+        }
+
+        // 两条通道都不可用（用户也未配置 key）时提前给明确报错，避免走到「LLM 返回为空」误导排查。
+        if (client == null && (rawClient == null || !rawClient.availableForCurrentRequest())) {
+            throw new IllegalStateException("尚未配置 API Key，请到「设置」页填写后重试");
+        }
 
         int maxAttempts = config.getStructured().getMaxAttempts();
         boolean includeError = config.getStructured().isIncludeLastError();
@@ -117,6 +131,8 @@ public class StructuredOutputInvoker {
             String r = rawClient.complete(system, user);
             if (r != null && !r.isBlank()) return r;
         }
+        // registry 为空（云端）+ rawClient 不可用/失败时：不再走 Spring AI，直接判空由上层重试/抛错
+        if (client == null) return null;
         try {
             return client.prompt().system(system).user(user).call().content();
         } catch (Exception e) {

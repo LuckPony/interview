@@ -12,4 +12,7 @@ public interface GradeResultRepository extends JpaRepository<GradeResult, Long> 
 
     // 写笔记时要拿到这次的判分留痕（分数决定 gapFound 是否强制填）
     Optional<GradeResult> findByRunId(Long runId);
+
+    /** 删除某 run 的判分结果（记录清理时级联删除） */
+    void deleteByRunId(Long runId);
 }

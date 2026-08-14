@@ -193,7 +193,7 @@ export function PlansPage() {
                     <span>学习资料：{activePlan.corpusName}</span>
                   </div>
                 )}
-                {/* 操作按钮：开始练习 / 复习 / 编辑 */}
+                {/* 操作按钮：开始练习 / 复习 / 编辑 / 删除方向 */}
                 <div className="plan-summary-actions">
                   <Button variant="primary" onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'continue' }, replace: true })}>
                     <Play size={15} strokeWidth={1.8} /> 开始练习
@@ -209,6 +209,9 @@ export function PlansPage() {
                   </Button>
                   <Button variant="ghost" onClick={() => (editing ? setEditing(false) : enterEdit())}>
                     {editing ? <><X size={15} strokeWidth={1.8} /> 完成</> : <><Pencil size={15} strokeWidth={1.8} /> 编辑</>}
+                  </Button>
+                  <Button variant="danger" onClick={deletePlan} disabled={editBusy}>
+                    <Trash2 size={15} strokeWidth={1.8} /> 删除方向
                   </Button>
                 </div>
               </Card>
@@ -234,9 +237,6 @@ export function PlansPage() {
                     <div className="edit-actions">
                       <Button onClick={savePlan} disabled={editBusy}>
                         <Save size={15} strokeWidth={1.8} /> 保存方向
-                      </Button>
-                      <Button variant="danger" onClick={deletePlan} disabled={editBusy}>
-                        <Trash2 size={15} strokeWidth={1.8} /> 删除方向
                       </Button>
                     </div>
                   </Card>

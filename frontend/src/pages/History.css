@@ -9,22 +9,62 @@
 .hist-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s-4);
-  text-align: left;
+  gap: var(--s-2);
   width: 100%;
-  padding: var(--s-4) var(--s-5);
   background: var(--paper-2);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out),
-    transform var(--dur) var(--ease-out);
+  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
 }
 .hist-row:hover {
   border-color: var(--cinnabar);
   background: var(--paper);
+}
+
+/* 打开对话线的主体区（flex:1 铺满，去掉按钮默认样式） */
+.hist-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  text-align: left;
+  padding: var(--s-4) var(--s-5);
+  background: transparent;
+  border: none;
+  border-radius: inherit;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: transform var(--dur) var(--ease-out);
+}
+.hist-open:hover {
   transform: translateX(2px);
+}
+
+/* 删除按钮：悬浮在行右侧，hover 变红 */
+.hist-delete {
+  flex-shrink: 0;
+  margin-right: var(--s-3);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.hist-delete:hover:not(:disabled) {
+  color: var(--bad);
+  background: var(--bad-wash);
+}
+.hist-delete:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .hist-main {

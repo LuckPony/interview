@@ -128,7 +128,7 @@ public class LlmProviderRegistry {
             client = clients.get(config.getDefaultProvider());
         }
         if (client==null){
-            throw new IllegalStateException("没有可用的 AI Provider，请检查 API Key 配置");
+            throw new IllegalStateException("没有可用的 AI Provider：请先在「设置」页配置你的 API Key");
         }
         return client;
 

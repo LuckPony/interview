@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Target, PenLine } from 'lucide-react';
+import { AlertTriangle, BookOpen, Target, PenLine, Trash2 } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { useActivePlan } from '../lib/useActivePlan';
@@ -41,6 +41,7 @@ export function Notes() {
   const [debt, setDebt] = useState<DebtView[] | null>(null);
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [err, setErr] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +67,24 @@ export function Notes() {
   const selfTest = (d: DebtView) => {
     if (d.conceptId == null) return;
     navigate('/drill', { state: { conceptId: d.conceptId }, replace: true });
+  };
+
+  /** 删除这条欠账记录（级联删除该 run 的作答/判分/复盘），删除前二次确认 */
+  const del = async (d: DebtView) => {
+    const stemShort = d.stem.length > 36 ? d.stem.slice(0, 36) + '…' : d.stem;
+    if (!window.confirm(
+      `确定删除这条欠账记录？\n\n「${stemShort}」\n\n该题的作答、判分与 AI 复盘数据都会被删除，且不可恢复。`,
+    )) return;
+    setDeletingId(d.runId);
+    setErr('');
+    try {
+      await drill.deleteRun(d.runId);
+      setDebt((prev) => (prev ? prev.filter((x) => x.runId !== d.runId) : prev));
+    } catch (e) {
+      setErr(msg(e));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // 当前学习方向（切换需确认）：复盘按方向过滤
@@ -117,6 +136,15 @@ export function Notes() {
                       </div>
                     )}
                     <div className="debt-card-foot">
+                      <Button
+                        variant="danger"
+                        className="debt-card-del"
+                        onClick={() => del(d)}
+                        disabled={deletingId === d.runId}
+                        title="删除这条欠账记录（含作答/判分/复盘数据）"
+                      >
+                        <Trash2 size={14} strokeWidth={1.8} /> 删除
+                      </Button>
                       <Button variant="ghost" onClick={() => review(d)}>
                         <PenLine size={14} strokeWidth={1.8} /> 复盘
                       </Button>

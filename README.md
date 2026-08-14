@@ -138,7 +138,7 @@ APP_SWAGGER_ENABLED=false
 # 基础设施（与 docker-compose.dev.yml 默认一致，可省略）
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_USER=pony
+POSTGRES_USER=postgres
 POSTGRES_PASSWORD=123456
 POSTGRES_DB=interview
 REDIS_HOST=localhost
