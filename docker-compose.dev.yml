@@ -3,7 +3,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: iv-postgres
     environment:
-      POSTGRES_USER: pony
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: interview
     ports:
