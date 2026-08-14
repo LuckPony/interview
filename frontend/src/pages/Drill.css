@@ -558,6 +558,19 @@
   border-color: var(--cinnabar);
   background: var(--paper);
 }
+/* 今日任务·已完成：置灰展示，不可重复点开 */
+.today-done {
+  cursor: default;
+  opacity: 0.6;
+}
+.today-done:hover {
+  border-color: var(--line);
+  background: var(--paper-2);
+}
+.today-done-icon {
+  color: var(--sage);
+  flex-shrink: 0;
+}
 .today-concept {
   font-size: var(--fs-sm);
   color: var(--ink);
