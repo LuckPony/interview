@@ -20,6 +20,8 @@ import type {
   ConversationView,
   DailyTaskView,
   ReviewView,
+  ConceptValidationResponse,
+  KnowledgePointsView,
 } from './types';
 
 export interface Timing {
@@ -467,6 +469,12 @@ export const studyPlan = {
     }, { onToken, onDraft, onDone: () => onDone(), onError });
   },
 
+  validateCandidates: (draft: StudyPlanDraft) =>
+    apiFetch<ConceptValidationResponse>('/study-plan/validate-candidates', {
+      method: 'POST',
+      body: JSON.stringify({ draft }),
+    }),
+
   confirm: (draft: StudyPlanDraft) =>
     apiFetch<PlanView>('/study-plan/confirm', {
       method: 'POST',
@@ -538,8 +546,3 @@ export const corpus = {
   knowledgePoints: (corpusId: number) =>
     apiFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
 };
-
-export interface KnowledgePointsView {
-  indexed: boolean;
-  points: { name: string; chunkCount: number; snippets: string[] }[];
-}

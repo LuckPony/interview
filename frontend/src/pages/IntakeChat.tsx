@@ -4,7 +4,7 @@ import { Send, Check, Upload, X } from 'lucide-react';
 import { Button, Card, Tag } from '../components/ui';
 import { studyPlan, corpus, type TutorStream } from '../api/drill';
 import { ApiError } from '../api/client';
-import type { PlanChatMessage, StudyPlanDraft } from '../api/types';
+import type { PlanChatMessage, StudyPlanDraft, ConceptValidationResponse } from '../api/types';
 
 /** 新建学习方向：无状态多轮对话，LLM 收敛出 draft 后确认落库。 */
 export function IntakeChat() {
@@ -14,6 +14,8 @@ export function IntakeChat() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [draft, setDraft] = useState<StudyPlanDraft | null>(null);
+  const [validation, setValidation] = useState<ConceptValidationResponse | null>(null);
+  const [validating, setValidating] = useState(false);
 
   // 流式回复流引用：卸载时取消
   const streamRef = useRef<TutorStream | null>(null);
@@ -137,6 +139,19 @@ export function IntakeChat() {
     if (p) await ingestPath(p);
   };
 
+  const validateDraft = async (nextDraft: StudyPlanDraft | null) => {
+    setDraft(nextDraft);
+    setValidation(null);
+    if (!nextDraft || nextDraft.points.length === 0) return;
+    setValidating(true);
+    try {
+      setValidation(await studyPlan.validateCandidates(nextDraft));
+    } catch {
+      // 核验失败不阻断用户编辑和确认，前端显示为未完成核验
+    } finally {
+      setValidating(false);
+    }
+  };
   const send = () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -156,7 +171,7 @@ export function IntakeChat() {
         // 更新最后一个（占位）气泡为已累积的回复
         setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }]);
       },
-      (draft) => setDraft(draft),
+      (draft) => { void validateDraft(draft); },
       () => {
         streamRef.current = null;
         setBusy(false);
@@ -187,6 +202,7 @@ export function IntakeChat() {
 
   const keepTalking = () => {
     setDraft(null);
+    setValidation(null);
     setMessages([
       ...messages,
       { role: 'assistant', content: '好，那我们继续聊，你还想补充什么？' },
@@ -320,13 +336,24 @@ export function IntakeChat() {
             <h3>{draft.title ?? '未命名方向'}</h3>
             {draft.goal && <p className="draft-goal">{draft.goal}</p>}
             <ul className="draft-points">
-              {draft.points.map((p, i) => (
+              {draft.points.map((p, i) => {
+                const check = validation?.points.find((v) => v.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+                return (
                 <li key={i}>
                   <Tag>L{p.layer}</Tag> {p.name}
+                  {check?.status === 'FOUND' && <span className="validation-ok">✓ 已检索</span>}
+                  {check?.status === 'NOT_FOUND' && <span className="validation-warn">⚠ 未找到</span>}
+                  {check?.status === 'FAILED' && <span className="validation-warn">⚠ 检索失败</span>}
                   {p.note ? ` · ${p.note}` : ''}
+                  {check?.evidence && <small className="validation-evidence">{check.evidence}</small>}
                 </li>
-              ))}
+                );
+              })}
             </ul>
+            {validating && <p className="upload-hint">正在逐个搜索知识点，搜索结果仅供核对，未找到不代表一定是错误……</p>}
+            {!validating && validation && validation.points.some((v) => v.status !== 'FOUND') && (
+              <p className="upload-hint">部分知识点暂未找到公开结果，可能是内部术语或名称需要调整，请确认后再创建。</p>
+            )}
             <div className="draft-actions">
               <Button onClick={confirm} disabled={busy}>
                 <Check size={16} strokeWidth={1.6} /> 确认，开始学

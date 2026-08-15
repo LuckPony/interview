@@ -63,8 +63,13 @@ public class StudyPlanService {
             - 当你判断信息已经足够形成规划时，除了 reply，还要在 draft 字段填上结构化规划：
               * title：方向名（简短，如「前端」「微服务」「MySQL 调优」）
               * goal：一句话学习目标
-              * points：4-8 个知识点，每个含 name（知识点名）、layer（1-5 的真实认知层，不要虚高）、
-                note（一句话提示，可空）
+              * points：尽可能细化为 20-60 个原子知识点，按层分布；每层尽量 4-12 个，
+                不要只给每层 1-2 个大章节。每个点必须是一个能在 10-30 分钟内讲解、举例并单独出题验证的
+                可学习目标，每个含 name（具体知识点名）、layer（1-5 的真实认知层，不要虚高）、
+                note（一句话提示，可空）。
+              * 禁止把「Java 并发」「数据库优化」「微服务架构」这类方向或完整章节直接当成一个点，
+                应拆成可观察的定义、机制、用法、边界或常见问题；同义点去重，避免为了凑数量重复。
+            - 如果用户目标很窄，仍然要在目标范围内细化，不要为了凑数量引入无关主题。
             - 如果信息还不够，draft 必须填 null，继续用 reply 追问。
             - title 必填：必须是一个简短的方向名（如「Go 后端」），不得为 null。
             - 只做规划，不要出具体面试题、不要给答案。严格遵循格式说明的 JSON。""";
@@ -102,6 +107,38 @@ public class StudyPlanService {
         this.webEnrichmentService = webEnrichmentService;
     }
 
+    /** 计划的粒度提示：只做保护性校验，不把用户窄目标强行扩展到无关领域。 */
+    private static final int MIN_PLAN_POINTS = 8;
+    private static final int MAX_PLAN_POINTS = 60;
+
+    /** 对 AI 草稿做轻量校验；过少时不静默接受，避免生成只有几个章节名的笼统计划。 */
+    private StudyPlanDraft normalizeDraft(StudyPlanDraft draft) {
+        if (draft == null || draft.points() == null) return draft;
+        List<PlanPoint> points = draft.points().stream()
+                .filter(p -> p != null && p.name() != null && !p.name().isBlank())
+                .collect(Collectors.toMap(p -> p.name().trim().toLowerCase(), p ->
+                        new PlanPoint(p.name().trim(), clampLayer(p.layer()), p.note()),
+                        (a, b) -> a, java.util.LinkedHashMap::new))
+                .values().stream().limit(MAX_PLAN_POINTS).toList();
+        if (points.size() < MIN_PLAN_POINTS) {
+            log.warn("AI 规划知识点过少：{} 个；建议继续细化", points.size());
+        }
+        return new StudyPlanDraft(draft.title(), draft.goal(), points, draft.corpusId());
+    }
+
+    /** 供 Controller 在 draft 事件前调用，保持同步 intake 与流式 intake 行为一致。 */
+    public StudyPlanDraft normalizeDraftForView(StudyPlanDraft draft) {
+        return normalizeDraft(draft);
+    }
+
+    /** 轻量校验：过粗的草稿不阻塞用户确认，但给出明确提示。 */
+    public String draftHint(StudyPlanDraft draft) {
+        if (draft == null || draft.points() == null) return null;
+        if (draft.points().size() < MIN_PLAN_POINTS) {
+            return "当前规划只有 " + draft.points().size() + " 个知识点，可能过于笼统；建议继续对话，让 AI 把每层拆细。";
+        }
+        return null;
+    }
     /** 无状态 intake：把前端发来的完整对话拼成 user prompt；若绑定了资料，把资料文本注入作为规划依据。 */
     public IntakeResponse intake(List<ChatMessage> messages, Long corpusId) {
         String history = messages.stream()
@@ -110,7 +147,8 @@ public class StudyPlanService {
         String ref = corpusService.referenceWithName(corpusId);
         String userPrompt = (ref == null) ? history
                 : history + "\n\n【参考资料】用户上传了如下资料，请基于它的真实内容来规划学习方向，不要脱离资料空谈：\n" + ref;
-        return invoker.invoke(SYSTEM_PROMPT, userPrompt, IntakeResponse.class);
+        IntakeResponse ir = invoker.invoke(SYSTEM_PROMPT, userPrompt, IntakeResponse.class);
+        return ir == null ? null : new IntakeResponse(ir.reply(), normalizeDraft(ir.draft()));
     }
 
     /**
@@ -141,7 +179,7 @@ public class StudyPlanService {
     /** 基于「完整对话（含刚流式的回复）」提取草稿；信息不够则 draft 为 null。 */
     public StudyPlanDraft extractDraft(List<ChatMessage> messages, Long corpusId) {
         IntakeResponse ir = intake(messages, corpusId);
-        return ir == null ? null : ir.draft();
+        return ir == null ? null : normalizeDraft(ir.draft());
     }
 
     /** 确认落库：clamp layer∈[1,5]，同用户同名方向幂等（避免双击重复建），绑定资料。 */

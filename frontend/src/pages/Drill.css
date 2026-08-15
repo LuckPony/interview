@@ -255,11 +255,28 @@
 }
 .draft-points li {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
   font-size: var(--fs-sm);
   color: var(--ink);
 }
+.validation-ok {
+  color: var(--green, #2f7d57);
+  font-size: var(--fs-xs);
+}
+.validation-warn {
+  color: var(--cinnabar);
+  font-size: var(--fs-xs);
+}
+.validation-evidence {
+  flex-basis: 100%;
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  margin-left: var(--s-4);
+}
+
 .draft-actions {
   display: flex;
   gap: var(--s-3);
