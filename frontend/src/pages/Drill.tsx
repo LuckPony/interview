@@ -26,6 +26,7 @@ interface ChatMsg {
   streaming?: boolean;
   type: 'stem' | 'chat';
   reasoning?: string;
+  revealed?: boolean; // 该 AI 回复是「参考答案」（答案已揭示，评分只取揭示之前的回答）
 }
 
 // —— 一次练习会话的上下文：决定「下一题」去哪抽 ——
@@ -334,9 +335,13 @@ export function Drill() {
     startQuestion(() => drill.startTask(taskId), { kind: 'task' });
 
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
-  const sendAnswer = () => {
-    if (!meta || !input.trim() || phase !== 'chatting') return;
-    const userText = input.trim();
+  // reveal=true 为「看答案」：不需要输入内容，直接向 AI 索要完整答案；服务端会记录
+  // 答案揭示边界，之后的回答不再计入评分。
+  const sendAnswer = (opts?: { reveal?: boolean }) => {
+    if (!meta || phase !== 'chatting') return;
+    const reveal = opts?.reveal ?? false;
+    const userText = reveal ? '我想直接看答案' : input.trim();
+    if (!reveal && !userText) return;
     setInput('');
 
     const userMsgId = nextMsgId();
@@ -352,6 +357,7 @@ export function Drill() {
     sseRef.current = chatStream(
       meta.runId,
       userText,
+      reveal,
       (token) => {
         setMessages((prev) => prev.map((mm) =>
           mm.id === aiMsgId ? { ...mm, text: mm.text + token } : mm,
@@ -380,6 +386,13 @@ export function Drill() {
         } else {
           setErr(message || '回复失败');
         }
+      },
+      () => {
+        // event:reveal —— 服务端已揭示答案：标记该 AI 回复为「参考答案」，
+        // 让用户知道从此处开始是参考答案、此后的回答不再计入评分。
+        setMessages((prev) => prev.map((mm) =>
+          mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
+        ));
       },
     );
   };
@@ -683,7 +696,7 @@ export function Drill() {
                     ? '题目生成中…'
                     : resumedGraded
                       ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。'
-                      : '写下你的回答，可以多轮对话。完成后点「结束并评分」。'
+                      : '先回答主问题；AI 确认你理解后，会针对薄弱点逐条追问（最多 4 个小问）。想直接看答案可点「看答案」。'
                 }
                 value={input}
                 disabled={phase === 'generating'}
@@ -719,7 +732,16 @@ export function Drill() {
                       结束并评分
                     </Button>
                   )}
-                  <Button onClick={sendAnswer} disabled={!canSend}>
+                  {phase === 'chatting' && !resumedGraded && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => sendAnswer({ reveal: true })}
+                      title="直接看参考答案（此后的回答不再计入评分）"
+                    >
+                      看答案
+                    </Button>
+                  )}
+                  <Button onClick={() => sendAnswer()} disabled={!canSend}>
                     {phase === 'generating' ? '等待题目' : '发送'}
                   </Button>
                 </div>
@@ -827,8 +849,15 @@ function ChatBubble({
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </>
         ) : m.role === 'ai' ? (
-          // AI 对话回复走 tutor-text 样式；思考过程流式展示（默认展开，markdown），正文保持干净
-          <div className="tutor-text">
+          // AI 对话回复走 tutor-text 样式；思考过程流式展示（默认展开，markdown），正文保持干净。
+          // revealed=true（答案已揭示）时在气泡顶部渲染「参考答案」分隔线。
+          <>
+            {m.revealed && (
+              <div className="chat-reveal-divider">
+                <span>参考答案 · 此后的回答不再计入评分</span>
+              </div>
+            )}
+            <div className="tutor-text">
             {m.reasoning && (
               <details className="reasoning-panel" open>
                 <summary>AI 思考过程</summary>
@@ -838,6 +867,7 @@ function ChatBubble({
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </div>
+          </>
         ) : (
           // 用户自己的消息：原样展示、保留换行，不做 markdown 解析
           // （避免被套上 tutor-text 的"讲解 ·"前缀与 markdown 处理，产生多余空行/格式错乱）

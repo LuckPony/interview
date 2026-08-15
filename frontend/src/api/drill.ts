@@ -44,6 +44,7 @@ interface SseHandlers {
   onResult?: (v: RehearsalView) => void;
   onDraft?: (draft: StudyPlanDraft | null) => void;
   onReasoning?: (text: string) => void;
+  onReveal?: () => void; // event: reveal —— 答案已揭示（评分只取揭示之前的回答）
   onToken: (token: string) => void;
   onDone: (fullText?: string) => void;
   onDoneView?: (v: QuestionView) => void; // 流式出题：done 事件带 QuestionView
@@ -111,6 +112,8 @@ function openSse(url: string, init: RequestInit, handlers: SseHandlers): TutorSt
               if (payload) handlers.onReasoning(payload);
             }
           }
+        } else if (currentEvent === 'reveal') {
+          if (handlers.onReveal) handlers.onReveal();
         } else if (currentEvent === 'error') {
           if (handlers.onError) {
             try {
@@ -281,14 +284,20 @@ export function startStreamSse(
  * 对话式作答 SSE 流（POST /{runId}/chat，SSE）：
  * 用户发送答案后，显示「思考中…」→ 逐 token 推 AI 回复 → event:done。
  * 不判分——评分延迟到用户点「结束并评分」时由 finish 端点一次性完成。
+ *
+ * @param reveal 用户显式点击「看答案」→ true：服务端记录答案揭示边界并让 AI 给出完整答案，
+ *               评分只取揭示之前的用户回答；同时前端收到 event:reveal 在聊天线程渲染分隔线。
+ * @param onReveal 答案已揭示回调（event:reveal），用于标记该轮 AI 回复为「参考答案」
  */
 export function chatStream(
   runId: number,
   rawAnswer: string,
+  reveal: boolean,
   onToken: (token: string) => void,
   onReasoning: (text: string) => void,
   onDone: () => void,
   onError: (status?: number, message?: string) => void,
+  onReveal?: () => void,
 ): TutorStream {
   const token = getToken();
   const url = `${API_BASE_SSE}/api/drill/${runId}/chat`;
@@ -298,8 +307,8 @@ export function chatStream(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ rawAnswer }),
-  }, { onToken, onReasoning, onDone: () => onDone(), onError });
+    body: JSON.stringify({ rawAnswer, reveal }),
+  }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal });
 }
 
 export const drill = {
@@ -404,6 +413,14 @@ export const drill = {
   conversation: (questionId: number) =>
     apiFetch<ConversationView>(`/drill/history/conversation/${questionId}`),
 
+  // 删除一道题的整条问答记录（级联：追问场/判分/复盘/笔记），删除前需二次确认
+  deleteConversation: (questionId: number) =>
+    apiFetch<{ ok: boolean; deleted: number }>(`/drill/history/conversation/${questionId}`, { method: 'DELETE' }),
+
+  // 删除单条作答记录（内化复盘页删除欠账/复盘数据），删除前需二次确认
+  deleteRun: (runId: number) =>
+    apiFetch<{ ok: boolean; deleted: number }>(`/drill/runs/${runId}`, { method: 'DELETE' }),
+
   getRun: (runId: number) => apiFetch<RunDetailView>(`/drill/${runId}`),
 
   // AI 复盘：题目 + 对话总结（欠缺）+ 解题思路 + 记忆口诀（按 runId 缓存）
@@ -483,11 +500,12 @@ export const studyPlan = {
 };
 
 // AI 设置：模型 / api-key / base-url（设置页，改完立即生效）
+// 注意：后端【不回显 key 的任何片段】，只告知是否已配置（hasApiKey）
 export interface AiSettingsView {
   provider: string;
   baseUrl: string;
   model: string;
-  apiKeyMasked: string;
+  hasApiKey: boolean;
   temperature: number;
 }
 export const aiSettings = {

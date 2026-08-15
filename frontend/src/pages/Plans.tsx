@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Play, RefreshCw, Shuffle, CalendarClock } from 'lucide-react';
+import { Play, RefreshCw, Shuffle, CalendarClock, CheckCircle2 } from 'lucide-react';
 import { drill } from '../api/drill';
 import { Button, Card, Tag, Badge } from '../components/ui';
 import { useActivePlan } from '../lib/useActivePlan';
@@ -42,7 +42,10 @@ export function Plans({
 
   // 当前学习方向（在首页切换，这里只跟随）：练习首页也只展示该方向
   const { activeId } = useActivePlan(plans);
-  const todayActive = today?.filter((t) => t.planId === activeId) ?? [];
+  const todayTasks = today?.filter((t) => t.planId === activeId) ?? [];
+  // 待办任务（PENDING/READY）可点；已完成的置灰展示为「已完成」，防止重复练习同一题
+  const todayActive = todayTasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
+  const todayDone = todayTasks.filter((t) => t.status === 'DONE');
   const planList = plans.filter((p) => p.id === activeId);
   const reviewCount = todayActive.filter((t) => t.kind === 'REVIEW').length;
   const newCount = todayActive.filter((t) => t.kind === 'NEW').length;
@@ -67,7 +70,7 @@ export function Plans({
               {newCount > 0 && <span className="today-kind today-new">新学 {newCount}</span>}
             </span>
           </div>
-          {todayActive.length === 0 ? (
+          {todayActive.length === 0 && todayDone.length === 0 ? (
             <p className="today-empty">今天这个方向的复习/新学都安排完了，去「继续学习」滚动复习吧。</p>
           ) : (
             <div className="today-list">
@@ -86,6 +89,18 @@ export function Plans({
                   )}
                   <Play size={13} strokeWidth={1.8} className="today-arrow" />
                 </button>
+              ))}
+              {todayDone.map((t) => (
+                <div className="today-item today-done" key={t.id}>
+                  <Badge kind="good">
+                    {t.kind === 'REVIEW' ? '复习' : '新学'}
+                  </Badge>
+                  <span className="today-concept">
+                    {t.conceptName} <em>L{t.layer}</em>
+                  </span>
+                  <span className="today-stem">已完成</span>
+                  <CheckCircle2 size={14} strokeWidth={2} className="today-done-icon" />
+                </div>
               ))}
             </div>
           )}

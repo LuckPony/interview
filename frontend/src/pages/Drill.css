@@ -558,6 +558,19 @@
   border-color: var(--cinnabar);
   background: var(--paper);
 }
+/* 今日任务·已完成：置灰展示，不可重复点开 */
+.today-done {
+  cursor: default;
+  opacity: 0.6;
+}
+.today-done:hover {
+  border-color: var(--line);
+  background: var(--paper-2);
+}
+.today-done-icon {
+  color: var(--sage);
+  flex-shrink: 0;
+}
 .today-concept {
   font-size: var(--fs-sm);
   color: var(--ink);
@@ -669,6 +682,27 @@
 }
 .chat-page .chat-input-foot {
   margin-top: var(--s-2);
+}
+
+/* —— 答案揭示分隔线：从此处开始是参考答案，此后的回答不再计入评分 —— */
+.chat-reveal-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px dashed var(--line-strong);
+  color: var(--cinnabar);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.chat-reveal-divider::before,
+.chat-reveal-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
 }
 
 .today-empty {

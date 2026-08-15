@@ -79,10 +79,17 @@
 }
 .debt-card-foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--s-2);
+  margin-top: var(--s-2);
   border-top: 1px solid var(--line);
   padding-top: var(--s-3);
+}
+
+/* 删除按钮：靠左放置，与右侧「复盘/判断自测」区分开 */
+.debt-card-del {
+  margin-right: auto;
 }
 
 /* —— 复盘弹窗 —— */
@@ -323,3 +330,20 @@
 .review-text.md { font-size: var(--fs-sm); }
 .review-mnemonic.md { font-size: var(--fs-base); font-weight: 600; }
 .review-question .note-q .md.note-stem { flex: 1; min-width: 0; }
+
+/* —— 删除这条记录 —— */
+.review-delete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+.review-delete-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  line-height: 1.5;
+}

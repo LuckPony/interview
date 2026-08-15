@@ -11,4 +11,7 @@ public interface DrillTurnRepository extends JpaRepository<DrillTurn, Long> {
     List<DrillTurn> findByRunIdOrderByRoundAsc(Long runId);
 
     Optional<DrillTurn> findByRunIdAndRound(Long runId, int round);
+
+    /** 删除某 run 的全部对话轮次（记录清理时级联删除） */
+    void deleteByRunId(Long runId);
 }
