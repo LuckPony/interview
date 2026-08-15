@@ -1,4 +1,4 @@
-package interview.homegrown.modules.drill.domain;
+package interview.homegrown.modules.user.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

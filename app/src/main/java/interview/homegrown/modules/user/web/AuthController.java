@@ -1,6 +1,6 @@
-package interview.homegrown.modules.drill.web;
+package interview.homegrown.modules.user.web;
 
-import interview.homegrown.modules.drill.service.AuthService;
+import interview.homegrown.modules.user.service.AuthService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
