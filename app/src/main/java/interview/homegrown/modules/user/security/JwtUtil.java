@@ -1,4 +1,4 @@
-package interview.homegrown.modules.drill.security;
+package interview.homegrown.modules.user.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

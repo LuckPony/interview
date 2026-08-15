@@ -1,4 +1,4 @@
-package interview.homegrown.modules.drill.security;
+package interview.homegrown.modules.user.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

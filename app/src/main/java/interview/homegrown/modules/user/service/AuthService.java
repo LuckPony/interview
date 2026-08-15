@@ -1,10 +1,10 @@
-package interview.homegrown.modules.drill.service;
+package interview.homegrown.modules.user.service;
 
-import interview.homegrown.modules.drill.domain.AppUser;
-import interview.homegrown.modules.drill.domain.EmailVerifyCode;
-import interview.homegrown.modules.drill.repository.AppUserRepository;
-import interview.homegrown.modules.drill.repository.EmailVerifyCodeRepository;
-import interview.homegrown.modules.drill.security.JwtUtil;
+import interview.homegrown.modules.user.domain.AppUser;
+import interview.homegrown.modules.user.domain.EmailVerifyCode;
+import interview.homegrown.modules.user.repository.AppUserRepository;
+import interview.homegrown.modules.user.repository.EmailVerifyCodeRepository;
+import interview.homegrown.modules.user.security.JwtUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +16,7 @@ import java.time.temporal.ChronoUnit;
 /**
  * 注册 / 邮箱验证 / 登录。
  * 铁律：密码只存 BCrypt 哈希，绝不落明文；userId 即 AppUser.id，进 JWT sub，下游业务照旧。
+ * app_user 表（V12__app_user.sql）以 email 为唯一登录名。
  */
 @Service
 public class AuthService {

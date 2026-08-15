@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS study_plan (
 );
 CREATE INDEX IF NOT EXISTS idx_study_plan_user ON study_plan (user_id);
 
+DROP TRIGGER IF EXISTS trg_study_plan_updated_at ON study_plan;
 CREATE TRIGGER trg_study_plan_updated_at
     BEFORE UPDATE ON study_plan FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

@@ -1,6 +1,6 @@
-package interview.homegrown.modules.drill.repository;
+package interview.homegrown.modules.user.repository;
 
-import interview.homegrown.modules.drill.domain.EmailVerifyCode;
+import interview.homegrown.modules.user.domain.EmailVerifyCode;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
