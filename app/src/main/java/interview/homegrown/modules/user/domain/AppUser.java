@@ -16,10 +16,11 @@ import java.time.LocalDate;
 
 /**
  * 注册账号。id 即下游各业务表的 userId（JWT sub）。
- * 对应 V2__add_user_module.sql 创建的 users 表。
+ * 对应 app_user 表：基础字段由 V12__app_user.sql 创建，
+ * 资料字段由 V17__app_user_profile_fields.sql 扩展（email 唯一登录）。
  */
 @Entity
-@Table(name = "users")
+@Table(name = "app_user")
 @Getter
 @Setter
 public class AppUser {
@@ -28,13 +29,25 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** 登录名（唯一），注册时由 email 派生。 */
-    @Column(nullable = false, unique = true, length = 50)
-    private String username;
+    /** 登录邮箱（唯一）。 */
+    @Column(nullable = false, unique = true, length = 128)
+    private String email;
 
     /** BCrypt 哈希，绝不存明文。 */
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", nullable = false, length = 128)
     private String passwordHash;
+
+    /** 展示名称。 */
+    @Column(name = "display_name", length = 64)
+    private String displayName;
+
+    /** 邮箱是否已验证。 */
+    @Column(nullable = false)
+    private boolean verified = false;
+
+    /** 登录名（可空：当前登录仍走 email，username 预留）。 */
+    @Column(length = 50)
+    private String username;
 
     /** 昵称。 */
     @Column(length = 50)
@@ -47,10 +60,6 @@ public class AppUser {
     /** 性别：M / F / 空。 */
     @Column(length = 10)
     private String gender;
-
-    /** 登录邮箱（现有认证流程用它）。 */
-    @Column(length = 100)
-    private String email;
 
     /** 手机号。 */
     @Column(length = 20)
@@ -75,10 +84,6 @@ public class AppUser {
     /** 最近登录时间。 */
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
-
-    /** 邮箱是否已验证（V14 迁移补充的列）。 */
-    @Column(nullable = false)
-    private boolean verified = false;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

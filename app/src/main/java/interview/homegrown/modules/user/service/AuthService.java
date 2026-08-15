@@ -16,16 +16,13 @@ import java.time.temporal.ChronoUnit;
 /**
  * 注册 / 邮箱验证 / 登录。
  * 铁律：密码只存 BCrypt 哈希，绝不落明文；userId 即 AppUser.id，进 JWT sub，下游业务照旧。
- *
- * users 表（V2__add_user_module.sql）以 username 为唯一登录名，
- * 但前端契约仍是 email + password 登录，故注册时由 email 派生 username（保证唯一）。
+ * app_user 表（V12__app_user.sql）以 email 为唯一登录名。
  */
 @Service
 public class AuthService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final long CODE_TTL_MINUTES = 15;
-    private static final int USERNAME_MAX_LEN = 50;
 
     private final AppUserRepository userRepo;
     private final EmailVerifyCodeRepository codeRepo;
@@ -52,11 +49,8 @@ public class AuthService {
             throw new IllegalArgumentException("密码至少 6 位");
         }
         AppUser user = new AppUser();
-        user.setUsername(deriveUsername(normalized));
         user.setEmail(normalized);
         user.setPasswordHash(passwordEncoder.encode(password));
-        user.setRole("USER");
-        user.setStatus((short) 1);
         // SMTP 就绪 → 需邮箱验证；否则（本地/演示）自动通过
         boolean needVerify = mailService.isConfigured();
         user.setVerified(!needVerify);
@@ -98,29 +92,6 @@ public class AuthService {
             throw new IllegalArgumentException("邮箱或密码错误");
         }
         return new AuthResult(jwtUtil.generateToken(user.getId()), user.getId(), user.isVerified());
-    }
-
-    /**
-     * 由 email 派生唯一 username：取 @ 前的本地部分，清理非法字符、截断到 50，
-     * 若与已有 username 冲突则追加 -数字 后缀。
-     */
-    private String deriveUsername(String email) {
-        String base = email.substring(0, email.indexOf('@'));
-        String cleaned = base.replaceAll("[^a-zA-Z0-9_.-]", "_");
-        if (cleaned.length() > USERNAME_MAX_LEN) {
-            cleaned = cleaned.substring(0, USERNAME_MAX_LEN);
-        }
-        if (cleaned.isBlank()) {
-            cleaned = "user";
-        }
-        String candidate = cleaned;
-        int suffix = 1;
-        while (userRepo.existsByUsername(candidate)) {
-            String tail = "-" + suffix++;
-            int maxBase = USERNAME_MAX_LEN - tail.length();
-            candidate = (cleaned.length() > maxBase ? cleaned.substring(0, maxBase) : cleaned) + tail;
-        }
-        return candidate;
     }
 
     private String issueCode(String email) {

@@ -7,7 +7,6 @@
 --   2) user_ai_setting 里每行的 settings_json 抹掉 apiKey 字段（保留 provider/baseUrl/model/temperature），
 --      之后用户使用任何 AI 功能前，都必须重新在「设置」页填写自己的 key。
 
-DELETE FROM ai_setting;
 
 UPDATE user_ai_setting
 SET settings_json = jsonb_set(settings_json::jsonb, '{apiKey}', '""'::jsonb, true)::text,

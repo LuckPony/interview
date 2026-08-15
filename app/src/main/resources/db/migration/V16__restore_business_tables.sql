@@ -1,10 +1,13 @@
 -- ============================================================
--- V15__restore_business_tables.sql
--- 恢复历史 V1 脚本中的业务基础表（V1 在 0252c0e 被删除）。
--- 说明：代码中 ResumeEntity / InterviewSessionEntity 等 JPA 实体
---       仍映射这些表，缺少迁移会导致全新环境建表失败。
--- 全部使用 IF NOT EXISTS，兼容已有表（本地已有则跳过）。
+-- V16__restore_business_tables.sql
+-- 补建 resume / interview / knowledge_base 等业务表。
+-- 这些表由历史 V1 脚本创建（后删除），对方远端迁移 V2~V15 只覆盖
+-- drill + app_user，未包含这些业务表。用新版本号 V16 补齐，避免与远端冲突。
+-- 全部 IF NOT EXISTS，兼容已有环境。
 -- ============================================================
+
+-- pgvector 扩展（docker-compose 用 pgvector/pgvector:pg16 镜像，自带该扩展；幂等启用）
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ---------- 简历模块 ----------
 CREATE TABLE IF NOT EXISTS resume (
@@ -109,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_vector_store_embedding
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
--- ---------- updated_at 触发器（幂等：先删后建） ----------
+-- ---------- updated_at 触发器（幂等） ----------
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
