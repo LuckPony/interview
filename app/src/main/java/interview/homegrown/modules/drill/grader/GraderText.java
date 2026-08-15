@@ -6,9 +6,12 @@ import interview.homegrown.modules.drill.ai.GradeGenerator;
 import interview.homegrown.modules.drill.ai.GradeOutput;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.ConceptRole;
+import interview.homegrown.modules.drill.domain.DrillRun;
 import interview.homegrown.modules.drill.domain.Grade;
 import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.repository.DrillRunRepository;
+import interview.homegrown.modules.drill.service.ProgressContextService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,17 +39,30 @@ public class GraderText implements Grader {
     private final GradeGenerator gradeGenerator;
     private final ConceptRepository conceptRepo;
     private final ObjectMapper objectMapper;
+    private final DrillRunRepository runRepo;
+    private final ProgressContextService progressContext;
 
     public GraderText(GradeGenerator gradeGenerator, ConceptRepository conceptRepo,
-                      ObjectMapper objectMapper) {
+                      ObjectMapper objectMapper, DrillRunRepository runRepo,
+                      ProgressContextService progressContext) {
         this.gradeGenerator = gradeGenerator;
         this.conceptRepo = conceptRepo;
         this.objectMapper = objectMapper;
+        this.runRepo = runRepo;
+        this.progressContext = progressContext;
     }
 
     @Override
     public GraderOutput grade(Long runId, QuestionBank q, String rawAnswer, boolean timed) {
-        return gradeRaw(q.getStem(), q.getPointsJson(), q.getConceptIds(), rawAnswer, timed);
+        // 学习上下文：run → userId → 概念 → 画像/资料块/互联网（判分依据，不额外搜索）
+        String context = null;
+        DrillRun run = runRepo.findById(runId).orElse(null);
+        if (run != null && q.getConceptIds() != null && q.getConceptIds().length > 0) {
+            java.util.List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
+                    .map(Integer::longValue).toList();
+            context = progressContext.contextFor(run.getUserId(), ids);
+        }
+        return gradeRaw(q.getStem(), q.getPointsJson(), q.getConceptIds(), rawAnswer, timed, context);
     }
 
     /**
@@ -56,6 +72,11 @@ public class GraderText implements Grader {
      */
     public GraderOutput gradeRaw(String stem, String pointsJson, Integer[] conceptIds,
                                  String rawAnswer, boolean timed) {
+        return gradeRaw(stem, pointsJson, conceptIds, rawAnswer, timed, null);
+    }
+
+    public GraderOutput gradeRaw(String stem, String pointsJson, Integer[] conceptIds,
+                                 String rawAnswer, boolean timed, String context) {
         GeneratedQuestion gq = parseQuestion(pointsJson);
         List<GeneratedQuestion.ConceptPoints> groups = gq.normalizedGroups();
         Map<Long, String> nameById = loadNames(conceptIds);
@@ -69,7 +90,7 @@ public class GraderText implements Grader {
                     g.conceptIndex, nameById.getOrDefault(cid, "概念" + g.conceptIndex), texts));
         }
 
-        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade);
+        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade, context);
 
         List<ByConcept> byConcepts = new ArrayList<>();
         List<ConceptScore> conceptScores = new ArrayList<>();

@@ -7,6 +7,7 @@ import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.domain.Mastery;
 import interview.homegrown.modules.drill.domain.StudyPlan;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.repository.ConceptChunkRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
@@ -82,11 +83,14 @@ public class StudyPlanService {
     private final CorpusService corpusService;
     private final StructuredOutputInvoker invoker;
     private final LlmRawClient rawClient;
+    private final ConceptChunkRepository conceptChunkRepo;
+    private final WebEnrichmentService webEnrichmentService;
 
     public StudyPlanService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                             MasteryRepository masteryRepo, CorpusRepository corpusRepo,
                             CorpusService corpusService, StructuredOutputInvoker invoker,
-                            LlmRawClient rawClient) {
+                            LlmRawClient rawClient, ConceptChunkRepository conceptChunkRepo,
+                            WebEnrichmentService webEnrichmentService) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
@@ -94,6 +98,8 @@ public class StudyPlanService {
         this.corpusService = corpusService;
         this.invoker = invoker;
         this.rawClient = rawClient;
+        this.conceptChunkRepo = conceptChunkRepo;
+        this.webEnrichmentService = webEnrichmentService;
     }
 
     /** 无状态 intake：把前端发来的完整对话拼成 user prompt；若绑定了资料，把资料文本注入作为规划依据。 */
@@ -174,8 +180,14 @@ public class StudyPlanService {
             c.setDescription(pt.note());
             c.setStudyPlanId(plan.getId());
             conceptRepo.save(c);
+            // 概念 ↔ 资料块映射（按概念名匹配块 topic；资料索引未完成时自然不命中，不阻塞）
+            if (plan.getCorpusId() != null) {
+                conceptChunkRepo.mapConceptToChunksByTopic(c.getId(), c.getName(), plan.getCorpusId());
+            }
             existing.add(pt.name().trim());
         }
+        // 互联网补充：默认预取每个知识点的标准内容（异步，不阻塞建计划）
+        webEnrichmentService.enrichPlanAsync(plan.getId());
         return toView(userId, plan);
     }
 

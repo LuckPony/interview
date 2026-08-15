@@ -20,6 +20,7 @@ import interview.homegrown.modules.drill.service.DailyPlanService;
 import interview.homegrown.modules.drill.service.HistoryService;
 import interview.homegrown.modules.drill.service.NoteService;
 import interview.homegrown.modules.drill.service.ProfileService;
+import interview.homegrown.modules.drill.service.ProgressContextService;
 import interview.homegrown.modules.drill.service.RecordCleanupService;
 import interview.homegrown.modules.drill.service.QuestionService;
 import interview.homegrown.modules.drill.service.RehearsalService;
@@ -98,6 +99,7 @@ public class DrillController {
     private final HistoryService historyService;
     private final RecordCleanupService recordCleanupService;
     private final CorpusService corpusService;
+    private final ProgressContextService progressContext;
     private final DrillRunRepository runRepo;
     private final QuestionBankRepository questionBankRepo;
     private final DrillTurnRepository turnRepo;
@@ -111,7 +113,7 @@ public class DrillController {
                            AnswerService answerService, ProfileService profileService,
                            RehearsalService rehearsalService, NoteService noteService,
                            HistoryService historyService, RecordCleanupService recordCleanupService,
-                           CorpusService corpusService,
+                           CorpusService corpusService, ProgressContextService progressContext,
                            DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
                            DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
                            TutorGenerator tutorGenerator, ObjectMapper objectMapper,
@@ -125,6 +127,7 @@ public class DrillController {
         this.recordCleanupService = recordCleanupService;
         this.historyService = historyService;
         this.corpusService = corpusService;
+        this.progressContext = progressContext;
         this.runRepo = runRepo;
         this.questionBankRepo = questionBankRepo;
         this.turnRepo = turnRepo;
@@ -290,9 +293,9 @@ public class DrillController {
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
         if (resumed != null) return resumed;
 
-        // 资料注入：若该概念所属方向绑了用户的书/项目资料，把解析文本喂给出题器（v1 全文注入）
-        String ref = corpusService.referenceForConcept(task.conceptId());
-        var q = questionService.generate(task, ref);       // 出题（LLM 填空）
+        // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
+        String context = progressContext.contextFor(uid, task.conceptIds());
+        var q = questionService.generate(task, context);       // 出题（LLM 填空）
         return openRunOnQuestion(uid, q.getId(), targetPlanId);
     }
 
@@ -385,6 +388,9 @@ public class DrillController {
         String byConceptJson = turn.getByConceptJson();
         String rawAnswer = turn.getRawAnswer();
         final DrillTurn fTurn = turn;
+        // 学习上下文（判分讲解依据：学生进度/概念要点/资料块/互联网补充）
+        DrillRun submitRun = runRepo.findById(runId).orElse(null);
+        final String context = submitRun == null ? null : contextOf(uid, submitRun.getQuestionId());
 
         StreamingResponseBody body = out -> {
             try {
@@ -396,6 +402,7 @@ public class DrillController {
                 // 2) 逐 token 推讲解
                 final StringBuilder buf = new StringBuilder();
                 String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        context,
                         token -> {
                             buf.append(token);
                             try {
@@ -521,6 +528,7 @@ public class DrillController {
         String pointsJson = q.getPointsJson();
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
+        final String context = contextOf(uid, run.getQuestionId());
 
         StreamingResponseBody body = out -> {
             try {
@@ -529,7 +537,7 @@ public class DrillController {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
-                String full = tutorGenerator.streamChat(stem, pointsJson, allTurns,
+                String full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
                         token -> {
                             try {
                                 out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
@@ -622,6 +630,8 @@ public class DrillController {
         String rawAnswer = turn.getRawAnswer();
         final DrillTurn fTurn = turn;
         final RehearsalView fView = view;
+        DrillRun reheRun = runRepo.findById(runId).orElse(null);
+        final String context = reheRun == null ? null : contextOf(uid, reheRun.getQuestionId());
 
         StreamingResponseBody body = out -> {
             try {
@@ -633,6 +643,7 @@ public class DrillController {
                 // 2) 逐 token 推讲解
                 final StringBuilder buf = new StringBuilder();
                 String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        context,
                         token -> {
                             buf.append(token);
                             try {
@@ -730,6 +741,7 @@ public class DrillController {
         String byConceptJson = turn.getByConceptJson();
         String rawAnswer = turn.getRawAnswer();
         final DrillTurn fTurn = turn;       // mutable turn 在 lambda 内被 setTutorText 写库
+        final String context = contextOf(uid, run.getQuestionId());
 
         StreamingResponseBody body = out -> {
             try {
@@ -738,6 +750,7 @@ public class DrillController {
 
                 final StringBuilder buf = new StringBuilder();
                 String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
+                        context,
                         token -> {
                             buf.append(token);
                             try {
@@ -906,6 +919,15 @@ public class DrillController {
         QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
         if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
         return q.getConceptIds()[0].longValue();
+    }
+
+    /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */
+    private String contextOf(Long uid, Long questionId) {
+        QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
+        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
+        java.util.List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
+                .map(Integer::longValue).toList();
+        return progressContext.contextFor(uid, ids);
     }
 
     /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */

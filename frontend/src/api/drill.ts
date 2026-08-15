@@ -534,4 +534,12 @@ export const corpus = {
   // 云端桌面态：Electron 在本机读好的文件字节传上来，服务端 Tika 解析合并
   fromFiles: (form: FormData) =>
     apiFetch<CorpusView>('/corpus/from-files', { method: 'POST', body: form }),
+  // 资料候选知识点（异步拆块+LLM 标注完成后返回；indexed=false 表示还在处理）
+  knowledgePoints: (corpusId: number) =>
+    apiFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
 };
+
+export interface KnowledgePointsView {
+  indexed: boolean;
+  points: { name: string; chunkCount: number; snippets: string[] }[];
+}

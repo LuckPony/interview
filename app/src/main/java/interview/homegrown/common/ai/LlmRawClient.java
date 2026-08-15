@@ -75,6 +75,81 @@ public class LlmRawClient {
                 : (base.endsWith("/") ? base + "chat/completions" : base + "/chat/completions");
     }
 
+    /** base URL 根（去掉尾部 /chat/completions），用于拼 /responses 等协议端点。 */
+    private String baseRoot() {
+        String base = cfg().baseUrl();
+        if (base.endsWith("/chat/completions")) {
+            base = base.substring(0, base.length() - "/chat/completions".length());
+        }
+        return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+    }
+
+    /**
+     * 互联网搜索 / 读取指定 URL（联网能力）。
+     *
+     * <p>两级尝试：
+     * 1) <b>Responses API</b>：POST {@code <root>/responses}，带内置 {@code web_search} 工具
+     *    （DeepSeek 官方文档确认 deepseek-v4-flash/pro 支持，服务端执行搜索）；
+     * 2) <b>chat/completions + tools</b>：部分 OpenAI 兼容中转也在 /chat/completions 上
+     *    接受 {@code web_search} 工具，作为回退。
+     *
+     * <p>query 可以是关键词，也可以是具体 URL（"请读取这个链接的内容：…"），由供应商搜索工具处理。
+     * 失败返回 null，由上层降级（不阻塞）。结果由调用方负责截断。
+     */
+    public String webSearch(String query) {
+        if (!available()) return null;
+        if (query == null || query.isBlank()) return null;
+
+        // 1) Responses API（内置 web_search 工具）
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("model", cfg().model());
+            body.put("input", query);
+            body.put("instructions", "请基于联网搜索到的内容回答。引用时尽量注明来源链接。");
+            body.put("tools", List.of(Map.of("type", "web_search")));
+            body.put("stream", false);
+            String resp = postTo(baseRoot() + "/responses", body, 150);
+            String text = extractResponsesText(resp);
+            if (text != null && !text.isBlank()) return text;
+        } catch (Exception e) {
+            log.debug("Responses API web_search 失败（尝试 chat/completions 方式）: {}", e.getMessage());
+        }
+
+        // 2) chat/completions + tools 回退
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("model", cfg().model());
+            body.put("messages", List.of(Map.of("role", "user", "content", query)));
+            body.put("tools", List.of(Map.of("type", "web_search")));
+            body.put("stream", false);
+            String resp = post(body, false);
+            JsonNode root = objectMapper.readTree(resp);
+            String content = textOrNull(root.path("choices").path(0).path("message").path("content"));
+            if (content != null && !content.isBlank()) return content;
+        } catch (Exception e) {
+            log.debug("chat/completions web_search 失败: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /** 从 Responses API 响应里抽取 message 文本（拼接 output 中的全部 text 内容块）。 */
+    private String extractResponsesText(String resp) throws Exception {
+        JsonNode root = objectMapper.readTree(resp);
+        JsonNode output = root.path("output");
+        if (!output.isArray()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode item : output) {
+            if (!"message".equals(item.path("type").asText())) continue;
+            JsonNode content = item.path("content");
+            if (!content.isArray()) continue;
+            for (JsonNode c : content) {
+                String t = c.path("text").asText("");
+                if (!t.isBlank()) sb.append(t).append("\n\n");
+            }
+        }
+        return sb.toString().isBlank() ? null : sb.toString().trim();
+    }
+
     /**
      * 同步请求，content 为空时回退 reasoning_content。
      *
@@ -224,14 +299,18 @@ public class LlmRawClient {
 
     /** 同步 POST + 完整 body，stream=false。供 complete() 使用 */
     private String post(Map<String, Object> body, boolean stream) throws Exception {
-        Map<String, Object> withStream = stream ? body : body;  // stream 字段由调用方决定是否加
-        String json = objectMapper.writeValueAsString(withStream);
+        return postTo(endpoint(), body, 60);
+    }
+
+    /** 同步 POST 到指定 URL（自定义超时），返回响应体字符串。非 2xx 抛异常。 */
+    private String postTo(String url, Map<String, Object> body, int timeoutSeconds) throws Exception {
+        String json = objectMapper.writeValueAsString(body);
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint()))
+                .uri(URI.create(url))
                 .header("Authorization", "Bearer " + cfg().apiKey())
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() / 100 != 2) {

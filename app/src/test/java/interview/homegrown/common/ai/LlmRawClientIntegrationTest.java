@@ -39,7 +39,16 @@ class LlmRawClientIntegrationTest {
         p.setTemperature(0.7);
         config.getProviders().put("deepseek", p);
         assertTrue(p.isAvailable(), "API_KEY 未配置：请在 .env 里填 API_KEY");
-        client = new LlmRawClient(config);
+        // LlmRawClient 依赖 AiSettingsService 提供 key：测试里继承覆写，直接注入 .env 的 key
+        AiSettingsService settings = new AiSettingsService(null, config) {
+            @Override
+            public AiConfig currentProviderForRequest() {
+                return new AiConfig("deepseek", "https://api.deepseek.com",
+                        env.getOrDefault("API_KEY", ""),
+                        env.getOrDefault("MODEL_NAME", "deepseek-v4-flash"), 0.7);
+            }
+        };
+        client = new LlmRawClient(settings);
     }
 
     @Test

@@ -28,7 +28,8 @@ public class GradeGenerator {
     public record ConceptPointGroup(int conceptIndex, String conceptName, List<String> points) {
     }
 
-    public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups) {
+    public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
+                             String context) {
         String system = """
                 你是严格的评分器。对每个评分点(point)，判断用户答案的达成度：
                 - HIT：明确覆盖且正确
@@ -38,6 +39,8 @@ public class GradeGenerator {
                 若判 MISS 则 evidence 留空字符串。
                 必须按 conceptIndex 分组输出 byConcept，且覆盖下面列出的全部分组。
                 extraCorrect 记录用户答对但不在评分点里的内容，factualErrors 记录事实性错误。
+                判分依据仅限：题干、评分点、用户答案、以及给定学习上下文；
+                不得自行补充外部知识、不得联网搜索、不得凭印象脑补材料之外的内容。
                 不要给出分数，不要给出标准答案，不要写总结。
                 不要使用中文破折号，输出严格遵循格式说明的 JSON。""";
 
@@ -58,7 +61,9 @@ public class GradeGenerator {
 
                 用户答案：
                 %s
-                """, stem, groupBlock, rawAnswer);
+                %s
+                """, stem, groupBlock, rawAnswer,
+                (context == null || context.isBlank()) ? "" : "\n\n学习上下文（判分时可对照，但只依据其中真实内容）：\n" + context);
 
         return invoker.invoke(system, user, GradeOutput.class);
     }

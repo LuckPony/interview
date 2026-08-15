@@ -406,6 +406,49 @@
   border-color: var(--cinnabar);
   transform: translateY(-1px);
 }
+/* —— 资料候选知识点（C1：提取展示 + 勾选并入规划） —— */
+.kp-panel {
+  margin-top: var(--s-1);
+  border-top: 1px dashed var(--line-strong);
+  padding-top: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.kp-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: var(--s-1);
+}
+.kp-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.kp-item input {
+  flex-shrink: 0;
+  accent-color: var(--cinnabar);
+}
+.kp-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.kp-snippet {
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.kp-merge {
+  margin-top: var(--s-1);
+}
 .attached-file {
   display: inline-flex;
   align-items: center;

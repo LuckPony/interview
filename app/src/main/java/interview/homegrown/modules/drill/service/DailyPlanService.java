@@ -74,13 +74,15 @@ public class DailyPlanService {
     private final SelectionService selectionService;
     private final QuestionService questionService;
     private final CorpusService corpusService;
+    private final ProgressContextService progressContext;
 
     private final ExecutorService generatorPool;
 
     public DailyPlanService(DailyTaskRepository taskRepo, StudyPlanRepository planRepo,
                             ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             QuestionBankRepository qbRepo, SelectionService selectionService,
-                            QuestionService questionService, CorpusService corpusService) {
+                            QuestionService questionService, CorpusService corpusService,
+                            ProgressContextService progressContext) {
         this.taskRepo = taskRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -89,6 +91,7 @@ public class DailyPlanService {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.corpusService = corpusService;
+        this.progressContext = progressContext;
         this.generatorPool = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "daily-task-gen");
             t.setDaemon(true);
@@ -208,7 +211,8 @@ public class DailyPlanService {
         if (t.getQuestionId() == null) {
             SelectedTask sel = selectionService.pickFor(userId, t.getConceptId());
             String ref = corpusService.referenceForConcept(t.getConceptId());
-            QuestionBank qb = questionService.generate(sel, ref);
+            String context = progressContext.contextFor(t.getUserId(), sel.conceptIds());
+            QuestionBank qb = questionService.generate(sel, context == null ? ref : context);
             t.setQuestionId(qb.getId());
             t.setStatus(DailyTask.STATUS_READY);
             taskRepo.save(t);
@@ -343,7 +347,8 @@ public class DailyPlanService {
                 if (t == null || t.getQuestionId() != null) return;
                 SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
                 String ref = corpusService.referenceForConcept(t.getConceptId());
-                QuestionBank qb = questionService.generate(sel, ref);
+                String context = progressContext.contextFor(t.getUserId(), sel.conceptIds());
+                QuestionBank qb = questionService.generate(sel, context == null ? ref : context);
                 t.setQuestionId(qb.getId());
                 t.setStatus(DailyTask.STATUS_READY);
                 taskRepo.save(t);

@@ -60,13 +60,15 @@ public class CorpusService {
     private final StudyPlanRepository planRepo;
     private final ConceptRepository conceptRepo;
     private final FileParser parser;
+    private final CorpusIndexer indexer;
 
     public CorpusService(CorpusRepository corpusRepo, StudyPlanRepository planRepo,
-                         ConceptRepository conceptRepo, FileParser parser) {
+                         ConceptRepository conceptRepo, FileParser parser, CorpusIndexer indexer) {
         this.corpusRepo = corpusRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.parser = parser;
+        this.indexer = indexer;
     }
 
     public Corpus upload(MultipartFile file, Long userId) {
@@ -85,7 +87,10 @@ public class CorpusService {
         c.setSourceType("UPLOAD");
         c.setText(text);
         c.setCharCount(text.length());
-        return corpusRepo.save(c);
+        Corpus saved = corpusRepo.save(c);
+        // 异步拆块 + 知识点标注（不阻塞上传请求）
+        indexer.indexAsync(saved.getId());
+        return saved;
     }
 
     /**
@@ -184,7 +189,9 @@ public class CorpusService {
         c.setSourceType(sourceType);
         c.setText(merged);
         c.setCharCount(merged.length());
-        return corpusRepo.save(c);
+        Corpus saved = corpusRepo.save(c);
+        indexer.indexAsync(saved.getId());
+        return saved;
     }
 
     private boolean isSkippedDir(Path p) {
