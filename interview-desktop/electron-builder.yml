@@ -8,6 +8,11 @@ files:
   - package.json
   - config.json
   - app-dist/**/*
+# 自包含后端运行时：jlink 精简 JRE + Spring Boot fat jar（../runtime/{jre,app.jar}）
+# 打包进安装包的 Resources/runtime，运行期由 main.js 从 process.resourcesPath 拉起。
+extraResources:
+  - from: ../runtime
+    to: runtime
 # 应用图标：build/icon.png（1024x1024）会由 electron-builder 自动转换为各平台的
 # .icns（mac）/ .ico（win）打包进安装包，同时作为运行时窗口图标（src/icon.png 同源）。
 icon: build/icon.png

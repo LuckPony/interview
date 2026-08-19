@@ -3,6 +3,7 @@ package interview.homegrown.modules.drill.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -54,6 +55,7 @@ public class DailyTask {
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Column(insertable = false)
     private Instant updatedAt;
 }

@@ -6,9 +6,6 @@
 -- 全部 IF NOT EXISTS，兼容已有环境。
 -- ============================================================
 
--- pgvector 扩展（docker-compose 用 pgvector/pgvector:pg16 镜像，自带该扩展；幂等启用）
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- ---------- 简历模块 ----------
 CREATE TABLE IF NOT EXISTS resume (
     id            BIGSERIAL PRIMARY KEY,
@@ -99,40 +96,8 @@ CREATE TABLE IF NOT EXISTS knowledge_base_document (
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- ---------- 向量存储（Spring AI pgvector 标准结构） ----------
-CREATE TABLE IF NOT EXISTS vector_store (
-    id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    content   TEXT,
-    metadata  JSONB DEFAULT '{}'::jsonb,
-    embedding VECTOR(1024)
-);
-
-CREATE INDEX IF NOT EXISTS idx_vector_store_embedding
-    ON vector_store
-    USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
-
--- ---------- updated_at 触发器（幂等） ----------
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_resume_updated_at ON resume;
-CREATE TRIGGER trg_resume_updated_at
-    BEFORE UPDATE ON resume FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS trg_interview_session_updated_at ON interview_session;
-CREATE TRIGGER trg_interview_session_updated_at
-    BEFORE UPDATE ON interview_session FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS trg_knowledge_base_updated_at ON knowledge_base;
-CREATE TRIGGER trg_knowledge_base_updated_at
-    BEFORE UPDATE ON knowledge_base FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS trg_interview_schedule_updated_at ON interview_schedule;
-CREATE TRIGGER trg_interview_schedule_updated_at
-    BEFORE UPDATE ON interview_schedule FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- ---------- 说明：pgvector 向量存储与触发器已移除 ----------
+-- 原 vector_store 表（Spring AI pgvector 标准结构 + HNSW 索引）依赖 pgvector 扩展，
+-- 嵌入式 H2 不支持且当前业务未使用（反重复走 trigram，见 NgramSimilarityGuard），已整体删除。
+-- updated_at 触发器（plpgsql）同样移除：resume / interview_session 已在实体侧用 @PreUpdate 维护，
+-- 其余无实体的业务表（knowledge_base / interview_schedule）updated_at 由默认值维护即可。

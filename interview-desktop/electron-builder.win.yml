@@ -1,0 +1,27 @@
+appId: com.mianba.desktop
+productName: 面霸
+directories:
+  output: dist-electron
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - config.json
+  - app-dist/**/*
+# 自包含后端运行时（Windows 版 JRE + fat jar，见 scripts/build-win.sh 生成 ../runtime-win）
+extraResources:
+  - from: ../runtime-win
+    to: runtime
+icon: build/icon.png
+publish:
+  provider: github
+  owner: LuckPony
+  repo: interview
+win:
+  target:
+    - nsis
+    - zip
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

@@ -21,7 +21,7 @@ public class QuestionBank {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "concept_ids", columnDefinition = "integer[]", nullable = false)
+    @Column(name = "concept_ids", columnDefinition = "array", nullable = false)
     private Integer[] conceptIds;
 
     @Enumerated(EnumType.STRING)

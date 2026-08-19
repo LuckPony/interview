@@ -39,6 +39,11 @@ out/
 ### Project ###
 .env
 
+### 自包含后端运行时 / 本地数据库 ###
+runtime/
+runtime-win/
+app/data/
+
 ### macOS ###
 .DS_Store
 
