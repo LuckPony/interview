@@ -2,7 +2,7 @@
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
 // 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -11,6 +11,9 @@ const { autoUpdater } = require('electron-updater');
 
 // 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
 app.commandLine.appendSwitch('no-proxy-server');
+// 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
+// Electron 在未显式设置菜单时会自动生成这些菜单，打包后会出现在页面顶部。
+Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 8080;

@@ -2,7 +2,7 @@
 // 桌面端（Electron）下由 .env 注入 http://127.0.0.1:8080；网页态留空走 dev 代理（相对 /api）。
 // 桌面端用户可把 LLM key 存在本机（Electron userData），每次请求带 X-LLM-Key 头，后端「只用不存」——
 // 服务器不落库、也不共享任何默认 key。
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
 const TOKEN_KEY = 'yan.token';
 const USER_KEY = 'yan.userId';
