@@ -12,8 +12,9 @@ const { autoUpdater } = require('electron-updater');
 // Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
 if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
 
-// 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
-app.commandLine.appendSwitch('no-proxy-server');
+// 使用系统代理访问 GitHub 更新服务，仅让本地 Spring Boot 请求绕过代理。
+// 不可使用 no-proxy-server：国内网络常依赖系统代理访问 GitHub Release。
+app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
 // 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
 // Electron 在未显式设置菜单时会自动生成这些菜单，打包后会出现在页面顶部。
 Menu.setApplicationMenu(null);
@@ -196,10 +197,47 @@ function waitForBackend(timeoutMs) {
 // macOS：需要有效的 Developer ID 签名才能可靠自动更新；未签名包通常需要手动下载安装。
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
+
+  const updateLog = path.join(app.getPath('userData'), 'updater.log');
+  const logUpdate = (level, message) => {
+    const text = message instanceof Error ? message.stack || message.message : String(message);
+    try {
+      fs.appendFileSync(updateLog, `${new Date().toISOString()} [${level}] ${text}\n`);
+    } catch {
+      // 日志失败不能影响应用启动。
+    }
+  };
+  autoUpdater.logger = {
+    info: (message) => logUpdate('INFO', message),
+    warn: (message) => logUpdate('WARN', message),
+    error: (message) => logUpdate('ERROR', message),
+    debug: (message) => logUpdate('DEBUG', message),
+  };
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on('update-available', (info) => {
+    logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
+    dialog.showMessageBox({
+      type: 'info',
+      title: '发现新版本',
+      message: `发现新版本 v${info.version}`,
+      detail: '安装包将在后台下载，下载完成后会再次提醒。',
+      buttons: ['知道了'],
+    });
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    logUpdate('INFO', `当前已是最新版本 v${info.version}`);
+  });
+  autoUpdater.on('error', (error) => {
+    logUpdate('ERROR', error);
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    if (tray) tray.setToolTip(`面霸 · 正在下载更新 ${Math.round(progress.percent)}%`);
+  });
+
   autoUpdater.on('update-downloaded', (info) => {
+    if (tray) tray.setToolTip('面霸 · 备考助手');
     dialog
       .showMessageBox({
         type: 'info',
@@ -215,9 +253,9 @@ function setupAutoUpdate() {
       });
   });
 
-  // 静默检查：无更新 / 网络失败都只是日志，不打扰用户
+  // 启动后检查；失败写入 updater.log，不再静默吞掉。
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((error) => logUpdate('ERROR', error));
   }, 8000); // 等窗口起来再查，避免拖慢首屏
 }
 
