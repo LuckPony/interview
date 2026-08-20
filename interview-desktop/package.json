@@ -15,7 +15,7 @@
     "dist:win": "node scripts/build-cloud.js && electron-builder --win",
     "dist:win:local": "bash scripts/build-win.sh",
     "fix:electron": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app",
-    "postinstall": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app || true"
+    "postinstall": "node -e \"if (process.platform !== 'darwin') process.exit(0)\" && codesign --force --deep --sign - node_modules/electron/dist/Electron.app || true"
   },
   "devDependencies": {
     "electron": "^31.3.1",

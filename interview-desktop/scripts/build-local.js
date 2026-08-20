@@ -8,12 +8,21 @@ const DESKTOP = path.resolve(__dirname, '..');
 const frontend = path.resolve(DESKTOP, '..', 'frontend');
 const dist = path.join(frontend, 'dist');
 
-const build = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], {
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const build = spawnSync(npmCommand, ['run', 'build'], {
   cwd: frontend,
   stdio: 'inherit',
+  shell: process.platform === 'win32',
   env: { ...process.env, VITE_API_BASE: 'http://127.0.0.1:8080' },
 });
-if (build.status !== 0) process.exit(build.status ?? 1);
+if (build.error) {
+  console.error(`无法执行 ${npmCommand}: ${build.error.message}`);
+  process.exit(1);
+}
+if (build.status !== 0) {
+  console.error(`前端构建失败，退出码: ${build.status ?? 'unknown'}`);
+  process.exit(build.status ?? 1);
+}
 
 fs.rmSync(path.join(DESKTOP, 'app-dist'), { recursive: true, force: true });
 fs.cpSync(dist, path.join(DESKTOP, 'app-dist'), { recursive: true });
