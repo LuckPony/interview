@@ -124,18 +124,25 @@ public class TutorGenerator {
     /**
      * 揭示答案模式：学生已明确索要答案/提示（点「看答案」按钮或自然语言被服务端识别），
      * 直接给完整讲解；此时<b>不再有后续小问</b>。与 {@link #CHAT_FOLLOWUP_SYSTEM_PROMPT} 互补，由服务端显式选择。
+     *
+     * <p>按进度揭示（用户决策）：只看「当前小问」的答案，不一次倒出全部。
+     * 当前小问 = 对话历史里最近一个由老师提出、学生尚未完整答完的问题。
      */
     private static final String CHAT_REVEAL_SYSTEM_PROMPT = """
             你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题。
-            学生已经明确表示想看答案或提示，请直接给出：
-            1. 这道题的正确思路和完整答案（或关键步骤），讲清楚为什么这样设计/实现
-            2. 如学生之前有作答，简要指出哪里对、哪里需要修正
-            3. 回复 150-300 字中文，像聊天一样自然
-            4. 不要使用中文破折号（——/-），改用逗号或句号
-            5. 不要提及评分、分数、判分、得分等概念
-            6. 可以用 Markdown 排版（加粗关键点、必要时用列表）；
+            学生已经明确表示想看答案。请先根据对话历史判断<b>当前正在讨论的小问</b>：
+            即对话中最近一个由你（老师）提出、学生尚未完整答完的问题。然后：
+            1. 只讲透<b>当前这个小问</b>的正确答案（或关键步骤），讲清楚为什么这样设计/实现；
+            2. 学生此前已确认理解过的更早小问，一句话带过即可，不要重复展开；
+            3. 不要一次把所有小问的答案全部倒出——其余未讨论到的小问，留给「结束并评分」后的完整讲解；
+            4. 如学生之前有作答，简要指出哪里对、哪里需要修正；
+            5. 给出答案后<b>不要再提出任何新的问题</b>。
+            6. 回复 150-300 字中文，像聊天一样自然
+            7. 不要使用中文破折号（——/-），改用逗号或句号
+            8. 不要提及评分、分数、判分、得分等概念
+            9. 可以用 Markdown 排版（加粗关键点、必要时用列表）；
                涉及代码时用围栏代码块（```语言 ... ```，代码原样保留缩进与换行），不要写成普通段落
-            7. 结尾必须是一句完整的话
+            10. 结尾必须是一句完整的话
             """;
 
     /**
@@ -149,6 +156,7 @@ public class TutorGenerator {
     /**
      * 流式版讲解：逐 token 回调 onToken；最终累积完整文本返回（失败/空为 null）。
      * onReasoning 可选：收到模型思考内容（reasoning_content）时独立回调，供前端展示"思考过程"。
+     * context 可选：学习上下文（学生进度/概念要点/资料块/互联网补充），讲解时作为依据。
      */
     public String streamExplain(String stem, String pointsJson, String byConceptJson,
                                 String rawAnswer, java.util.function.Consumer<String> onToken) {
@@ -158,8 +166,18 @@ public class TutorGenerator {
     public String streamExplain(String stem, String pointsJson, String byConceptJson,
                                 String rawAnswer, java.util.function.Consumer<String> onToken,
                                 java.util.function.Consumer<String> onReasoning) {
+        return streamExplain(stem, pointsJson, byConceptJson, rawAnswer, null, onToken, onReasoning);
+    }
+
+    public String streamExplain(String stem, String pointsJson, String byConceptJson,
+                                String rawAnswer, String context,
+                                java.util.function.Consumer<String> onToken,
+                                java.util.function.Consumer<String> onReasoning) {
         String pointsText = formatPoints(pointsJson);
         String verdictsText = formatVerdicts(byConceptJson);
+        String contextBlock = (context == null || context.isBlank())
+                ? ""
+                : "\n\n学习上下文（学生进度 / 概念要点 / 用户资料 / 互联网补充，讲解时作为依据，引用资料内容时可注明出处）：\n" + context;
         String user = String.format("""
                 题目：
                 %s
@@ -172,9 +190,11 @@ public class TutorGenerator {
 
                 学生的答案：
                 %s
+                %s
 
                 请讲解这道题。
-                """, stem, pointsText, verdictsText, rawAnswer == null ? "（未作答）" : rawAnswer);
+                """, stem, pointsText, verdictsText, rawAnswer == null ? "（未作答）" : rawAnswer,
+                contextBlock);
 
         StringBuilder buf = new StringBuilder();
         // 面向用户的教学讲解禁用 reasoning_content 回退（避免把内部思考混进正文）；
@@ -255,6 +275,18 @@ public class TutorGenerator {
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal, int followupIndex, int maxAnswers) {
+        return streamChat(stem, pointsJson, turns, null, onToken, onReasoning,
+                reveal, followupIndex, maxAnswers);
+    }
+
+    /**
+     * 带学习上下文（学生进度/概念要点/资料块/互联网补充）的完整版。
+     * 上下文仅作参考素材：追问可结合资料细节，也可用通用知识；引用资料内容时注明出处（C3）。
+     */
+    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns, String context,
+                             java.util.function.Consumer<String> onToken,
+                             java.util.function.Consumer<String> onReasoning,
+                             boolean reveal, int followupIndex, int maxAnswers) {
         String pointsText = formatPoints(pointsJson);
 
         // 对话历史只保留最近几轮，且每条文本截断到合理长度：
@@ -273,6 +305,9 @@ public class TutorGenerator {
             }
         }
 
+        String contextBlock = (context == null || context.isBlank())
+                ? ""
+                : "\n\n学习上下文（学生进度 / 概念要点 / 用户资料 / 互联网补充，作为参考素材，引用时可注明出处）：\n" + context;
         String user = String.format("""
                 题目：
                 %s
@@ -282,9 +317,11 @@ public class TutorGenerator {
 
                 对话历史：
                 %s
+                %s
 
                 请回复学生的最新消息。
-                """, stem, pointsText, history.toString().isBlank() ? "（无）" : history.toString());
+                """, stem, pointsText, history.toString().isBlank() ? "（无）" : history.toString(),
+                contextBlock);
 
         StringBuilder buf = new StringBuilder();
         // 模式选择：reveal 优先（答案已揭示 → 完整讲解，不再追问）；

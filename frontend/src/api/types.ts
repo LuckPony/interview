@@ -111,6 +111,22 @@ export interface TopicProfile {
   concepts: ConceptProfile[];
 }
 
+export interface KnowledgePointsView {
+  indexed: boolean;
+  points: { name: string; chunkCount: number; snippets: string[] }[];
+}
+
+export interface ConceptValidationPoint {
+  name: string;
+  status: 'FOUND' | 'NOT_FOUND' | 'FAILED';
+  message: string;
+  evidence: string | null;
+}
+
+export interface ConceptValidationResponse {
+  points: ConceptValidationPoint[];
+}
+
 // ============ 学习方向（痛点1：对话生成的学习规划） ============
 export interface PlanChatMessage {
   role: 'user' | 'assistant';

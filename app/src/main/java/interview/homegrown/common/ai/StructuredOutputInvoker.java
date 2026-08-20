@@ -108,7 +108,7 @@ public class StructuredOutputInvoker {
                 lastError = e.getMessage();
                 log.warn("结构化输出解析失败 (attempt {} / {}: {})", attempt + 1, maxAttempts, lastError);
                 if(attempt >= maxAttempts-1){
-                    throw new RuntimeException("结构化输出解析失败, 已重试" + maxAttempts);
+                    throw new RuntimeException("结构化输出解析失败（已尝试 " + maxAttempts + " 次），请重试或换一种描述");
                 }
             }
         }

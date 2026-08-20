@@ -25,7 +25,7 @@ dependencies {
 
     // Database
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'com.h2database:h2'
 
     // Lombok
     compileOnly libs.lombok
@@ -39,16 +39,6 @@ dependencies {
 
     //Flyway数据库迁移
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
-
-    // Flyway PostgreSQL 方言（Spring Boot 3+ / Boot 4 需要单独引入）
-    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
-
-    // Redis 缓存（Spring Data Redis 自动配置）
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-
-    // AWS S3 SDK —— 用于 MinIO 对象存储
-    implementation "software.amazon.awssdk:s3:${libs.versions.aws.sdk.get()}"
-
 
     // MapStruct 对象映射
     implementation libs.mapstruct

@@ -13,10 +13,12 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview}
-    username: ${POSTGRES_USER:pony}
-    password: ${POSTGRES_PASSWORD:123456}
-    driver-class-name: org.postgresql.Driver
+    # 嵌入式 H2：单文件、零外部服务。PostgreSQL 兼容模式以复用既有迁移/原生 SQL。
+    # 桌面打包后 APP_DB_PATH 指向用户数据目录；本地开发默认落在仓库 ./data/ 下。
+    url: jdbc:h2:file:${APP_DB_PATH:./data/interview};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
       # schema 由 Flyway 全权管理，Hibernate 不再做严格类型校验（避免 SMALLINT/INTEGER 之类良性差异报错）
@@ -47,11 +49,6 @@ spring:
     out-of-order: true
     baseline-on-migrate: true
     baseline-version: 1
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      timeout: 3000ms
   mail:
     # 邮箱验证：不配 MAIL_HOST/FROM 则注册自动通过（本地/演示）
     host: ${MAIL_HOST:}
@@ -95,7 +92,7 @@ app:
     default-provider: deepseek
     #结构化输出重试配置
     structured:
-      max-attempts: 1      #推理模型每次几十秒，解析失败不再重试（避免 3 分钟）；解析成功率靠原生直连 + extractJson 兜底
+      max-attempts: 2      #结构化输出已关闭思考（快），失败时再重试 1 次并注入错误，提高解析成功率
       include-last-error: true      #重试时将错误注入提示词
     #多Provider定义
     # 注意：这里【不再配置任何默认/共享 API Key】。每个用户必须在「设置」页填自己的 key

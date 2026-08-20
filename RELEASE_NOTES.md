@@ -1,0 +1,48 @@
+# 面霸 · Release Notes
+
+## v0.5（本期，未发版号）
+
+### 🧠 学习上下文注入层（核心）
+- 新增 `ProgressContextService`：每次 AI 调用统一注入 **学生画像（掌握度/最近判分/复习到期/层掌握率）+ 概念要点 + 资料块 + 互联网补充**，出题 / 对话 / 判分 / 复盘四处接入
+- **出题循序渐进**：画像注入出题 prompt，掌握度低从基础定义/最小示例开始，掌握度高才出进阶/综合题
+- **破除信息茧房**：资料与互联网均为「素材」而非天花板，prompt 明确「资料没覆盖的概念用通用知识照常考，但不得把通用知识冒充成资料内容」
+- **判分可审计**：判分只依据已注入上下文与用户实际回答，禁止判分时额外联网搜索
+
+### 📚 资料结构化（不截断语义）
+- 新增 `CorpusIndexer`：资料按**逻辑主题切块**（服务端启发式切边界、LLM 只标注标题/知识点/摘要，原文零改动零丢失；不硬切字数，仅保护上限 20k/块、30 块）
+- 新增 `corpus_chunk` / `concept_chunk` 表：概念 ↔ 资料块映射，出题/对话按概念**检索命中块**而非全文截断
+- **知识点确认 UI**：上传资料后异步提取候选知识点，建计划页展示，可勾选「并入规划」
+- 索引未完成时优雅回退为整篇资料注入，不阻塞建计划
+
+### 🌐 互联网增强
+- `LlmRawClient` 新增 `webSearch`：Responses API 内置 web_search 工具优先，chat/completions 方式回退（供应商不支持时自动降级，不报错）
+- 建计划默认对每个知识点预取一次互联网标准内容存 `web_content`（无开关，异步执行，失败跳过）
+
+### 💬 追问与答案
+- 题干只抛一个主问；对话中**确认学生理解当前小问后才出下一问**（≤4 小问，后端安全阀兜底）
+- **看答案按进度**：reveal 时 AI 定位「当前小问」只讲它的答案，不再一次倒出全部；揭示后不再追问
+- 答案揭示边界（V14）保留：评分只取「得到答案之前」的回答
+
+### 🗑️ 记录管理（此前版本）
+- 删除学习计划 / 问答记录 / 内化复盘，均带二次确认 + 不可恢复提示
+
+### 🔐 安全（此前版本）
+- 移除服务器级/共享 API Key：key 只来自用户设置或桌面端 `X-LLM-Key` 头（只用不存），后端只返回 `hasApiKey`
+- Flyway 乱序容错仅限开发环境
+
+### 🖥️ 桌面端分发
+- 自动更新源切换为 **GitHub Releases**（`LuckPony/interview` 公开仓库）：`export GH_TOKEN=… && ./scripts/upload-update.sh` 一键发布
+- Windows NSIS 自动更新可用；macOS 未签名时需手动下载 zip 覆盖安装
+
+### 📋 数据库迁移
+- `V16__corpus_chunk_and_web_content.sql`：新增 `corpus_chunk` / `concept_chunk` / `web_content` 三表（FK 带 CASCADE）
+
+### 🚀 部署说明
+1. 服务器：`deploy.sh`（git pull → 重编译 → 重启）生效 V16 迁移
+2. 前端改动随后端一起部署
+3. 桌面端：改 `interview-desktop/package.json` version → `export GH_TOKEN=… && ./scripts/upload-update.sh` → 用户下次启动自动更新
+4. 清理服务器 `/workspace/.env` 中已失效的 `API_KEY=`（可选）
+
+### ⚠️ 已知限制
+- 联网搜索依赖供应商 API 支持（DeepSeek 官方走 Responses API 的 web_search 工具）；不支持时自动降级为「资料 + 通用知识」出题
+- macOS 自动更新需 Apple 开发者签名（$99/年）；未签名只能手动更新

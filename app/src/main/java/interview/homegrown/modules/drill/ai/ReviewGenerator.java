@@ -33,7 +33,7 @@ public class ReviewGenerator {
     }
 
     public ReviewOutput generate(String stem, String pointsJson, String byConceptJson,
-                                 List<DrillTurn> turns) {
+                                 List<DrillTurn> turns, String context) {
         String history = turns.stream()
                 .map(t -> {
                     StringBuilder s = new StringBuilder();
@@ -59,8 +59,11 @@ public class ReviewGenerator {
 
                 整段对话：
                 %s
+                %s
                 """, nullTo(stem), nullTo(pointsJson), nullTo(byConceptJson),
-                history.isBlank() ? "（无）" : history);
+                history.isBlank() ? "（无）" : history,
+                (context == null || context.isBlank()) ? ""
+                        : "\n\n学习上下文（学生进度 / 概念要点 / 用户资料 / 互联网补充，复盘可引用其真实内容）：\n" + context);
 
         return invoker.invoke(SYSTEM, user, ReviewOutput.class);
     }

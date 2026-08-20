@@ -7,6 +7,7 @@ import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.domain.Mastery;
 import interview.homegrown.modules.drill.domain.StudyPlan;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.repository.ConceptChunkRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
@@ -23,10 +24,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -62,8 +65,13 @@ public class StudyPlanService {
             - 当你判断信息已经足够形成规划时，除了 reply，还要在 draft 字段填上结构化规划：
               * title：方向名（简短，如「前端」「微服务」「MySQL 调优」）
               * goal：一句话学习目标
-              * points：4-8 个知识点，每个含 name（知识点名）、layer（1-5 的真实认知层，不要虚高）、
-                note（一句话提示，可空）
+              * points：尽可能细化为 50-120 个原子知识点，按层分布；每层尽量 10-20 个，
+                不要只给每层 1-2 个大章节。每个点必须是一个能在 10-30 分钟内讲解、举例并单独出题验证的
+                可学习目标，每个含 name（具体知识点名）、layer（1-5 的真实认知层，不要虚高）、
+                note（一句话提示，尽量 12 字以内，可空）。
+              * 禁止把「Java 并发」「数据库优化」「微服务架构」这类方向或完整章节直接当成一个点，
+                应拆成可观察的定义、机制、用法、边界或常见问题；同义点去重，避免为了凑数量重复。
+            - 如果用户目标很窄，仍然要在目标范围内细化，不要为了凑数量引入无关主题。
             - 如果信息还不够，draft 必须填 null，继续用 reply 追问。
             - title 必填：必须是一个简短的方向名（如「Go 后端」），不得为 null。
             - 只做规划，不要出具体面试题、不要给答案。严格遵循格式说明的 JSON。""";
@@ -75,6 +83,19 @@ public class StudyPlanService {
             要求：只回复这一句对话（80 字内），不要列规划、不要输出 JSON、不要用 Markdown。
             """;
 
+    /** AI 补充/调整已有规划：只输出「新增知识点」，服务端按名去重合并，不动已有内容。 */
+    private static final String REVISE_SYSTEM_PROMPT = """
+            你是一个面试备考的「学习规划顾问」。用户已经有一份学习规划，现在用一句话让你补充或调整知识点。
+            你会收到：现有规划的 title / goal、按认知层（1-5）分组的【现有知识点】，以及用户的补充指令。
+
+            要求：
+            - 只输出【新增】的知识点，不要重复【现有知识点】里已有的（同名视为重复）。
+            - 每个点含 name（具体知识点名）、layer（1-5 的真实认知层）、note（一句话提示，尽量 12 字内，可空）。
+            - 数量视指令而定：用户没指定数量时，每层补 5-12 个；用户明确「补 N 个」就按 N 来。
+            - 紧扣方向与指令，不引入无关主题；同义点去重，不为凑数量重复。
+            - title / goal 与现有规划保持一致即可（本接口只用 points 字段）。
+            - 严格遵循格式说明的 JSON。""";
+
     private final StudyPlanRepository planRepo;
     private final ConceptRepository conceptRepo;
     private final MasteryRepository masteryRepo;
@@ -82,11 +103,14 @@ public class StudyPlanService {
     private final CorpusService corpusService;
     private final StructuredOutputInvoker invoker;
     private final LlmRawClient rawClient;
+    private final ConceptChunkRepository conceptChunkRepo;
+    private final WebEnrichmentService webEnrichmentService;
 
     public StudyPlanService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                             MasteryRepository masteryRepo, CorpusRepository corpusRepo,
                             CorpusService corpusService, StructuredOutputInvoker invoker,
-                            LlmRawClient rawClient) {
+                            LlmRawClient rawClient, ConceptChunkRepository conceptChunkRepo,
+                            WebEnrichmentService webEnrichmentService) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
@@ -94,8 +118,42 @@ public class StudyPlanService {
         this.corpusService = corpusService;
         this.invoker = invoker;
         this.rawClient = rawClient;
+        this.conceptChunkRepo = conceptChunkRepo;
+        this.webEnrichmentService = webEnrichmentService;
     }
 
+    /** 计划的粒度提示：只做保护性校验，不把用户窄目标强行扩展到无关领域。 */
+    private static final int MIN_PLAN_POINTS = 20;
+    private static final int MAX_PLAN_POINTS = 160;
+
+    /** 对 AI 草稿做轻量校验；过少时不静默接受，避免生成只有几个章节名的笼统计划。 */
+    private StudyPlanDraft normalizeDraft(StudyPlanDraft draft) {
+        if (draft == null || draft.points() == null) return draft;
+        List<PlanPoint> points = draft.points().stream()
+                .filter(p -> p != null && p.name() != null && !p.name().isBlank())
+                .collect(Collectors.toMap(p -> p.name().trim().toLowerCase(), p ->
+                        new PlanPoint(p.name().trim(), clampLayer(p.layer()), p.note()),
+                        (a, b) -> a, java.util.LinkedHashMap::new))
+                .values().stream().limit(MAX_PLAN_POINTS).toList();
+        if (points.size() < MIN_PLAN_POINTS) {
+            log.warn("AI 规划知识点过少：{} 个；建议继续细化", points.size());
+        }
+        return new StudyPlanDraft(draft.title(), draft.goal(), points, draft.corpusId());
+    }
+
+    /** 供 Controller 在 draft 事件前调用，保持同步 intake 与流式 intake 行为一致。 */
+    public StudyPlanDraft normalizeDraftForView(StudyPlanDraft draft) {
+        return normalizeDraft(draft);
+    }
+
+    /** 轻量校验：过粗的草稿不阻塞用户确认，但给出明确提示。 */
+    public String draftHint(StudyPlanDraft draft) {
+        if (draft == null || draft.points() == null) return null;
+        if (draft.points().size() < MIN_PLAN_POINTS) {
+            return "当前规划只有 " + draft.points().size() + " 个知识点，可能过于笼统；建议继续对话，让 AI 把每层拆细。";
+        }
+        return null;
+    }
     /** 无状态 intake：把前端发来的完整对话拼成 user prompt；若绑定了资料，把资料文本注入作为规划依据。 */
     public IntakeResponse intake(List<ChatMessage> messages, Long corpusId) {
         String history = messages.stream()
@@ -104,7 +162,8 @@ public class StudyPlanService {
         String ref = corpusService.referenceWithName(corpusId);
         String userPrompt = (ref == null) ? history
                 : history + "\n\n【参考资料】用户上传了如下资料，请基于它的真实内容来规划学习方向，不要脱离资料空谈：\n" + ref;
-        return invoker.invoke(SYSTEM_PROMPT, userPrompt, IntakeResponse.class);
+        IntakeResponse ir = invoker.invoke(SYSTEM_PROMPT, userPrompt, IntakeResponse.class);
+        return ir == null ? null : new IntakeResponse(ir.reply(), normalizeDraft(ir.draft()));
     }
 
     /**
@@ -135,7 +194,7 @@ public class StudyPlanService {
     /** 基于「完整对话（含刚流式的回复）」提取草稿；信息不够则 draft 为 null。 */
     public StudyPlanDraft extractDraft(List<ChatMessage> messages, Long corpusId) {
         IntakeResponse ir = intake(messages, corpusId);
-        return ir == null ? null : ir.draft();
+        return ir == null ? null : normalizeDraft(ir.draft());
     }
 
     /** 确认落库：clamp layer∈[1,5]，同用户同名方向幂等（避免双击重复建），绑定资料。 */
@@ -174,8 +233,14 @@ public class StudyPlanService {
             c.setDescription(pt.note());
             c.setStudyPlanId(plan.getId());
             conceptRepo.save(c);
+            // 概念 ↔ 资料块映射（按概念名匹配块 topic；资料索引未完成时自然不命中，不阻塞）
+            if (plan.getCorpusId() != null) {
+                conceptChunkRepo.mapConceptToChunksByTopic(c.getId(), c.getName(), plan.getCorpusId());
+            }
             existing.add(pt.name().trim());
         }
+        // 互联网补充：默认预取每个知识点的标准内容（异步，不阻塞建计划）
+        webEnrichmentService.enrichPlanAsync(plan.getId());
         return toView(userId, plan);
     }
 
@@ -256,6 +321,60 @@ public class StudyPlanService {
         conceptRepo.delete(c);
     }
 
+    /** AI 补充知识点：把现有规划 + 用户指令交给 LLM，返回「新增点」并合并（按名去重，不动已有内容）。 */
+    @Transactional
+    public PlanView aiRevise(Long userId, Long planId, String instruction) {
+        StudyPlan plan = requireOwnedPlan(userId, planId);
+        if (instruction == null || instruction.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "请说明想补充或调整什么");
+        }
+        List<Concept> existing = conceptRepo.findByStudyPlanId(plan.getId());
+        StudyPlanDraft draft = invoker.invoke(REVISE_SYSTEM_PROMPT,
+                buildRevisePrompt(plan, existing, instruction), StudyPlanDraft.class);
+        if (draft == null || draft.points() == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "AI 未能生成补充知识点，请换个说法再试");
+        }
+        Set<String> names = existing.stream().map(Concept::getName)
+                .map(n -> n == null ? "" : n.trim().toLowerCase())
+                .filter(n -> !n.isEmpty())
+                .collect(Collectors.toCollection(HashSet::new));
+        int added = 0;
+        for (PlanPoint pt : normalizeDraft(draft).points()) {
+            String key = pt.name() == null ? "" : pt.name().trim().toLowerCase();
+            if (key.isEmpty() || names.contains(key)) continue;
+            Concept c = new Concept();
+            c.setTopic(plan.getTitle());
+            c.setLayer(clampLayer(pt.layer()));
+            c.setName(pt.name().trim());
+            c.setDescription(pt.note());
+            c.setStudyPlanId(plan.getId());
+            conceptRepo.save(c);
+            names.add(key);
+            added++;
+        }
+        log.info("AI 补充知识点: planId={}, added={}", planId, added);
+        return toView(userId, plan);
+    }
+
+    /** 拼「现有规划结构 + 用户指令」给补充接口。 */
+    private String buildRevisePrompt(StudyPlan plan, List<Concept> existing, String instruction) {
+        Map<Integer, List<String>> byLayer = existing.stream()
+                .collect(Collectors.groupingBy(Concept::getLayer, TreeMap::new,
+                        Collectors.mapping(Concept::getName, Collectors.toList())));
+        StringBuilder sb = new StringBuilder();
+        sb.append("现有规划 title：").append(plan.getTitle()).append("\n");
+        if (plan.getGoal() != null && !plan.getGoal().isBlank()) {
+            sb.append("目标：").append(plan.getGoal()).append("\n");
+        }
+        sb.append("现有知识点（按认知层分组）：\n");
+        for (Map.Entry<Integer, List<String>> e : byLayer.entrySet()) {
+            sb.append("  L").append(e.getKey()).append("：").append(String.join("、", e.getValue())).append("\n");
+        }
+        if (byLayer.isEmpty()) sb.append("  （暂无）\n");
+        sb.append("\n用户补充指令：").append(instruction).append("\n");
+        return sb.toString();
+    }
+
     // —— 内部 ——
 
     /** 取当前用户的方向，不存在或不属于该用户一律 404。 */
@@ -303,7 +422,8 @@ public class StudyPlanService {
                 (int) mastered, concepts.size(), (int) due, corpusName);
     }
 
-    private int clampLayer(int layer) {
+    private int clampLayer(Integer layer) {
+        if (layer == null) return LAYER_MIN;
         if (layer < LAYER_MIN) return LAYER_MIN;
         if (layer > LAYER_MAX) return LAYER_MAX;
         return layer;

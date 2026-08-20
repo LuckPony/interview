@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Pencil,
   Save,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -52,6 +53,10 @@ export function PlansPage() {
   const [editGoal, setEditGoal] = useState('');
   const [editBusy, setEditBusy] = useState(false);
   const [editErr, setEditErr] = useState('');
+
+  // —— AI 补充知识点 ——
+  const [aiInstr, setAiInstr] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +119,23 @@ export function PlansPage() {
       setEditErr(msg(e));
     } finally {
       setEditBusy(false);
+    }
+  };
+
+  const runAiRevise = async () => {
+    if (!activePlan) return;
+    const instr = aiInstr.trim();
+    if (!instr) { setEditErr('请输入想补充的内容，例如「L3 层再补 10 个点」'); return; }
+    setAiBusy(true);
+    setEditErr('');
+    try {
+      await studyPlan.aiRevise(activePlan.id, instr);
+      setAiInstr('');
+      await reload();
+    } catch (e) {
+      setEditErr(msg(e));
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -237,6 +259,26 @@ export function PlansPage() {
                     <div className="edit-actions">
                       <Button onClick={savePlan} disabled={editBusy}>
                         <Save size={15} strokeWidth={1.8} /> 保存方向
+                      </Button>
+                    </div>
+                  </Card>
+
+                  <Card className="plan-editor ai-revise-card">
+                    <span className="eyebrow">AI 补充知识点</span>
+                    <p className="ai-revise-hint">
+                      用一句话让 AI 追加知识点，例如「L3 层再补 10 个点」或「补充分布式相关的内容」。已有知识点不会重复添加。
+                    </p>
+                    <div className="ai-revise-row">
+                      <input
+                        value={aiInstr}
+                        onChange={(e) => setAiInstr(e.target.value)}
+                        placeholder="例如：L3 层再补 10 个点"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAiRevise(); }
+                        }}
+                      />
+                      <Button onClick={runAiRevise} disabled={aiBusy}>
+                        <Sparkles size={15} strokeWidth={1.8} /> {aiBusy ? '生成中…' : 'AI 补充'}
                       </Button>
                     </div>
                   </Card>

@@ -20,6 +20,8 @@ import type {
   ConversationView,
   DailyTaskView,
   ReviewView,
+  ConceptValidationResponse,
+  KnowledgePointsView,
 } from './types';
 
 export interface Timing {
@@ -467,10 +469,23 @@ export const studyPlan = {
     }, { onToken, onDraft, onDone: () => onDone(), onError });
   },
 
+  validateCandidates: (draft: StudyPlanDraft) =>
+    apiFetch<ConceptValidationResponse>('/study-plan/validate-candidates', {
+      method: 'POST',
+      body: JSON.stringify({ draft }),
+    }),
+
   confirm: (draft: StudyPlanDraft) =>
     apiFetch<PlanView>('/study-plan/confirm', {
       method: 'POST',
       body: JSON.stringify({ draft }),
+    }),
+
+  // AI 补充知识点：一句话让 AI 在现有方向下追加知识点（按名去重合并）
+  aiRevise: (planId: number, instruction: string) =>
+    apiFetch<PlanView>(`/study-plan/${planId}/ai-revise`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
     }),
 
   // —— 用户手动编辑（自主权）：改方向 / 删方向 / 增改删知识点 ——
@@ -534,4 +549,7 @@ export const corpus = {
   // 云端桌面态：Electron 在本机读好的文件字节传上来，服务端 Tika 解析合并
   fromFiles: (form: FormData) =>
     apiFetch<CorpusView>('/corpus/from-files', { method: 'POST', body: form }),
+  // 资料候选知识点（异步拆块+LLM 标注完成后返回；indexed=false 表示还在处理）
+  knowledgePoints: (corpusId: number) =>
+    apiFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
 };

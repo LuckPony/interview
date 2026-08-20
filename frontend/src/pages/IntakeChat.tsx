@@ -4,7 +4,7 @@ import { Send, Check, Upload, X } from 'lucide-react';
 import { Button, Card, Tag } from '../components/ui';
 import { studyPlan, corpus, type TutorStream } from '../api/drill';
 import { ApiError } from '../api/client';
-import type { PlanChatMessage, StudyPlanDraft } from '../api/types';
+import type { PlanChatMessage, StudyPlanDraft, ConceptValidationResponse } from '../api/types';
 
 /** 新建学习方向：无状态多轮对话，LLM 收敛出 draft 后确认落库。 */
 export function IntakeChat() {
@@ -14,6 +14,8 @@ export function IntakeChat() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [draft, setDraft] = useState<StudyPlanDraft | null>(null);
+  const [validation, setValidation] = useState<ConceptValidationResponse | null>(null);
+  const [validating, setValidating] = useState(false);
 
   // 流式回复流引用：卸载时取消
   const streamRef = useRef<TutorStream | null>(null);
@@ -23,6 +25,33 @@ export function IntakeChat() {
   const [corpusId, setCorpusId] = useState<number | null>(null);
   const [corpusName, setCorpusName] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  // C1：从资料中识别到的候选知识点（异步索引，轮询直到就绪）
+  const [kp, setKp] = useState<{ name: string; chunkCount: number; snippets: string[] }[] | null>(null);
+  const [kpIndexed, setKpIndexed] = useState(false);
+  const [kpChecking, setKpChecking] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // 上传成功后轮询候选知识点（索引是异步的，最多等 ~30s）
+  const pollKnowledgePoints = async (id: number) => {
+    setKpChecking(true);
+    try {
+      for (let i = 0; i < 10; i++) {
+        const res = await corpus.knowledgePoints(id);
+        if (res.indexed) {
+          setKp(res.points);
+          setKpIndexed(true);
+          setSelected(new Set(res.points.map((p) => p.name)));
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    } catch {
+      // 轮询失败不致命：用户仍可继续对话规划
+    } finally {
+      setKpChecking(false);
+    }
+  };
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -34,6 +63,9 @@ export function IntakeChat() {
       const res = await corpus.upload(file);
       setCorpusId(res.id);
       setCorpusName(res.name);
+      setKp(null);
+      setKpIndexed(false);
+      void pollKnowledgePoints(res.id);
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : '上传失败');
     } finally {
@@ -44,6 +76,8 @@ export function IntakeChat() {
   const detachCorpus = () => {
     setCorpusId(null);
     setCorpusName('');
+    setKp(null);
+    setKpIndexed(false);
   };
 
   // 桌面端（Electron）下可免上传：本地模式直接把路径交给后端读盘；
@@ -76,11 +110,17 @@ export function IntakeChat() {
         const res = await corpus.fromFiles(form);
         setCorpusId(res.id);
         setCorpusName(res.name);
+        setKp(null);
+        setKpIndexed(false);
+        void pollKnowledgePoints(res.id);
       } else {
         // 本地模式：后端直接读盘，免上传
         const res = await corpus.fromPath(path);
         setCorpusId(res.id);
         setCorpusName(res.name);
+        setKp(null);
+        setKpIndexed(false);
+        void pollKnowledgePoints(res.id);
       }
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : e2 instanceof Error ? e2.message : '读取本地文件失败');
@@ -99,6 +139,19 @@ export function IntakeChat() {
     if (p) await ingestPath(p);
   };
 
+  const validateDraft = async (nextDraft: StudyPlanDraft | null) => {
+    setDraft(nextDraft);
+    setValidation(null);
+    if (!nextDraft || nextDraft.points.length === 0) return;
+    setValidating(true);
+    try {
+      setValidation(await studyPlan.validateCandidates(nextDraft));
+    } catch {
+      // 核验失败不阻断用户编辑和确认，前端显示为未完成核验
+    } finally {
+      setValidating(false);
+    }
+  };
   const send = () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -118,7 +171,7 @@ export function IntakeChat() {
         // 更新最后一个（占位）气泡为已累积的回复
         setMessages((prev) => [...prev.slice(0, -1), { role: 'assistant', content: reply }]);
       },
-      (draft) => setDraft(draft),
+      (draft) => { void validateDraft(draft); },
       () => {
         streamRef.current = null;
         setBusy(false);
@@ -149,10 +202,35 @@ export function IntakeChat() {
 
   const keepTalking = () => {
     setDraft(null);
+    setValidation(null);
     setMessages([
       ...messages,
       { role: 'assistant', content: '好，那我们继续聊，你还想补充什么？' },
     ]);
+  };
+
+  // C1：把勾选的资料候选知识点并入 AI 规划（按名去重；layer 默认 1，note 用块摘要）
+  const mergeSelected = () => {
+    if (!draft || !kp) return;
+    const extra = (kp || [])
+      .filter((p) => selected.has(p.name))
+      .filter((p) => !draft.points.some((d) => d.name.trim() === p.name.trim()))
+      .map((p) => ({
+        name: p.name,
+        layer: 1,
+        note: p.snippets[0] ?? '',
+      }));
+    if (extra.length === 0) return;
+    setDraft({ ...draft, points: [...draft.points, ...extra] });
+  };
+
+  const toggleSelected = (name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   };
 
   return (
@@ -202,6 +280,42 @@ export function IntakeChat() {
             </button>
           </div>
         )}
+
+        {/* C1：资料候选知识点（异步提取，就绪后展示，可勾选并入规划） */}
+        {corpusId != null && (
+          <div className="kp-panel">
+            {kpChecking && <p className="upload-hint">资料分析中，正在提取知识点…（约几秒）</p>}
+            {kpIndexed && kp && kp.length > 0 && (
+              <>
+                <span className="eyebrow">从资料中识别到的知识点（可勾选后并入规划）</span>
+                <div className="kp-list">
+                  {kp.map((p) => (
+                    <label className="kp-item" key={p.name}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(p.name)}
+                        onChange={() => toggleSelected(p.name)}
+                      />
+                      <span className="kp-name">{p.name}</span>
+                      {p.chunkCount > 1 && <Tag>×{p.chunkCount}</Tag>}
+                      {p.snippets[0] && <span className="kp-snippet">{p.snippets[0]}</span>}
+                    </label>
+                  ))}
+                </div>
+                {draft && (
+                  <button
+                    type="button"
+                    className="upload-btn kp-merge"
+                    onClick={mergeSelected}
+                    disabled={selected.size === 0}
+                  >
+                    并入规划（{selected.size}）
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </Card>
 
       <Card className="chat-card">
@@ -222,13 +336,24 @@ export function IntakeChat() {
             <h3>{draft.title ?? '未命名方向'}</h3>
             {draft.goal && <p className="draft-goal">{draft.goal}</p>}
             <ul className="draft-points">
-              {draft.points.map((p, i) => (
+              {draft.points.map((p, i) => {
+                const check = validation?.points.find((v) => v.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+                return (
                 <li key={i}>
                   <Tag>L{p.layer}</Tag> {p.name}
+                  {check?.status === 'FOUND' && <span className="validation-ok">✓ 已检索</span>}
+                  {check?.status === 'NOT_FOUND' && <span className="validation-warn">⚠ 未找到</span>}
+                  {check?.status === 'FAILED' && <span className="validation-warn">⚠ 检索失败</span>}
                   {p.note ? ` · ${p.note}` : ''}
+                  {check?.evidence && <small className="validation-evidence">{check.evidence}</small>}
                 </li>
-              ))}
+                );
+              })}
             </ul>
+            {validating && <p className="upload-hint">正在逐个搜索知识点，搜索结果仅供核对，未找到不代表一定是错误……</p>}
+            {!validating && validation && validation.points.some((v) => v.status !== 'FOUND') && (
+              <p className="upload-hint">部分知识点暂未找到公开结果，可能是内部术语或名称需要调整，请确认后再创建。</p>
+            )}
             <div className="draft-actions">
               <Button onClick={confirm} disabled={busy}>
                 <Check size={16} strokeWidth={1.6} /> 确认，开始学

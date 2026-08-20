@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS concept (
 -- arity = array_length(concept_ids,1)，是字段不是类别
 CREATE TABLE IF NOT EXISTS question_bank (
     id              BIGSERIAL PRIMARY KEY,
-    concept_ids     INTEGER[]     NOT NULL,       -- 参与的概念（单点=1，组合=2-3）
+    concept_ids     INTEGER ARRAY  NOT NULL,       -- 参与的概念（单点=1，组合=2-3）
     probe_type      VARCHAR(20)   NOT NULL,       -- RECALL/CLOZE/REVERSE/TRAP/SCENARIO/CONTRAST/INTEGRATION
     answer_mode     VARCHAR(8)    NOT NULL DEFAULT 'WRITE', -- WRITE（SPEAK 预留）
     response_format VARCHAR(16)   NOT NULL,       -- FREE_TEXT/CHOICE/STRUCTURED/CODE
@@ -50,10 +50,13 @@ CREATE TABLE IF NOT EXISTS drill_run (
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 物理闸门：同一用户同时只允许一个未闭环的作答（READY/ANSWERING）
--- 并发插入第二个会触发唯一约束冲突 -> 服务端返回 409
-CREATE UNIQUE INDEX IF NOT EXISTS uni_drill_run_active
-    ON drill_run (user_id) WHERE status IN ('READY', 'ANSWERING');
+-- 物理闸门：同一用户同时只允许一个未闭环的作答（READY/ANSWERING）。
+-- H2 不支持部分唯一索引（WHERE 条件），改用生成列 + 普通唯一索引实现等价语义：
+-- active_marker 仅在 status IN ('READY','ANSWERING') 时等于 user_id，否则为 NULL；
+-- 唯一索引对 NULL 不冲突，因此只有「活跃」行才受 user_id 唯一约束。
+ALTER TABLE drill_run ADD COLUMN active_marker BIGINT
+    GENERATED ALWAYS AS (CASE WHEN status IN ('READY','ANSWERING') THEN user_id ELSE NULL END);
+CREATE UNIQUE INDEX IF NOT EXISTS uni_drill_run_active ON drill_run (active_marker);
 
 -- ============ 4. 判分结果：grade_result ============
 -- by_concept 统一格式：[{conceptId, role, pointResults[], extraCorrect[], factualErrors[]}]
@@ -83,26 +86,9 @@ CREATE TABLE IF NOT EXISTS mastery (
     CONSTRAINT uni_mastery_user_concept UNIQUE (user_id, concept_id)
 );
 
--- ============ updated_at 触发器 ============
--- 注意：V1__init_schema.sql 已被删除（重构），原函数定义内嵌于此，
--- 保证干净库（无 V1 残留）也能跑通本迁移；CREATE OR REPLACE 幂等，
--- 即使某环境仍保留 V1 也不冲突。
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_concept_updated_at
-    BEFORE UPDATE ON concept FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_question_bank_updated_at
-    BEFORE UPDATE ON question_bank FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_drill_run_updated_at
-    BEFORE UPDATE ON drill_run FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_mastery_updated_at
-    BEFORE UPDATE ON mastery FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- ============ updated_at 维护 ============
+-- 原为 PostgreSQL plpgsql 触发器；嵌入式 H2 无 plpgsql，已改为实体侧 @UpdateTimestamp
+-- （domain 各实体 updatedAt 字段）。此处不再创建函数与触发器。
 
 -- ============ 种子概念（让 demo 可端到端跑通） ============
 -- 一个主题 × 五层，足以演示"信息茧房破除（逼出 L3-L5）"与"深度画像"

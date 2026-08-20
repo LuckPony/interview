@@ -2,6 +2,7 @@ package interview.homegrown.modules.drill.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.service.StudyPlanService;
+import interview.homegrown.modules.drill.service.ConceptValidationService;
 import interview.homegrown.modules.drill.web.dto.ChatMessage;
 import interview.homegrown.modules.drill.web.dto.IntakeResponse;
 import interview.homegrown.modules.drill.web.dto.PlanView;
@@ -45,10 +46,13 @@ public class StudyPlanController {
 
     private final StudyPlanService service;
     private final ObjectMapper objectMapper;
+    private final ConceptValidationService validationService;
 
-    public StudyPlanController(StudyPlanService service, ObjectMapper objectMapper) {
+    public StudyPlanController(StudyPlanService service, ObjectMapper objectMapper,
+                               ConceptValidationService validationService) {
         this.service = service;
         this.objectMapper = objectMapper;
+        this.validationService = validationService;
     }
 
     @PostMapping("/intake")
@@ -80,7 +84,7 @@ public class StudyPlanController {
                 if (reply != null && !reply.isBlank()) {
                     conv.add(new ChatMessage("assistant", reply));
                 }
-                StudyPlanDraft draft = service.extractDraft(conv, corpusId);
+                StudyPlanDraft draft = service.normalizeDraftForView(service.extractDraft(conv, corpusId));
                 out.write(("event: draft\ndata: " + objectMapper.writeValueAsString(draft) + "\n\n")
                         .getBytes(StandardCharsets.UTF_8));
                 out.flush();
@@ -101,6 +105,11 @@ public class StudyPlanController {
                 .header("Cache-Control", "no-cache")
                 .header("X-Accel-Buffering", "no")
                 .body(body);
+    }
+
+    @PostMapping("/validate-candidates")
+    public ConceptValidationService.ValidationResponse validateCandidates(@RequestBody ValidateRequest req) {
+        return validationService.validate(req.draft());
     }
 
     @PostMapping("/confirm")
@@ -142,6 +151,12 @@ public class StudyPlanController {
         return Map.of("ok", true);
     }
 
+    /** AI 补充知识点：用一句话让 AI 在现有方向下追加知识点（按名去重合并，不动已有内容）。 */
+    @PostMapping("/{planId}/ai-revise")
+    public PlanView aiRevise(@PathVariable Long planId, @RequestBody AiReviseRequest req) {
+        return service.aiRevise(currentUserId(), planId, req.instruction());
+    }
+
     private Long currentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof Long)) {
@@ -151,7 +166,9 @@ public class StudyPlanController {
     }
 
     public record IntakeRequest(List<ChatMessage> messages, Long corpusId) {}
+    public record ValidateRequest(StudyPlanDraft draft) {}
     public record ConfirmRequest(StudyPlanDraft draft) {}
     public record UpdatePlanRequest(String title, String goal) {}
     public record ConceptWriteRequest(String name, Integer layer, String note) {}
+    public record AiReviseRequest(String instruction) {}
 }

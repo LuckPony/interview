@@ -13,6 +13,7 @@
     "dist": "npm run sync-spa && electron-builder",
     "dist:cloud": "node scripts/build-cloud.js && electron-builder",
     "dist:win": "node scripts/build-cloud.js && electron-builder --win",
+    "dist:win:local": "bash scripts/build-win.sh",
     "fix:electron": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app",
     "postinstall": "codesign --force --deep --sign - node_modules/electron/dist/Electron.app || true"
   },

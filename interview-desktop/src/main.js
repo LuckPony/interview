@@ -1,5 +1,6 @@
 // 桌面壳主进程：拉起本地 Spring Boot 后端 → 探活闸门 → 加载 React SPA → 退出清理。
-// 仅做「启动器 + 本地 fs 桥」，不打包 JVM / Docker（见 README 的诚实说明）。
+// 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
+// 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage } = require('electron');
 const path = require('path');
@@ -95,19 +96,44 @@ function isCloud(cfg) {
 function spawnBackend() {
   // detached + 进程组，退出时才能连 JVM 一起杀掉（光 kill 直接子进程杀不掉 gradle→JVM）
   // 后端日志（含异常堆栈）重定向到 backend.log，否则 stdio:'ignore' 会把 500 堆栈吞掉，难以排查
-  const logPath = path.join(REPO_ROOT, 'interview-desktop', 'backend.log');
+  const logPath = app.isPackaged
+    ? path.join(app.getPath('userData'), 'backend.log')
+    : path.join(REPO_ROOT, 'interview-desktop', 'backend.log');
   const logFd = fs.openSync(logPath, 'a');
-  backend = spawn('bash', ['start.sh'], {
-    cwd: REPO_ROOT,
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-    env: {
-      ...process.env,
-      // 复活 start.sh 里的去代理环境变量，确保后端只连本机
-      JAVA_TOOL_OPTIONS:
-        '-Djava.net.useSystemProxies=false -DsocksProxyHost= -Dhttp.nonProxyHosts=localhost|127.0.0.1|*.local',
-    },
-  });
+  const env = {
+    ...process.env,
+    // 复活 start.sh 里的去代理环境变量，确保后端只连本机
+    JAVA_TOOL_OPTIONS:
+      '-Djava.net.useSystemProxies=false -DsocksProxyHost= -Dhttp.nonProxyHosts=localhost|127.0.0.1|*.local',
+  };
+
+  if (app.isPackaged) {
+    // 打包版：拉起内嵌精简 JRE + fat jar（electron-builder extraResources 塞进 Resources/runtime）
+    // cwd 指向 userData：H2 数据库（./data/interview）与本地文件（./data/files）都落用户数据目录
+    // —— .app 包内只读，绝不能往里写。
+    const javaBin = path.join(
+      process.resourcesPath,
+      'runtime',
+      'jre',
+      'bin',
+      process.platform === 'win32' ? 'java.exe' : 'java'
+    );
+    const jarPath = path.join(process.resourcesPath, 'runtime', 'app.jar');
+    backend = spawn(javaBin, ['-jar', jarPath], {
+      cwd: app.getPath('userData'),
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env,
+    });
+  } else {
+    // 源码运行（npm start）：走 start.sh（gradle bootRun，开发用）
+    backend = spawn('bash', ['start.sh'], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env,
+    });
+  }
   backend.unref();
 }
 

@@ -76,13 +76,15 @@ public class RehearsalService {
     private final ConceptRepository conceptRepo;
     private final GradeResultRepository gradeRepo;
     private final ObjectMapper objectMapper;
+    private final ProgressContextService progressContext;
 
     public RehearsalService(SelectionService selectionService, QuestionService questionService,
                             GraderText graderText,
                             GradingService gradingService, DrillRunRepository runRepo,
                             DrillTurnRepository turnRepo, QuestionBankRepository qbRepo,
                             MasteryRepository masteryRepo, ConceptRepository conceptRepo,
-                            GradeResultRepository gradeRepo, ObjectMapper objectMapper) {
+                            GradeResultRepository gradeRepo, ObjectMapper objectMapper,
+                            ProgressContextService progressContext) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.graderText = graderText;
@@ -94,6 +96,7 @@ public class RehearsalService {
         this.conceptRepo = conceptRepo;
         this.gradeRepo = gradeRepo;
         this.objectMapper = objectMapper;
+        this.progressContext = progressContext;
     }
 
     // ---------------------------------------------------------------- start
@@ -214,8 +217,15 @@ public class RehearsalService {
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "本轮问题不存在"));
 
         // 闭卷 + 计时 -> timed 恒为 true，EASY 档在模拟面试里是可达的
+        // 学习上下文（判分依据：画像/资料块/互联网，不额外搜索）
+        String context = null;
+        if (q.getConceptIds() != null && q.getConceptIds().length > 0) {
+            java.util.List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
+                    .map(Integer::longValue).toList();
+            context = progressContext.contextFor(userId, ids);
+        }
         Grader.GraderOutput out = graderText.gradeRaw(
-                turn.getStem(), turn.getPointsJson(), q.getConceptIds(), rawAnswer, true);
+                turn.getStem(), turn.getPointsJson(), q.getConceptIds(), rawAnswer, true, context);
 
         turn.setRawAnswer(rawAnswer);
         turn.setByConceptJson(out.byConceptJson());

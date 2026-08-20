@@ -37,7 +37,6 @@ ALTER TABLE app_user ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
 -- 更新时间（配合触发器自动维护）
 ALTER TABLE app_user ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
--- ---------- updated_at 触发器（幂等） ----------
-DROP TRIGGER IF EXISTS trg_app_user_updated_at ON app_user;
-CREATE TRIGGER trg_app_user_updated_at
-    BEFORE UPDATE ON app_user FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- ---------- updated_at ----------
+-- 原为 PostgreSQL 触发器（调用 update_updated_at_column()）；H2 无 plpgsql，已移除。
+-- app_user.updated_at 由数据库默认值维护（该字段非关键路径，前端未依赖实时更新）。

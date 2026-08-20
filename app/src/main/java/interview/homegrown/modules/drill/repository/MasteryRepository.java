@@ -22,10 +22,9 @@ public interface MasteryRepository extends JpaRepository<Mastery, Long> {
     // upsert：首次插入，重复则覆盖（深度画像与排程都靠它）
     @Modifying
     @Query(value = """
-            INSERT INTO mastery (user_id, concept_id, mastery_level, last_grade, due_at)
-            VALUES (:uid, :cid, :lvl, :grade, :due)
-            ON CONFLICT (user_id, concept_id) DO UPDATE
-            SET mastery_level = :lvl, last_grade = :grade, due_at = :due, updated_at = now()
+            MERGE INTO mastery (user_id, concept_id, mastery_level, last_grade, due_at, updated_at)
+            KEY(user_id, concept_id)
+            VALUES (:uid, :cid, :lvl, :grade, :due, now())
             """, nativeQuery = true)
     void upsert(@Param("uid") Long userId,
                 @Param("cid") Long conceptId,

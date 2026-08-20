@@ -31,9 +31,12 @@ public class QuestionGenerator {
     public record Prompt(String system, String user) {
     }
 
-    /** 组装出题 prompt（供流式出题复用，与同步 generate 完全一致）。 */
+    /** 组装出题 prompt（供流式出题复用，与同步 generate 完全一致）。
+     *
+     * @param contextText 学习上下文（学生进度 + 概念要点 + 用户资料块 + 互联网补充），可为 null
+     */
     public Prompt prompt(SelectedTask task, ProbeType probeType, ResponseFormat format,
-                         List<String> avoidStems, String referenceText) {
+                         List<String> avoidStems, String contextText) {
         String system = """
                 你是一位经验丰富的技术导师兼面试官，现在正亲自向一位学习者提问。
                 你出题时要用第一人称、直接面向学习者：
@@ -86,10 +89,16 @@ public class QuestionGenerator {
                 %s
                 """, conceptList, probeType, format, task.arity(), avoidBlock);
 
-        // 资料注入：用户基于某本书/项目资料学习时，评分点须以资料为准，不得杜撰。
-        if (referenceText != null && !referenceText.isBlank()) {
-            user += "\n\n以下是本题概念对应的权威资料（来自用户上传的学习资料），评分点须以此为准，"
-                    + "不得杜撰或超出资料范围：\n" + referenceText;
+        // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充。
+        // 原则：这些都是「素材」不是「天花板」——评分点以概念核心（通用知识）为主，
+        // 资料/互联网细节为辅；严禁把通用知识冒充成“资料里说的”，也不得编造素材里没有的内容。
+        if (contextText != null && !contextText.isBlank()) {
+            user += "\n\n以下是本题的学习上下文（学生进度 / 概念要点 / 用户上传资料 / 互联网补充）：\n"
+                    + contextText + "\n\n出题原则：\n"
+                    + "- 用户上传资料覆盖到的细节：以资料为准、可考深（结合用户实际书/项目）；\n"
+                    + "- 资料没覆盖的概念部分：用通用知识体系正常出题，但不得把通用知识冒充成“资料里说的”；\n"
+                    + "- 参考学生当前进度出题：掌握度低从概念最基础的定义/最小示例开始，掌握度高才出进阶/综合题；\n"
+                    + "- 严禁编造资料或互联网内容里没有的事实。";
         }
 
         return new Prompt(system, user);
@@ -97,8 +106,8 @@ public class QuestionGenerator {
 
     public GeneratedQuestion generate(SelectedTask task, ProbeType probeType,
                                       ResponseFormat format, List<String> avoidStems,
-                                      String referenceText) {
-        Prompt p = prompt(task, probeType, format, avoidStems, referenceText);
+                                      String contextText) {
+        Prompt p = prompt(task, probeType, format, avoidStems, contextText);
         return invoker.invoke(p.system(), p.user(), GeneratedQuestion.class);
     }
 

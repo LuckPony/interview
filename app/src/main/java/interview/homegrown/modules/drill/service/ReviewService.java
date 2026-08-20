@@ -39,11 +39,12 @@ public class ReviewService {
     private final DrillReviewRepository reviewRepo;
     private final ReviewGenerator reviewGenerator;
     private final ObjectMapper objectMapper;
+    private final ProgressContextService progressContext;
 
     public ReviewService(DrillRunRepository runRepo, QuestionBankRepository qbRepo,
                          GradeResultRepository gradeRepo, DrillTurnRepository turnRepo,
                          DrillReviewRepository reviewRepo, ReviewGenerator reviewGenerator,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper, ProgressContextService progressContext) {
         this.runRepo = runRepo;
         this.qbRepo = qbRepo;
         this.gradeRepo = gradeRepo;
@@ -51,6 +52,7 @@ public class ReviewService {
         this.reviewRepo = reviewRepo;
         this.reviewGenerator = reviewGenerator;
         this.objectMapper = objectMapper;
+        this.progressContext = progressContext;
     }
 
     @Transactional
@@ -75,8 +77,16 @@ public class ReviewService {
         String byConceptJson = gr == null ? null : gr.getByConceptJson();
         List<DrillTurn> turns = turnRepo.findByRunIdOrderByRoundAsc(runId);
 
+        // 学习上下文（复盘可引用资料/互联网真实内容，不额外搜索）
+        String context = null;
+        if (q != null && q.getConceptIds() != null && q.getConceptIds().length > 0) {
+            java.util.List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
+                    .map(Integer::longValue).toList();
+            context = progressContext.contextFor(userId, ids);
+        }
+
         ReviewGenerator.ReviewOutput out = reviewGenerator.generate(
-                q == null ? "" : q.getStem(), pointsJson, byConceptJson, turns);
+                q == null ? "" : q.getStem(), pointsJson, byConceptJson, turns, context);
 
         DrillReview r = new DrillReview();
         r.setRunId(runId);
