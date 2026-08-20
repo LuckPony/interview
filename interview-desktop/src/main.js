@@ -2,9 +2,9 @@
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
 // 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -26,6 +26,9 @@ const HEALTH_TIMEOUT_MS = 90_000;
 const APP_ICON = path.join(__dirname, 'icon.png');
 
 let backend = null;
+let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 
 // 启动封面（后端就绪前显示的加载页）：冷调现代蓝 + 面霸式幽默。
 // 说明：Spring Boot = 咖啡品牌梗，配 ☕ 让等待不那么无聊。
@@ -144,12 +147,23 @@ function spawnBackend() {
 }
 
 function killBackend() {
-  if (backend && backend.pid) {
-    try {
-      process.kill(-backend.pid, 'SIGTERM');
-    } catch {
-      /* 已退出 */
+  if (!backend || !backend.pid) return;
+
+  const pid = backend.pid;
+  backend = null; // 防止 before-quit 和 exit 重复清理同一个 PID
+  try {
+    if (process.platform === 'win32') {
+      // Windows 不支持 Unix 的负 PID 进程组信号；taskkill /T 会连同 Java 子进程树一起结束。
+      spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    } else {
+      // detached 子进程是新进程组组长，负 PID 可终止整个进程组。
+      process.kill(-pid, 'SIGTERM');
     }
+  } catch {
+    // 后端可能已经自行退出。
   }
 }
 
@@ -207,6 +221,35 @@ function setupAutoUpdate() {
   }, 8000); // 等窗口起来再查，避免拖慢首屏
 }
 
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow();
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(APP_ICON);
+  tray.setToolTip('面霸 · 备考助手');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '打开面霸', click: showMainWindow },
+      { type: 'separator' },
+      {
+        label: '彻底退出',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+  tray.on('double-click', showMainWindow);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -248,6 +291,17 @@ function createWindow() {
         app.quit();
       });
   }
+
+  // 关闭窗口时保留托盘、定时任务和本地后端；只有托盘“彻底退出”或系统退出才真正结束。
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 
   return win;
 }
@@ -368,14 +422,16 @@ ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 
 app.whenReady().then(() => {
   if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
-  createWindow();
+  mainWindow = createWindow();
+  createTray();
   setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on('activate', showMainWindow);
 });
 
-// 退出即清理后端进程组
-app.on('before-quit', killBackend);
+// 只有真正退出应用时才清理后端；关闭窗口只隐藏到托盘。
+app.on('before-quit', () => {
+  isQuitting = true;
+  killBackend();
+});
 process.on('exit', killBackend);
