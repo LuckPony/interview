@@ -1,0 +1,82 @@
+name: Build desktop packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+            config: electron-builder.win.yml
+            artifact: windows-package
+          - os: macos-latest
+            target: mac
+            config: electron-builder.yml
+            artifact: macos-package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            interview-desktop/package-lock.json
+
+      - name: Build backend
+        shell: bash
+        run: ./gradlew :app:bootJar --console=plain
+
+      - name: Prepare embedded runtime
+        shell: bash
+        run: |
+          rm -rf runtime runtime-win
+          mkdir -p runtime/jre
+          MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
+          "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
+            --output runtime/jre --strip-debug --no-header-files --no-man-pages --compress=2
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          if [ "${{ matrix.target }}" = "win" ]; then
+            mv runtime runtime-win
+          fi
+
+      - name: Install and build desktop package
+        shell: bash
+        run: |
+          npm --prefix frontend ci
+          npm --prefix interview-desktop ci
+          npm --prefix interview-desktop run sync-spa
+          if [ "${{ matrix.target }}" = "win" ]; then
+            npm --prefix interview-desktop exec electron-builder -- --win --x64 --config electron-builder.win.yml
+          else
+            npm --prefix interview-desktop exec electron-builder -- --mac --x64 --config electron-builder.yml
+          fi
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: interview-desktop/dist-electron/*
+          if-no-files-found: error
