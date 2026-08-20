@@ -53,7 +53,8 @@ jobs:
         shell: bash
         run: |
           rm -rf runtime runtime-win
-          mkdir -p runtime/jre
+          mkdir -p runtime
+          rm -rf runtime/jre
           MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
           if [ "${{ matrix.target }}" = "win" ]; then
             JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
