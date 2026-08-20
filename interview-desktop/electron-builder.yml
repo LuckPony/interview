@@ -1,5 +1,7 @@
 appId: com.mianba.desktop
-productName: 面霸
+# 产物/更新文件名必须 ASCII：GitHub 上传时中文名会导致 URL 未转义报错（Request path contains unescaped characters）
+productName: mianba
+artifactName: ${productName}-${version}-${arch}.${ext}
 directories:
   output: dist-electron
   buildResources: build
