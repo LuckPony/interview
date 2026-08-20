@@ -9,6 +9,9 @@ const http = require('http');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
+if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
+
 // 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
 app.commandLine.appendSwitch('no-proxy-server');
 // 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。

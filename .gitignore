@@ -1,6 +1,9 @@
 HELP.md
 .gradle
 build/
+!interview-desktop/build/
+!interview-desktop/build/icon.png
+!interview-desktop/build/icon.ico
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
