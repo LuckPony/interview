@@ -77,11 +77,12 @@ jobs:
         run: |
           npm --prefix frontend ci
           npm --prefix interview-desktop ci
-          npm --prefix interview-desktop run sync-spa
+          cd interview-desktop
+          npm run sync-spa
           if [ "${{ matrix.target }}" = "win" ]; then
-            npm --prefix interview-desktop exec electron-builder -- --win --x64 --config electron-builder.win.yml
+            npx electron-builder --win --x64 --config electron-builder.win.yml
           else
-            npm --prefix interview-desktop exec electron-builder -- --mac --x64 --config electron-builder.yml
+            npx electron-builder --mac --x64 --config electron-builder.yml
           fi
 
       - name: Upload package
