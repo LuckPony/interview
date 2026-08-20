@@ -92,7 +92,7 @@ app:
     default-provider: deepseek
     #结构化输出重试配置
     structured:
-      max-attempts: 1      #推理模型每次几十秒，解析失败不再重试（避免 3 分钟）；解析成功率靠原生直连 + extractJson 兜底
+      max-attempts: 2      #结构化输出已关闭思考（快），失败时再重试 1 次并注入错误，提高解析成功率
       include-last-error: true      #重试时将错误注入提示词
     #多Provider定义
     # 注意：这里【不再配置任何默认/共享 API Key】。每个用户必须在「设置」页填自己的 key

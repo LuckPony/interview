@@ -164,7 +164,9 @@ public class LlmRawClient {
                     Map.of("role", "system", "content", system),
                     Map.of("role", "user", "content", user)));
             body.put("temperature", 0.7);
-            body.put("max_tokens", 4096);   // 设上限，防推理模型思考过长
+            // 上限要给足：学习规划一次性要吐 50-120 个知识点的 JSON，太小会被截断（表现为「只给 30 个」+ 解析失败）。
+            // 8192 token 足够容纳 ~150 个精简知识点；thinking 已关闭，不会因思考占额度。
+            body.put("max_tokens", 8192);
             // 关闭思考：一次性结构化输出（出题/判分/复盘）不需要模型"想"很久，
             // thinking 关闭后直接作答，响应从几十秒降到几秒（DeepSeek 官方参数）。
             body.put("thinking", Map.of("type", "disabled"));

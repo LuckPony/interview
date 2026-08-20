@@ -367,3 +367,16 @@
     grid-column: 1 / -1;
   }
 }
+
+/* AI 补充知识点 */
+.ai-revise-card { margin-bottom: 14px; }
+.ai-revise-hint { color: #5b6675; font-size: 13px; margin: 6px 0 12px; }
+.ai-revise-row { display: flex; gap: 10px; }
+.ai-revise-row input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+}

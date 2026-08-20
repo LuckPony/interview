@@ -481,6 +481,13 @@ export const studyPlan = {
       body: JSON.stringify({ draft }),
     }),
 
+  // AI 补充知识点：一句话让 AI 在现有方向下追加知识点（按名去重合并）
+  aiRevise: (planId: number, instruction: string) =>
+    apiFetch<PlanView>(`/study-plan/${planId}/ai-revise`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    }),
+
   // —— 用户手动编辑（自主权）：改方向 / 删方向 / 增改删知识点 ——
   update: (id: number, req: PlanWrite) =>
     apiFetch<PlanView>(`/study-plan/${id}`, {

@@ -151,6 +151,12 @@ public class StudyPlanController {
         return Map.of("ok", true);
     }
 
+    /** AI 补充知识点：用一句话让 AI 在现有方向下追加知识点（按名去重合并，不动已有内容）。 */
+    @PostMapping("/{planId}/ai-revise")
+    public PlanView aiRevise(@PathVariable Long planId, @RequestBody AiReviseRequest req) {
+        return service.aiRevise(currentUserId(), planId, req.instruction());
+    }
+
     private Long currentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof Long)) {
@@ -164,4 +170,5 @@ public class StudyPlanController {
     public record ConfirmRequest(StudyPlanDraft draft) {}
     public record UpdatePlanRequest(String title, String goal) {}
     public record ConceptWriteRequest(String name, Integer layer, String note) {}
+    public record AiReviseRequest(String instruction) {}
 }
