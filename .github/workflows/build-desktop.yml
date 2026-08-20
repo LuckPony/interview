@@ -20,7 +20,7 @@ jobs:
             target: win
             config: electron-builder.win.yml
             artifact: windows-package
-          - os: macos-latest
+          - os: macos-13
             target: mac
             config: electron-builder.yml
             artifact: macos-package
