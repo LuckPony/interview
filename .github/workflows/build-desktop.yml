@@ -80,9 +80,9 @@ jobs:
           cd interview-desktop
           npm run sync-spa
           if [ "${{ matrix.target }}" = "win" ]; then
-            npx electron-builder --win --x64 --config electron-builder.win.yml
+            npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
           else
-            npx electron-builder --mac --x64 --config electron-builder.yml
+            npx electron-builder --mac --x64 --config electron-builder.yml --publish never
           fi
 
       - name: Upload package
