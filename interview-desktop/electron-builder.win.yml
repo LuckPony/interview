@@ -14,12 +14,13 @@ files:
 extraResources:
   - from: ../runtime-win
     to: runtime
-icon: build/icon.png
+icon: build/icon.ico
 publish:
   provider: github
   owner: LuckPony
   repo: interview
 win:
+  icon: build/icon.ico
   target:
     - nsis
     - zip

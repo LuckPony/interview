@@ -9,6 +9,9 @@ const http = require('http');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
+if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
+
 // 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
 app.commandLine.appendSwitch('no-proxy-server');
 // 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
@@ -173,10 +176,10 @@ function waitForBackend(timeoutMs) {
   });
 }
 
-// —— 自动更新：仅「云模式 + 打包版」启用 ——
-// 更新源在构建时由 electron-builder.yml 的 publish.url 写入 app-update.yml（electron-updater 自动读取）。
-// Windows：NSIS 安装包可直接自动更新（未签名也能跑，首次安装会有 SmartScreen 提示）。
-// macOS：自动更新需要开发者签名（Apple Developer 证书，$99/年）；未签名时本段自动跳过，只能手动重新下载。
+// —— 自动更新：所有打包版启用 ——
+// 更新源由 electron-builder 的 GitHub publish 配置写入 app-update.yml。
+// Windows：NSIS 安装包可以自动下载并安装更新。
+// macOS：需要有效的 Developer ID 签名才能可靠自动更新；未签名包通常需要手动下载安装。
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
   autoUpdater.autoDownload = true;
@@ -228,7 +231,6 @@ function createWindow() {
   if (isCloud(cfg)) {
     // 云模式：不拉本地后端、不显示启动封面，直接加载 SPA（API 直连云端）
     loadSpa();
-    setupAutoUpdate();
   } else {
     // 本地模式：先显示启动封面，等本地后端就绪后再换 SPA
     // 注意：data: URL 必须声明 charset=utf-8，否则 Chromium 默认按 Latin-1 解码中文会乱码
@@ -367,6 +369,7 @@ ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 app.whenReady().then(() => {
   if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
   createWindow();
+  setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
