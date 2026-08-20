@@ -53,17 +53,20 @@ jobs:
         shell: bash
         run: |
           rm -rf runtime runtime-win
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-${{ matrix.target }}"
+          rm -rf "$JLINK_OUTPUT"
           mkdir -p runtime
-          rm -rf runtime/jre
           MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
           if [ "${{ matrix.target }}" = "win" ]; then
             JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
             "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$MODULES" \
-              --output runtime/jre --strip-debug --no-header-files --no-man-pages --compress=2
+              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
           else
             "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
-              --output runtime/jre --strip-debug --no-header-files --no-man-pages --compress=2
+              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
           fi
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
           cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
           if [ "${{ matrix.target }}" = "win" ]; then
             mv runtime runtime-win
