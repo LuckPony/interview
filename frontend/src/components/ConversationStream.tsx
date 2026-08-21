@@ -148,7 +148,11 @@ function Bubble({
 
 export function VerdictPanel({ run, turn }: { run: ConversationRun; turn: ConversationTurn }) {
   const data = parseByConcept(turn.byConceptJson);
-  const pointCount = data.reduce((n, c) => n + c.pointResults.length, 0);
+  // 未考察（NA）的评分点 = 没被实际问到的追问内容：不计分，也不列入评分细则展示
+  const visible = data
+    .map((c) => ({ ...c, pointResults: c.pointResults.filter((p) => p.verdict !== 'NA') }))
+    .filter((c) => c.pointResults.length > 0);
+  const pointCount = visible.reduce((n, c) => n + c.pointResults.length, 0);
   return (
     <div className="verdict-panel">
       <div className="verdict-summary">
@@ -170,7 +174,7 @@ export function VerdictPanel({ run, turn }: { run: ConversationRun; turn: Conver
             评分标准（{pointCount} 条）
           </summary>
           <ul className="verdict-points">
-            {data.flatMap((c) =>
+            {visible.flatMap((c) =>
               c.pointResults.map((p, i) => (
                 <li key={`${c.conceptId}-${i}`}>
                   <span className={`verdict-dot ${verdictClass(p.verdict)}`} />

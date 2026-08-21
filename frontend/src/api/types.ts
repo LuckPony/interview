@@ -32,7 +32,7 @@ export interface QuestionMeta {
   responseFormat: string;
 }
 
-export type Verdict = 'HIT' | 'PARTIAL' | 'MISS';
+export type Verdict = 'HIT' | 'PARTIAL' | 'MISS' | 'NA'; // NA = 未考察（没被实际问到的追问）
 
 export interface ByConceptPoint {
   point: string;

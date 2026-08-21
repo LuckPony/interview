@@ -42,12 +42,23 @@ public class GradeGenerator {
     public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
                              String context, String conversation, List<String> followups) {
         String system = """
-                你是严格的评分器。对每个评分点(point)，判断用户答案的达成度：
-                - HIT：明确覆盖且正确
-                - PARTIAL：部分覆盖或有小遗漏
-                - MISS：未覆盖或错误
-                - NA：该评分点只对应「对话里没被问过的追问小问」（用户没有作答机会）。
-                  主问(stem)一定被问过：与主问相关的评分点都判 HIT/PARTIAL/MISS（没答到就是 MISS），严禁判 NA。
+                你是评分器。判分分两步：
+                第一步，通读「对话实录」，确定老师实际问过哪些问题：主问(stem)一定被问过；
+                追问小问对照「追问小问清单」与实录，只把老师消息里确实出现过的追问算作被问到。
+                第二步，只针对「被问过的问题」判分，按 conceptIndex 分组输出 pointResults。
+
+                判分基准（只评被问到的内容）：
+                - 主问(stem)一定被问过：与主问直接相关的评分点必须全部列出并判 HIT/PARTIAL/MISS，严禁判 NA。
+                - 只属于「没被问到的追问小问」的评分点 → 判 NA（未考察，不计分）。
+                - 严禁把「没被问到」的内容当作 MISS 扣分；也严禁把「被问到但答错/没答」的内容判 NA。
+
+                理解型判分（看意思，不看措辞）：
+                - HIT：用户回答的意思与评分点一致且正确。允许换说法、用自己的例子、改变表达结构；
+                  只要核心意思表达到了，即使没用评分点的原词、特定术语或句式，也必须判 HIT。
+                - PARTIAL：意思基本正确，但有明显遗漏或部分不准确。
+                - MISS：完全没答到，或核心意思答错。
+                - 严禁因为措辞不同、没用到特定关键词、回答更简练或口语化，就把意思一致的答案判成 MISS/PARTIAL。
+
                 evidence 必须是用户答案中的原话片段（逐字复制），不得改写或编造；
                 若判 MISS 或 NA 则 evidence 留空字符串。
                 必须按 conceptIndex 分组输出 byConcept，且覆盖下面列出的全部分组。
@@ -70,15 +81,17 @@ public class GradeGenerator {
         if (conversation == null || conversation.isBlank()) {
             conversationBlock = "\n\n说明：本题无对话实录，所有评分点均视为已被考到，只判 HIT/PARTIAL/MISS，不得判 NA。";
         } else {
-            conversationBlock = "\n\n对话实录（老师实际问过的问题，据此判断哪些评分点被考到；"
-                    + "主问(stem)恒在，追问以实录中的老师消息为准）：\n" + conversation;
+            conversationBlock = "\n\n对话实录（老师实际问过的问题 + 学生回答）。"
+                    + "判分前必须先据此确定被问过的问题：主问恒在；追问以实录中老师消息为准；"
+                    + "没被问到的追问对应的评分点判 NA：\n" + conversation;
         }
 
         String followupBlock;
         if (followups == null || followups.isEmpty()) {
             followupBlock = "";
         } else {
-            followupBlock = "\n\n出题时预生成的追问小问清单（对照对话实录，判断哪条追问被实际问到）：\n"
+            followupBlock = "\n\n出题时预生成的追问小问清单（判分时对照对话实录判断哪几条被实际问到；"
+                    + "没被问到的追问对应的评分点判 NA，不判 MISS）：\n"
                     + IntStream.range(0, followups.size())
                     .mapToObj(i -> (i + 1) + ". " + followups.get(i))
                     .reduce((a, b) -> a + "\n" + b)
