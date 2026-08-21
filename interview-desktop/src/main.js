@@ -20,7 +20,7 @@ app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
 Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
-const BACKEND_PORT = 8080;
+const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被占导致的冲突
 const HEALTH_TIMEOUT_MS = 90_000;
 
 // 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）
@@ -32,6 +32,13 @@ let backend = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+
+// 单实例锁：同一台机器只允许一个实例。用户重复双击快捷方式时，second-instance 会唤醒已有窗口，
+// 而不是再起一个实例——否则多个实例各自拉起后端、抢同一端口（端口被占的根因之一）。
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0); // 已有实例在运行，立即退出
+}
+app.on('second-instance', () => showMainWindow());
 
 // 启动封面（后端就绪前显示的加载页）：冷调现代蓝 + 面霸式幽默。
 // 说明：Spring Boot = 咖啡品牌梗，配 ☕ 让等待不那么无聊。
@@ -170,21 +177,27 @@ function killBackend() {
   }
 }
 
-// 探活闸门：任何 HTTP 响应（含 401/404）都表示「端口在监听 = 后端已起」；
-// 只有 ECONNREFUSED（端口没人听）才说明还没好，继续轮询。
+// 探活闸门：必须命中 /actuator/health 且返回 {"status":"UP"} 才算后端就绪。
+// 这样端口被其它程序占用时（返回 404/别的），不会误判为"后端已起"，而是明确报"端口被占"。
 function waitForBackend(timeoutMs) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     const attempt = () => {
       const req = http.get(
-        { host: '127.0.0.1', port: BACKEND_PORT, path: '/', timeout: 800 },
+        { host: '127.0.0.1', port: BACKEND_PORT, path: '/actuator/health', timeout: 800 },
         (res) => {
-          res.resume();
-          resolve();
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => {
+            if (res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)) resolve();
+            else if (Date.now() > deadline)
+              reject(new Error(`后端未就绪：端口 ${BACKEND_PORT} 被占用或后端启动失败`));
+            else setTimeout(attempt, 1000);
+          });
         }
       );
       req.on('error', () => {
-        if (Date.now() > deadline) reject(new Error('后端启动超时（请确认 Docker / JDK 已就绪）'));
+        if (Date.now() > deadline) reject(new Error(`后端启动超时：端口 ${BACKEND_PORT} 无响应`));
         else setTimeout(attempt, 1000);
       });
       req.on('timeout', () => req.destroy());

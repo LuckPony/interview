@@ -13,7 +13,7 @@ const build = spawnSync(npmCommand, ['run', 'build'], {
   cwd: frontend,
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, VITE_API_BASE: 'http://127.0.0.1:8080' },
+  env: { ...process.env, VITE_API_BASE: 'http://127.0.0.1:23333' },
 });
 if (build.error) {
   console.error(`无法执行 ${npmCommand}: ${build.error.message}`);
@@ -28,4 +28,4 @@ fs.rmSync(path.join(DESKTOP, 'app-dist'), { recursive: true, force: true });
 fs.cpSync(dist, path.join(DESKTOP, 'app-dist'), { recursive: true });
 // config.json 存在时会被识别为云模式；本地构建必须确保它不存在。
 fs.rmSync(path.join(DESKTOP, 'config.json'), { force: true });
-console.log('本地 SPA 构建完成 → API http://127.0.0.1:8080');
+console.log('本地 SPA 构建完成 → API http://127.0.0.1:23333');
