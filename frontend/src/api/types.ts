@@ -256,7 +256,7 @@ export interface RunDetailView {
   conceptIds: number[]; // 关联概念（锚点在 [0]），供"继续追问"接力 REHEARSAL
 }
 
-/** AI 复盘报告：题目 + 分数 + 薄弱点 + 对话总结（欠缺）+ 解题思路 + 记忆口诀 */
+/** AI 复盘报告：题目 + 分数 + 薄弱点 + 对话总结（欠缺）+ 解题思路 + 记忆口诀 + 已保存的自省笔记 */
 export interface ReviewView {
   runId: number;
   stem: string;
@@ -265,4 +265,7 @@ export interface ReviewView {
   gapSummary: string | null;
   approach: string | null;
   mnemonic: string | null;
+  myWords: string | null; // 已保存的自省笔记（Markdown）；无则 null
+  gapFound: string | null;
+  nextAction: string | null;
 }

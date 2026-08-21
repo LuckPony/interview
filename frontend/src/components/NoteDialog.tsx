@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, AlertTriangle } from 'lucide-react';
 import { drill } from '../api/drill';
 import { Button, Badge } from './ui';
+import { MarkdownEditor } from './MarkdownEditor';
 import { ApiError } from '../api/client';
 import type { NoteView } from '../api/types';
 import './NoteDialog.css';
@@ -116,13 +117,12 @@ export function NoteDialog({ runId, stem, onClose, onSaved }: NoteDialogProps) {
             {err && <div className="banner info">{err}</div>}
 
             <label className="field">
-              <span className="field-label">用自己的话复述</span>
-              <textarea
-                className="note-area"
-                rows={5}
-                placeholder="关上资料，凭记忆写。抄题干会被拦下。"
+              <span className="field-label">用自己的话复述（支持 Markdown）</span>
+              <MarkdownEditor
+                rows={6}
+                placeholder={'关上资料，凭记忆写。抄题干会被拦下。\n支持 Markdown：```python ... ``` 贴代码、**加粗**、- 列表。'}
                 value={myWords}
-                onChange={(e) => setMyWords(e.target.value)}
+                onChange={setMyWords}
               />
             </label>
             <label className="field">

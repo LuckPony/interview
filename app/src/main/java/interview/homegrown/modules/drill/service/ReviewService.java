@@ -3,12 +3,14 @@ package interview.homegrown.modules.drill.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.ReviewGenerator;
+import interview.homegrown.modules.drill.domain.DrillNote;
 import interview.homegrown.modules.drill.domain.DrillReview;
 import interview.homegrown.modules.drill.domain.DrillRun;
 import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.GradeResult;
 import interview.homegrown.modules.drill.domain.QuestionBank;
+import interview.homegrown.modules.drill.repository.DrillNoteRepository;
 import interview.homegrown.modules.drill.repository.DrillReviewRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
@@ -37,19 +39,22 @@ public class ReviewService {
     private final GradeResultRepository gradeRepo;
     private final DrillTurnRepository turnRepo;
     private final DrillReviewRepository reviewRepo;
+    private final DrillNoteRepository noteRepo;
     private final ReviewGenerator reviewGenerator;
     private final ObjectMapper objectMapper;
     private final ProgressContextService progressContext;
 
     public ReviewService(DrillRunRepository runRepo, QuestionBankRepository qbRepo,
                          GradeResultRepository gradeRepo, DrillTurnRepository turnRepo,
-                         DrillReviewRepository reviewRepo, ReviewGenerator reviewGenerator,
+                         DrillReviewRepository reviewRepo, DrillNoteRepository noteRepo,
+                         ReviewGenerator reviewGenerator,
                          ObjectMapper objectMapper, ProgressContextService progressContext) {
         this.runRepo = runRepo;
         this.qbRepo = qbRepo;
         this.gradeRepo = gradeRepo;
         this.turnRepo = turnRepo;
         this.reviewRepo = reviewRepo;
+        this.noteRepo = noteRepo;
         this.reviewGenerator = reviewGenerator;
         this.objectMapper = objectMapper;
         this.progressContext = progressContext;
@@ -66,10 +71,11 @@ public class ReviewService {
         GradeResult gr = gradeRepo.findByRunId(runId).orElse(null);
         double rawScore = gr == null || gr.getRawScore() == null ? 0 : gr.getRawScore().doubleValue();
         List<String> weakPoints = gr == null ? List.of() : extractWeakPoints(gr.getByConceptJson());
+        DrillNote note = noteRepo.findByRunId(runId).orElse(null);
 
         DrillReview cached = reviewRepo.findById(runId).orElse(null);
         if (cached != null) {
-            return toView(run, rawScore, weakPoints, cached);
+            return toView(run, rawScore, weakPoints, cached, note);
         }
 
         QuestionBank q = qbRepo.findById(run.getQuestionId()).orElse(null);
@@ -94,14 +100,18 @@ public class ReviewService {
         r.setApproach(out.approach());
         r.setMnemonic(out.mnemonic());
         reviewRepo.save(r);
-        return toView(run, rawScore, weakPoints, r);
+        return toView(run, rawScore, weakPoints, r, note);
     }
 
-    private ReviewView toView(DrillRun run, double rawScore, List<String> weakPoints, DrillReview r) {
+    private ReviewView toView(DrillRun run, double rawScore, List<String> weakPoints,
+                              DrillReview r, DrillNote note) {
         String stem = qbRepo.findById(run.getQuestionId())
                 .map(QuestionBank::getStem).orElse("");
         return new ReviewView(run.getId(), stem, rawScore, weakPoints,
-                r.getGapSummary(), r.getApproach(), r.getMnemonic());
+                r.getGapSummary(), r.getApproach(), r.getMnemonic(),
+                note == null ? null : note.getMyWords(),
+                note == null ? null : note.getGapFound(),
+                note == null ? null : note.getNextAction());
     }
 
     /** 判分结果里没打中的评分点（MISS/PARTIAL），复盘页直接展示"哪里薄弱"。 */
