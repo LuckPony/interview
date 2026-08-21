@@ -16,9 +16,26 @@ if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
 // 使用系统代理访问 GitHub 更新服务，仅让本地 Spring Boot 请求绕过代理。
 // 不可使用 no-proxy-server：国内网络常依赖系统代理访问 GitHub Release。
 app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
-// 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
-// Electron 在未显式设置菜单时会自动生成这些菜单，打包后会出现在页面顶部。
-Menu.setApplicationMenu(null);
+// 桌面应用不需要浏览器式的 File / View / Window 菜单，但要保留最小「编辑」菜单——
+// 否则 Menu.setApplicationMenu(null) 会把 Cmd/Ctrl+C 复制、粘贴、全选等快捷键一起干掉，
+// 导致正文文字无法复制。Windows/Linux 上通过 autoHideMenuBar 隐藏菜单栏，不影响快捷键。
+Menu.setApplicationMenu(
+  Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+  ])
+);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被占导致的冲突
@@ -33,6 +50,8 @@ let backend = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let manualUpdateInFlight = false; // 手动「检查更新」进行中：由设置页内联展示，不再弹窗
+let lastUpdateInfo = null;         // { version, downloadedFile }：下载完成后供「打开下载位置/立即重启」用
 
 // 单实例锁：同一台机器只允许一个实例。用户重复双击快捷方式时，second-instance 会唤醒已有窗口，
 // 而不是再起一个实例——否则多个实例各自拉起后端、抢同一端口（端口被占的根因之一）。
@@ -257,9 +276,50 @@ function waitForBackend(timeoutMs) {
 
 // —— 自动更新：所有打包版启用 ——
 // 更新源由 electron-builder 的 GitHub publish 配置写入 app-update.yml。
-// Windows：NSIS 安装包可以自动下载并安装更新。
-// macOS：Squirrel.Mac 自动安装需要有效的 Developer ID 签名；CI 未签名，
-//         这里降级为「跳转 Releases 手动下载」，不自动下载也不尝试安装。
+// Windows：NSIS 安装包可自动下载并安装（quitAndInstall）。
+// macOS：CI 未签名无法自动安装，但可自动下载 zip，完成后打开文件位置让用户手动装。
+// 更新状态通过 update:status 事件推给渲染进程（设置页「检查更新」内联展示）；
+// 启动时的自动检查仍弹窗提醒，设置页手动检查则只在页内展示、不重复弹窗。
+function broadcastUpdate(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:status', payload);
+  }
+}
+
+function installDownloadedUpdate(info) {
+  if (process.platform === 'darwin') {
+    // macOS 未签名：打开已下载文件所在位置（Finder），用户解压后拖入「应用程序」
+    if (info && info.downloadedFile) shell.showItemInFolder(info.downloadedFile);
+    else shell.openExternal(`${UPDATE_RELEASES_URL}/latest`);
+    return;
+  }
+  // Windows/Linux：更新前显式进入「退出」状态 + 先杀本地后端，否则 NSIS 安装器会判“应用无法关闭”。
+  isQuitting = true;
+  killBackend();
+  autoUpdater.quitAndInstall();
+  // 兜底：几秒后仍未退干净就强制退出，确保安装器能继续（不会卡在“请手动关闭”）。
+  setTimeout(() => app.exit(0), 3000);
+}
+
+function showUpdateDownloadedDialog(info) {
+  const isMac = process.platform === 'darwin';
+  dialog
+    .showMessageBox({
+      type: 'info',
+      title: '发现新版本',
+      message: `新版本 v${info.version} 已下载完成`,
+      detail: isMac
+        ? 'macOS 未签名无法自动安装：已自动下载，请解压后拖入「应用程序」覆盖。'
+        : '重启应用即可完成更新。',
+      buttons: [isMac ? '打开下载位置' : '立即重启', '稍后再说'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response === 0) installDownloadedUpdate(info);
+    });
+}
+
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
 
@@ -278,70 +338,54 @@ function setupAutoUpdate() {
     error: (message) => logUpdate('ERROR', message),
     debug: (message) => logUpdate('DEBUG', message),
   };
-  autoUpdater.autoDownload = process.platform !== 'darwin'; // macOS 走手动下载，不自动下
-  autoUpdater.autoInstallOnAppQuit = true;
+  // 检查到新版本后自动下载：Windows 与 macOS 都自动下（macOS 仅下载、不自动安装）
+  autoUpdater.autoDownload = true;
+  // 安装只由显式操作触发（Windows 弹窗/设置页点「立即重启」→ quitAndInstall）；
+  // 关掉 onAppQuit 自动装，避免 macOS 未签名在退出时尝试安装而失败/报错。
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on('checking-for-update', () => {
+    broadcastUpdate({ phase: 'checking' });
+  });
 
   autoUpdater.on('update-available', (info) => {
-    if (process.platform === 'darwin') {
-      logUpdate('INFO', `发现新版本 v${info.version}（macOS 手动下载）`);
-      dialog
-        .showMessageBox({
-          type: 'info',
-          title: '发现新版本',
-          message: `发现新版本 v${info.version}`,
-          detail: 'macOS 版暂不支持自动安装，请下载 dmg 后手动拖入「应用程序」覆盖。',
-          buttons: ['打开下载页', '稍后再说'],
-          defaultId: 0,
-          cancelId: 1,
-        })
-        .then(({ response }) => {
-          if (response === 0) shell.openExternal(`${UPDATE_RELEASES_URL}/tag/v${info.version}`);
-        });
-    } else {
-      logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
-      dialog.showMessageBox({
-        type: 'info',
-        title: '发现新版本',
-        message: `发现新版本 v${info.version}`,
-        detail: '安装包将在后台下载，下载完成后会再次提醒。',
-        buttons: ['知道了'],
-      });
-    }
+    broadcastUpdate({ phase: 'available', version: info.version });
+    if (manualUpdateInFlight) return; // 手动检查：设置页内联展示，不弹窗
+    logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
+    dialog.showMessageBox({
+      type: 'info',
+      title: '发现新版本',
+      message: `发现新版本 v${info.version}`,
+      detail: '安装包将在后台下载，下载完成后会再次提醒。',
+      buttons: ['知道了'],
+    });
   });
+
   autoUpdater.on('update-not-available', (info) => {
+    broadcastUpdate({ phase: 'not-available', version: info.version });
+    manualUpdateInFlight = false;
     logUpdate('INFO', `当前已是最新版本 v${info.version}`);
   });
+
   autoUpdater.on('error', (error) => {
+    broadcastUpdate({ phase: 'error', message: error && error.message ? error.message : String(error) });
+    manualUpdateInFlight = false;
     logUpdate('ERROR', error);
   });
+
   autoUpdater.on('download-progress', (progress) => {
+    broadcastUpdate({ phase: 'downloading', percent: Math.round(progress.percent) });
     if (tray) tray.setToolTip(`面霸 · 正在下载更新 ${Math.round(progress.percent)}%`);
   });
 
-  // 仅 Windows/Linux 会走到这里（macOS 上面已改为手动下载，不会触发下载）
   autoUpdater.on('update-downloaded', (info) => {
+    lastUpdateInfo = { version: info.version, downloadedFile: info.downloadedFile };
+    const wasManual = manualUpdateInFlight;
+    manualUpdateInFlight = false;
+    broadcastUpdate({ phase: 'downloaded', version: info.version });
     if (tray) tray.setToolTip('面霸 · 备考助手');
-    dialog
-      .showMessageBox({
-        type: 'info',
-        title: '发现新版本',
-        message: `新版本 v${info.version} 已下载完成`,
-        detail: '重启应用即可完成更新。',
-        buttons: ['立即重启', '稍后再说'],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          // 更新前显式进入「退出」状态：让窗口 close 真正关闭（而不是隐藏到托盘），
-          // 并先杀掉本地后端，否则 NSIS 安装器会判为“应用无法关闭”弹「请手动关闭」。
-          isQuitting = true;
-          killBackend();
-          autoUpdater.quitAndInstall();
-          // 兜底：几秒后仍未退干净就强制退出，确保安装器能继续（不会卡在“请手动关闭”）。
-          setTimeout(() => app.exit(0), 3000);
-        }
-      });
+    if (wasManual) return; // 手动检查：设置页内联展示，不弹窗
+    showUpdateDownloadedDialog(info);
   });
 
   // 启动后检查；失败写入 updater.log，不再静默吞掉。
@@ -397,6 +441,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 840,
+    autoHideMenuBar: true, // Windows/Linux 隐藏菜单栏（Alt 唤出）；菜单仅为保留复制/粘贴/全选快捷键
     backgroundColor: '#F6F8FB',
     icon: APP_ICON, // Windows/Linux 的窗口/任务栏图标；macOS 用打包进 .app 的图标
     webPreferences: {
@@ -562,6 +607,30 @@ ipcMain.handle('fs:collectPath', async (_e, p) => {
 
 // 云模式标记：渲染进程据此决定「选本地文件夹」是走后端读盘还是本机读盘
 ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
+
+// —— 版本号 + 检查更新桥 ——
+ipcMain.handle('app:getVersion', () => app.getVersion());
+ipcMain.handle('app:getPlatform', () => process.platform);
+
+ipcMain.handle('app:checkForUpdates', async () => {
+  if (!app.isPackaged) return { error: '开发模式不支持检查更新，请使用打包后的应用' };
+  manualUpdateInFlight = true;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    manualUpdateInFlight = false;
+    return { error: (e && e.message) || '检查更新失败' };
+  }
+  // 结果不从这里返回：检查/下载的每一步都通过 update:status 事件推给设置页，
+  // manualUpdateInFlight 在 update-not-available / error / update-downloaded 里复位。
+  return { ok: true };
+});
+
+ipcMain.handle('app:installUpdate', () => {
+  if (!lastUpdateInfo) return { ok: false, error: '暂无已下载的更新' };
+  installDownloadedUpdate(lastUpdateInfo);
+  return { ok: true };
+});
 
 app.whenReady().then(async () => {
   if (!isCloud(loadConfig())) {

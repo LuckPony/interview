@@ -12,4 +12,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // LLM key 本机存取：key 只存在用户桌面，不发给服务器持久化（随请求临时带上）
   getLlmKey: () => ipcRenderer.invoke('llm:getKey'),
   setLlmKey: (key) => ipcRenderer.invoke('llm:setKey', key),
+  // 版本号 + 检查更新
+  getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+  // 订阅更新状态（checking / available / downloading / downloaded / not-available / error）
+  onUpdateStatus: (cb) => {
+    const handler = (_e, status) => cb(status);
+    ipcRenderer.on('update:status', handler);
+    return () => ipcRenderer.removeListener('update:status', handler);
+  },
 });

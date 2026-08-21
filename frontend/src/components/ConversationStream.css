@@ -296,6 +296,32 @@
 .verdict-dot.is-bad {
   background: var(--bad);
 }
+.verdict-dot.is-na {
+  background: var(--ink-faint);
+}
+.verdict-tag {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+  font-weight: 600;
+  background: var(--ink-faint);
+  color: var(--ink-soft);
+}
+.verdict-tag.is-good {
+  color: var(--good);
+}
+.verdict-tag.is-warn {
+  color: var(--warn);
+}
+.verdict-tag.is-bad {
+  color: var(--bad);
+}
+.verdict-tag.is-na {
+  color: var(--ink-soft);
+}
 
 .chat-footer {
   margin-top: var(--s-3);

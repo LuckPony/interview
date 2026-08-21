@@ -9,6 +9,7 @@ import interview.homegrown.modules.drill.domain.Grade;
 import interview.homegrown.modules.drill.domain.GradeResult;
 import interview.homegrown.modules.drill.domain.Mastery;
 import interview.homegrown.modules.drill.domain.QuestionBank;
+import interview.homegrown.modules.drill.domain.ResponseFormat;
 import interview.homegrown.modules.drill.grader.ConceptScore;
 import interview.homegrown.modules.drill.grader.Grader;
 import interview.homegrown.modules.drill.grader.GraderMcq;
@@ -192,12 +193,20 @@ public class GradingService {
 
         boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
 
-        Grader grader = switch (q.getResponseFormat()) {
-            case FREE_TEXT, STRUCTURED -> graderText;
-            case CHOICE -> graderMcq;
-            case CODE -> throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
-        };
-        Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);
+        // 对话实录：老师实际问过的问题，供判分器把「没被问到的评分点」判 NA（不计分）。
+        // 修复：出题时预生成的评分点覆盖 stem + 全部追问，但对话未必把所有追问都问完；
+        // 不区分的话，没问到的点会被误判 MISS，把分数压到很低。
+        String conversation = buildConversation(gradeTurns);
+
+        Grader.GraderOutput out;
+        if (q.getResponseFormat() == ResponseFormat.FREE_TEXT
+                || q.getResponseFormat() == ResponseFormat.STRUCTURED) {
+            out = graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);
+        } else if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+            out = graderMcq.grade(runId, q, rawAnswer, timed);
+        } else {
+            throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
+        }
 
         // 落 GradeResult
         GradeResult gr = new GradeResult();
@@ -227,6 +236,27 @@ public class GradingService {
         return new GradeView(runId, q.getId(),
                 out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
                 out.grade().name(), out.byConceptJson());
+    }
+
+    /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
+    private String buildConversation(List<DrillTurn> turns) {
+        StringBuilder sb = new StringBuilder();
+        for (DrillTurn t : turns) {
+            String tutor = t.getTutorText();
+            if (tutor != null && !tutor.isBlank()) {
+                sb.append("老师：").append(truncate(tutor, 400)).append("\n");
+            }
+            String ans = t.getRawAnswer();
+            if (ans != null && !ans.isBlank()) {
+                sb.append("学生：").append(truncate(ans, 400)).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null || s.length() <= max) return s;
+        return s.substring(0, max) + "…";
     }
 
     /** per concept 更新掌握度与下次复习时间 */
