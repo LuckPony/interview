@@ -25,7 +25,7 @@ public class SecurityConfig {
     @Order(1)
     public SecurityFilterChain drillSecurityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
         // /api/demo/** 的 AI 演示端点会真调 LLM，必须收进鉴权链，防止公网裸奔烧钱
-        http.securityMatcher("/api/drill/**", "/api/auth/**", "/api/settings/**", "/api/demo/**")
+        http.securityMatcher("/api/drill/**", "/api/auth/**", "/api/settings/**", "/api/demo/**","/api/knowledge/**")
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
