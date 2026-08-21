@@ -2,15 +2,22 @@
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
 // 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
-// 防 Electron 的 Chromium 把 127.0.0.1 拐去代理（同 start.sh 的坑）
-app.commandLine.appendSwitch('no-proxy-server');
+// Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
+if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
+
+// 使用系统代理访问 GitHub 更新服务，仅让本地 Spring Boot 请求绕过代理。
+// 不可使用 no-proxy-server：国内网络常依赖系统代理访问 GitHub Release。
+app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
+// 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
+// Electron 在未显式设置菜单时会自动生成这些菜单，打包后会出现在页面顶部。
+Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 8080;
@@ -20,6 +27,9 @@ const HEALTH_TIMEOUT_MS = 90_000;
 const APP_ICON = path.join(__dirname, 'icon.png');
 
 let backend = null;
+let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 
 // 启动封面（后端就绪前显示的加载页）：冷调现代蓝 + 面霸式幽默。
 // 说明：Spring Boot = 咖啡品牌梗，配 ☕ 让等待不那么无聊。
@@ -138,12 +148,23 @@ function spawnBackend() {
 }
 
 function killBackend() {
-  if (backend && backend.pid) {
-    try {
-      process.kill(-backend.pid, 'SIGTERM');
-    } catch {
-      /* 已退出 */
+  if (!backend || !backend.pid) return;
+
+  const pid = backend.pid;
+  backend = null; // 防止 before-quit 和 exit 重复清理同一个 PID
+  try {
+    if (process.platform === 'win32') {
+      // Windows 不支持 Unix 的负 PID 进程组信号；taskkill /T 会连同 Java 子进程树一起结束。
+      spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    } else {
+      // detached 子进程是新进程组组长，负 PID 可终止整个进程组。
+      process.kill(-pid, 'SIGTERM');
     }
+  } catch {
+    // 后端可能已经自行退出。
   }
 }
 
@@ -170,16 +191,53 @@ function waitForBackend(timeoutMs) {
   });
 }
 
-// —— 自动更新：仅「云模式 + 打包版」启用 ——
-// 更新源在构建时由 electron-builder.yml 的 publish.url 写入 app-update.yml（electron-updater 自动读取）。
-// Windows：NSIS 安装包可直接自动更新（未签名也能跑，首次安装会有 SmartScreen 提示）。
-// macOS：自动更新需要开发者签名（Apple Developer 证书，$99/年）；未签名时本段自动跳过，只能手动重新下载。
+// —— 自动更新：所有打包版启用 ——
+// 更新源由 electron-builder 的 GitHub publish 配置写入 app-update.yml。
+// Windows：NSIS 安装包可以自动下载并安装更新。
+// macOS：需要有效的 Developer ID 签名才能可靠自动更新；未签名包通常需要手动下载安装。
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
+
+  const updateLog = path.join(app.getPath('userData'), 'updater.log');
+  const logUpdate = (level, message) => {
+    const text = message instanceof Error ? message.stack || message.message : String(message);
+    try {
+      fs.appendFileSync(updateLog, `${new Date().toISOString()} [${level}] ${text}\n`);
+    } catch {
+      // 日志失败不能影响应用启动。
+    }
+  };
+  autoUpdater.logger = {
+    info: (message) => logUpdate('INFO', message),
+    warn: (message) => logUpdate('WARN', message),
+    error: (message) => logUpdate('ERROR', message),
+    debug: (message) => logUpdate('DEBUG', message),
+  };
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on('update-available', (info) => {
+    logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
+    dialog.showMessageBox({
+      type: 'info',
+      title: '发现新版本',
+      message: `发现新版本 v${info.version}`,
+      detail: '安装包将在后台下载，下载完成后会再次提醒。',
+      buttons: ['知道了'],
+    });
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    logUpdate('INFO', `当前已是最新版本 v${info.version}`);
+  });
+  autoUpdater.on('error', (error) => {
+    logUpdate('ERROR', error);
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    if (tray) tray.setToolTip(`面霸 · 正在下载更新 ${Math.round(progress.percent)}%`);
+  });
+
   autoUpdater.on('update-downloaded', (info) => {
+    if (tray) tray.setToolTip('面霸 · 备考助手');
     dialog
       .showMessageBox({
         type: 'info',
@@ -195,10 +253,39 @@ function setupAutoUpdate() {
       });
   });
 
-  // 静默检查：无更新 / 网络失败都只是日志，不打扰用户
+  // 启动后检查；失败写入 updater.log，不再静默吞掉。
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((error) => logUpdate('ERROR', error));
   }, 8000); // 等窗口起来再查，避免拖慢首屏
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow();
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(APP_ICON);
+  tray.setToolTip('面霸 · 备考助手');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '打开面霸', click: showMainWindow },
+      { type: 'separator' },
+      {
+        label: '彻底退出',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+  tray.on('double-click', showMainWindow);
 }
 
 function createWindow() {
@@ -225,7 +312,6 @@ function createWindow() {
   if (isCloud(cfg)) {
     // 云模式：不拉本地后端、不显示启动封面，直接加载 SPA（API 直连云端）
     loadSpa();
-    setupAutoUpdate();
   } else {
     // 本地模式：先显示启动封面，等本地后端就绪后再换 SPA
     // 注意：data: URL 必须声明 charset=utf-8，否则 Chromium 默认按 Latin-1 解码中文会乱码
@@ -243,6 +329,17 @@ function createWindow() {
         app.quit();
       });
   }
+
+  // 关闭窗口时保留托盘、定时任务和本地后端；只有托盘“彻底退出”或系统退出才真正结束。
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 
   return win;
 }
@@ -363,13 +460,16 @@ ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 
 app.whenReady().then(() => {
   if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
-  createWindow();
+  mainWindow = createWindow();
+  createTray();
+  setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on('activate', showMainWindow);
 });
 
-// 退出即清理后端进程组
-app.on('before-quit', killBackend);
+// 只有真正退出应用时才清理后端；关闭窗口只隐藏到托盘。
+app.on('before-quit', () => {
+  isQuitting = true;
+  killBackend();
+});
 process.on('exit', killBackend);

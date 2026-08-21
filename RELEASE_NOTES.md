@@ -30,9 +30,17 @@
 - 移除服务器级/共享 API Key：key 只来自用户设置或桌面端 `X-LLM-Key` 头（只用不存），后端只返回 `hasApiKey`
 - Flyway 乱序容错仅限开发环境
 
-### 🖥️ 桌面端分发
-- 自动更新源切换为 **GitHub Releases**（`LuckPony/interview` 公开仓库）：`export GH_TOKEN=… && ./scripts/upload-update.sh` 一键发布
-- Windows NSIS 自动更新可用；macOS 未签名时需手动下载 zip 覆盖安装
+### 🖥️ 桌面应用
+- Windows 与 macOS 桌面应用内嵌精简 JRE、Spring Boot fat jar 和静态 SPA，安装后无需另行配置 Java、Docker 或数据库
+- 本地模式自动启动内嵌后端，用户数据和 H2 数据库保存在 Electron 用户数据目录
+- 支持本地文件与目录读取，可将本机资料直接用于学习流程
+- 关闭主窗口后驻留系统托盘，应用和本地后端继续运行，为后台提醒和定时任务保留运行基础
+- 托盘支持恢复窗口和“彻底退出”；彻底退出时会清理整个 Java 后端进程树
+- Windows 可执行文件、任务栏、快捷方式和托盘统一使用面霸图标
+- 安装版通过 GitHub Releases 检查更新：发现更新时立即提示、后台下载并显示托盘进度，下载完成后可重启安装
+- 更新请求使用系统代理，并仅让 `localhost` / `127.0.0.1` 绕过代理；更新过程记录到用户目录的 `updater.log`
+- GitHub Actions 分别构建 Windows NSIS/ZIP 与 macOS DMG/ZIP，并统一发布安装包、blockmap 和 `latest*.yml`
+- macOS 未使用有效 Developer ID 签名和公证时，首次启动与自动更新仍可能受到 Gatekeeper 限制
 
 ### 📋 数据库迁移
 - `V16__corpus_chunk_and_web_content.sql`：新增 `corpus_chunk` / `concept_chunk` / `web_content` 三表（FK 带 CASCADE）
@@ -40,7 +48,7 @@
 ### 🚀 部署说明
 1. 服务器：`deploy.sh`（git pull → 重编译 → 重启）生效 V16 迁移
 2. 前端改动随后端一起部署
-3. 桌面端：改 `interview-desktop/package.json` version → `export GH_TOKEN=… && ./scripts/upload-update.sh` → 用户下次启动自动更新
+3. 桌面应用：推送到 `main` 后由 GitHub Actions 构建 Windows/macOS 安装包并发布到 GitHub Releases；也可在 macOS 中执行 `npm --prefix interview-desktop run release:local` 本地发布
 4. 清理服务器 `/workspace/.env` 中已失效的 `API_KEY=`（可选）
 
 ### ⚠️ 已知限制

@@ -1,0 +1,143 @@
+name: Build desktop packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+            config: electron-builder.win.yml
+            artifact: windows-package
+          - os: macos-latest
+            target: mac
+            config: electron-builder.yml
+            artifact: macos-package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            interview-desktop/package-lock.json
+
+      - name: Build backend
+        shell: bash
+        run: ./gradlew :app:bootJar --console=plain
+
+      - name: Prepare embedded runtime
+        shell: bash
+        run: |
+          rm -rf runtime runtime-win
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-${{ matrix.target }}"
+          rm -rf "$JLINK_OUTPUT"
+          mkdir -p runtime
+          MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
+          if [ "${{ matrix.target }}" = "win" ]; then
+            JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
+            "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$MODULES" \
+              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          else
+            "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
+              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          fi
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          if [ "${{ matrix.target }}" = "win" ]; then
+            mv runtime runtime-win
+          fi
+
+      - name: Install and build desktop package
+        shell: bash
+        run: |
+          npm --prefix frontend ci
+          npm --prefix interview-desktop ci
+          cd interview-desktop
+          npm run sync-spa
+          if [ "${{ matrix.target }}" = "win" ]; then
+            npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
+          else
+            npx electron-builder --mac --x64 --config electron-builder.yml --publish never
+          fi
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            interview-desktop/dist-electron/*.exe
+            interview-desktop/dist-electron/*.dmg
+            interview-desktop/dist-electron/*.zip
+            interview-desktop/dist-electron/*.yml
+            interview-desktop/dist-electron/*.blockmap
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./interview-desktop/package.json').version")"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid desktop version: $VERSION" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-package'
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
+            -print0)
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No releasable files found" >&2
+            find release-assets -maxdepth 2 -print
+            exit 1
+          fi
+          printf 'Uploading %s\n' "${ASSETS[@]}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "${{ github.sha }}" --title "面霸 $TAG" --generate-notes
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber

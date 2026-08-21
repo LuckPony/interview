@@ -1,7 +1,7 @@
 appId: com.mianba.desktop
 # 产物/更新文件名必须 ASCII：GitHub 上传时中文名会导致 URL 未转义报错（Request path contains unescaped characters）
 productName: mianba
-artifactName: ${productName}-${version}-${arch}.${ext}
+artifactName: ${productName}-${version}-win-${arch}.${ext}
 directories:
   output: dist-electron
   buildResources: build
@@ -14,12 +14,13 @@ files:
 extraResources:
   - from: ../runtime-win
     to: runtime
-icon: build/icon.png
+icon: build/icon.ico
 publish:
   provider: github
   owner: LuckPony
   repo: interview
 win:
+  icon: build/icon.ico
   target:
     - nsis
     - zip
