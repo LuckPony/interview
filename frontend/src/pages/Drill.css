@@ -779,6 +779,10 @@
   gap: 14px;
   max-width: 760px;
   margin: 0 auto;
+  /* 讲解文字可能很长：在固定高度的聊天页内独立滚动，避免被 .chat-page 的 overflow:hidden 裁掉 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .teach-head-topic {
   margin: 2px 0 0;
@@ -871,6 +875,24 @@
 }
 .teach-lesson-head {
   margin-bottom: 12px;
+}
+.teach-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.teach-back:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
 }
 .teach-lesson-eyebrow {
   display: block;

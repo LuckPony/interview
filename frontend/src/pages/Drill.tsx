@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft } from 'lucide-react';
 import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
@@ -814,6 +814,9 @@ export function Drill() {
             // 讲解页：讲当前子知识点
             <div className="card teach-card">
               <div className="teach-lesson-head">
+                <button className="teach-back" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                  <ArrowLeft size={14} strokeWidth={1.6} /> 返回清单
+                </button>
                 <span className="teach-lesson-eyebrow">
                   子知识点 {t.curIdx + 1} / {t.subPoints.length}
                 </span>
