@@ -195,7 +195,11 @@ function isOwnBackendOnPort(port) {
     const req = http.get({ host: '127.0.0.1', port, path: '/actuator/health', timeout: 800 }, (res) => {
       let body = '';
       res.on('data', (c) => (body += c));
-      res.on('end', () => resolve(res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)));
+      res.on('end', () => {
+        // 只要返回 Spring Boot health JSON（status=UP 或 DOWN）就认定是我们自己的后端；
+        // 其它程序占用该端口不会返回这种 JSON。邮件等软指标 DOWN 不影响复用判断。
+        resolve(/"status"\s*:\s*"(UP|DOWN)"/.test(body));
+      });
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -233,7 +237,8 @@ function waitForBackend(timeoutMs) {
           let body = '';
           res.on('data', (c) => (body += c));
           res.on('end', () => {
-            if (res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)) resolve();
+            // Spring Boot health JSON（UP 或 DOWN 都算已就绪：邮件等软指标 DOWN 不影响使用）
+            if (/"status"\s*:\s*"(UP|DOWN)"/.test(body)) resolve();
             else if (Date.now() > deadline)
               reject(new Error(`后端未就绪：端口 ${BACKEND_PORT} 被占用或后端启动失败`));
             else setTimeout(attempt, 1000);

@@ -166,3 +166,8 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    mail:
+      # 不配邮箱时 JavaMailSender 连不上 → mail 指示器 DOWN → 整体 health 变 DOWN，
+      # 会误导桌面端探活判定"后端未就绪"。这里屏蔽 mail 健康指示器。
+      enabled: false
