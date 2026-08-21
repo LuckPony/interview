@@ -110,21 +110,22 @@ function updateStatusText(s: UpdateStatus | null): string {
     case 'checking':
       return '正在检查更新…';
     case 'available':
-      return `发现新版本 v${s.version}，正在后台下载…`;
+      return `发现新版本 v${s.version}，点击「下载更新」开始下载`;
     case 'downloading':
-      return `正在下载更新 ${s.percent ?? 0}%…`;
+      return '正在下载更新…';
     case 'downloaded':
       return `新版本 v${s.version} 已下载完成`;
     case 'not-available':
       return `当前已是最新版本${s.version ? ` v${s.version}` : ''}`;
     case 'error':
-      return `检查更新失败：${s.message ?? ''}`;
+      return `更新失败：${s.message ?? ''}`;
     default:
       return '';
   }
 }
 
-/** 关于：版本号 + 检查更新（仅桌面端；网页态没有 Electron 桥，不渲染）。 */
+/** 关于：版本号 + 检查更新（仅桌面端；网页态没有 Electron 桥，不渲染）。
+ *  流程：检查更新（只查）→ 下载更新（按平台下载正确格式）→ 立即更新。 */
 function AboutCard() {
   const [version, setVersion] = useState('');
   const [platform, setPlatform] = useState('');
@@ -147,6 +148,15 @@ function AboutCard() {
     setBusy(false);
   };
 
+  const download = async () => {
+    if (!isDesktop) return;
+    setBusy(true);
+    setStatus({ phase: 'downloading', percent: 0 });
+    const r = await window.electronAPI!.downloadUpdate!();
+    if (r?.error) setStatus({ phase: 'error', message: r.error });
+    setBusy(false);
+  };
+
   const install = () => {
     window.electronAPI!.installUpdate!().then((r) => {
       if (r?.error) setStatus({ phase: 'error', message: r.error });
@@ -154,7 +164,11 @@ function AboutCard() {
   };
 
   const isMac = platform === 'darwin';
+  const phase = status?.phase;
   const text = updateStatusText(status);
+  const downloadedText = isMac
+    ? `新版本 v${status?.version} 已下载完成，点击「立即更新」打开 dmg 安装包，拖进「应用程序」覆盖即可`
+    : text;
 
   return (
     <Card className="settings-card">
@@ -162,18 +176,31 @@ function AboutCard() {
       <div className="about-row">
         <span className="about-label">版本</span>
         <span className="about-version">{version ? `v${version}` : '—'}</span>
-        <Button variant="ghost" onClick={check} disabled={busy}>
-          {busy ? '检查中…' : '检查更新'}
+        <Button variant="ghost" onClick={check} disabled={busy || phase === 'downloading'}>
+          {busy && phase === 'checking' ? '检查中…' : '检查更新'}
         </Button>
       </div>
       {text && (
-        <p className={`update-status${status?.phase === 'downloaded' ? ' is-ready' : ''}`}>{text}</p>
+        <p className={`update-status${phase === 'downloaded' ? ' is-ready' : ''}`}>
+          {phase === 'downloaded' ? downloadedText : text}
+        </p>
       )}
-      {status?.phase === 'downloaded' && (
-        <div className="settings-actions">
-          <Button onClick={install}>{isMac ? '打开下载位置' : '立即重启'}</Button>
-        </div>
+      {phase === 'downloading' && (
+        <progress className="update-progress" value={status?.percent ?? 0} max={100} />
       )}
+      <div className="settings-actions">
+        {phase === 'available' && (
+          <Button onClick={download} disabled={busy}>
+            {busy ? '准备下载…' : '下载更新'}
+          </Button>
+        )}
+        {phase === 'downloading' && (
+          <Button disabled>下载中 {status?.percent ?? 0}%</Button>
+        )}
+        {phase === 'downloaded' && (
+          <Button onClick={install}>立即更新</Button>
+        )}
+      </div>
     </Card>
   );
 }

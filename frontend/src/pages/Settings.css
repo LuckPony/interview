@@ -55,6 +55,27 @@
   color: var(--good);
   font-weight: 600;
 }
+.update-progress {
+  width: 100%;
+  max-width: 360px;
+  height: 6px;
+  margin-top: var(--s-2);
+  border-radius: 3px;
+  border: none;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--paper-3);
+}
+.update-progress::-webkit-progress-bar {
+  background: var(--paper-3);
+  border-radius: 3px;
+}
+.update-progress::-webkit-progress-value {
+  background: var(--cinnabar);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
 
 /* —— 外观：分段选择器（主题 / 字号档位）—— */
 .seg {

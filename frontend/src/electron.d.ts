@@ -36,9 +36,11 @@ declare global {
     getVersion: () => Promise<string>;
     /** 运行平台（darwin / win32 / linux）。 */
     getPlatform: () => Promise<string>;
-    /** 手动检查更新：后台检查并自动下载，进度通过 onUpdateStatus 推送。 */
+    /** 手动检查更新：只检查是否新版本，不下载；结果通过 onUpdateStatus 推送。 */
     checkForUpdates: () => Promise<{ ok?: boolean; error?: string }>;
-    /** 下载完成后调用：Windows 重启安装，macOS 打开下载文件所在位置。 */
+    /** 下载更新（只下载不安装）：进度通过 onUpdateStatus 推送，完成后 phase=downloaded。 */
+    downloadUpdate: () => Promise<{ ok?: boolean; error?: string }>;
+    /** 下载完成后调用：Windows 重启安装；macOS 打开下载的 dmg 安装包。 */
     installUpdate: () => Promise<{ ok?: boolean; error?: string }>;
     /** 订阅更新状态；返回取消订阅函数。 */
     onUpdateStatus: (cb: (status: UpdateStatus) => void) => () => void;
