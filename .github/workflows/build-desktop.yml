@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.target }}-${{ matrix.arch }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -18,12 +18,19 @@ jobs:
         include:
           - os: windows-latest
             target: win
+            arch: x64
             config: electron-builder.win.yml
             artifact: windows-package
-          - os: macos-latest
+          - os: macos-13
             target: mac
+            arch: x64
             config: electron-builder.yml
-            artifact: macos-package
+            artifact: macos-x64-package
+          - os: macos-14
+            target: mac
+            arch: arm64
+            config: electron-builder.yml
+            artifact: macos-arm64-package
 
     steps:
       - name: Checkout
@@ -79,11 +86,8 @@ jobs:
           npm --prefix interview-desktop ci
           cd interview-desktop
           npm run sync-spa
-          if [ "${{ matrix.target }}" = "win" ]; then
-            npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
-          else
-            npx electron-builder --mac --x64 --config electron-builder.yml --publish never
-          fi
+          # target=win/mac, arch=x64/arm64 → 生成 mianba-<ver>-<target>-<arch>.<ext> 各架构独立产物
+          npx electron-builder --${{ matrix.target }} --${{ matrix.arch }} --config ${{ matrix.config }} --publish never
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -121,7 +125,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: '*-package'
-          merge-multiple: true
           path: release-assets
 
       - name: Publish release
@@ -130,12 +133,15 @@ jobs:
         shell: bash
         run: |
           TAG="v${{ steps.version.outputs.version }}"
-          mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f \
+          # 每个 artifact 落在各自子目录；两个 mac 的 latest-mac.yml 会重名，
+          # 递归收集后 --clobber 上传（后者覆盖前者）。mac 未签名自动更新本就不生效，
+          # 真正参与更新的只有 Windows 的 latest.yml。
+          mapfile -d '' ASSETS < <(find release-assets -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
             -print0)
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No releasable files found" >&2
-            find release-assets -maxdepth 2 -print
+            find release-assets -print
             exit 1
           fi
           printf 'Uploading %s\n' "${ASSETS[@]}"
