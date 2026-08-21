@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tra
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
@@ -174,6 +175,49 @@ function killBackend() {
     }
   } catch {
     // 后端可能已经自行退出。
+  }
+}
+
+// —— 端口占用预检：启动前先探测，被占就明确提示用户，而不是干等 90 秒再报「启动失败」 ——
+function isPortListening(port) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host: '127.0.0.1', port, timeout: 600 }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on('error', () => resolve(false));
+    sock.on('timeout', () => { sock.destroy(); resolve(false); });
+  });
+}
+
+function isOwnBackendOnPort(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/actuator/health', timeout: 800 }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve(res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)));
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+// 返回值：true=端口空闲（需要自己拉起后端）；'reuse'=已有我们自己的后端在跑（直接复用）；false=用户选择退出
+async function ensureBackendPortFree() {
+  for (;;) {
+    if (!(await isPortListening(BACKEND_PORT))) return true;      // 空闲
+    if (await isOwnBackendOnPort(BACKEND_PORT)) return 'reuse';   // 我们自己残留的后端，直接复用
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: '端口被占用',
+      message: `本地服务端口 ${BACKEND_PORT} 被其他程序占用`,
+      detail: `面霸需要该端口启动内置服务，请关闭占用该端口的程序后点「重试」。\n\n查看占用进程：命令行执行\nnetstat -ano | findstr :${BACKEND_PORT}`,
+      buttons: ['重试', '退出'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return false; // 用户选「退出」
+    // 选「重试」→ 循环再探测
   }
 }
 
@@ -514,8 +558,20 @@ ipcMain.handle('fs:collectPath', async (_e, p) => {
 // 云模式标记：渲染进程据此决定「选本地文件夹」是走后端读盘还是本机读盘
 ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 
-app.whenReady().then(() => {
-  if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
+app.whenReady().then(async () => {
+  if (!isCloud(loadConfig())) {
+    // 本地模式：端口预检。被其它程序占用就明确提示，而不是干等 90 秒再报「启动失败」。
+    const portState = await ensureBackendPortFree();
+    if (portState === false) {
+      app.exit(1);
+      return;
+    }
+    if (portState === true) {
+      spawnBackend(); // 端口空闲才拉起新后端
+    }
+    // portState === 'reuse'：已有我们自己的后端在跑，直接复用，不再拉新的
+  }
+
   mainWindow = createWindow();
   createTray();
   setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
