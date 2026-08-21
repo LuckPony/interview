@@ -16,9 +16,26 @@ if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
 // 使用系统代理访问 GitHub 更新服务，仅让本地 Spring Boot 请求绕过代理。
 // 不可使用 no-proxy-server：国内网络常依赖系统代理访问 GitHub Release。
 app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
-// 桌面应用不需要浏览器式的 File / Edit / View 菜单；保留原生窗口的右键菜单即可。
-// Electron 在未显式设置菜单时会自动生成这些菜单，打包后会出现在页面顶部。
-Menu.setApplicationMenu(null);
+// 桌面应用不需要浏览器式的 File / View / Window 菜单，但要保留最小「编辑」菜单——
+// 否则 Menu.setApplicationMenu(null) 会把 Cmd/Ctrl+C 复制、粘贴、全选等快捷键一起干掉，
+// 导致正文文字无法复制。Windows/Linux 上通过 autoHideMenuBar 隐藏菜单栏，不影响快捷键。
+Menu.setApplicationMenu(
+  Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+  ])
+);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被占导致的冲突
@@ -397,6 +414,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 840,
+    autoHideMenuBar: true, // Windows/Linux 隐藏菜单栏（Alt 唤出）；菜单仅为保留复制/粘贴/全选快捷键
     backgroundColor: '#F6F8FB',
     icon: APP_ICON, // Windows/Linux 的窗口/任务栏图标；macOS 用打包进 .app 的图标
     webPreferences: {
