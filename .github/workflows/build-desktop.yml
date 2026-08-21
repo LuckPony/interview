@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+# 同一时间只跑一个打包流水线；新 push 直接取消旧 run（避免旧产物覆盖新 release）
+concurrency:
+  group: desktop-build
+  cancel-in-progress: true
+
 permissions:
   contents: write
 

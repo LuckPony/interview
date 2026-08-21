@@ -268,9 +268,23 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+// macOS 菜单栏（托盘）图标必须是 16~22pt 的小图；直接塞 1024 大图标会把整个菜单栏撑爆。
+// 按平台缩到合适尺寸；macOS 额外补 @2x 表示，Retina 屏下不模糊。
+function trayIcon() {
+  const base = nativeImage.createFromPath(APP_ICON);
+  if (base.isEmpty()) return base;
+  const size = process.platform === 'darwin' ? 18 : 32;
+  const img = base.resize({ width: size, height: size, quality: 'best' });
+  if (process.platform === 'darwin') {
+    const img2x = base.resize({ width: size * 2, height: size * 2, quality: 'best' });
+    img.addRepresentation({ scaleFactor: 2, width: size * 2, height: size * 2, buffer: img2x.toPNG() });
+  }
+  return img;
+}
+
 function createTray() {
   if (tray) return;
-  tray = new Tray(APP_ICON);
+  tray = new Tray(trayIcon());
   tray.setToolTip('面霸 · 备考助手');
   tray.setContextMenu(
     Menu.buildFromTemplate([
