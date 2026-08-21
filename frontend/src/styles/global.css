@@ -197,7 +197,7 @@ dialog::backdrop {
 .banner.warn {
   border-color: var(--amber);
   background: var(--amber-wash);
-  color: #7a5b00;
+  color: var(--warn);
 }
 
 /* —— 学习方向切换（组件式下拉，只在首页） —— */

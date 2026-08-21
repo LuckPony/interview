@@ -46,7 +46,7 @@
   line-height: 1.65;
   word-break: break-word;
   white-space: pre-wrap;   /* 提问/回答保留换行 */
-  font-size: var(--fs-base);
+  font-size: calc(var(--fs-base) * var(--scale-body, 1));
 }
 .chat-bubble p {
   margin: 0;
@@ -71,7 +71,7 @@
 }
 .chat-bubble.is-stem p {
   font-family: var(--font-display);
-  font-size: var(--fs-md);
+  font-size: calc(var(--fs-md) * var(--scale-stem, 1));
   line-height: 1.7;
 }
 /* 无声气泡（新题提示 / 无历史记录占位） */
@@ -99,7 +99,7 @@
 }
 .tutor-text {
   margin: 0;
-  font-size: var(--fs-base);
+  font-size: calc(var(--fs-base) * var(--scale-body, 1));
   line-height: 1.7;
   color: var(--ink);
   word-break: break-word;

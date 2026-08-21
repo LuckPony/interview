@@ -15,6 +15,15 @@ export interface QuestionView {
   responseFormat: string;
 }
 
+/** 先教后考：知识点拆解出的子知识点清单（POST /drill/{conceptId}/outline） */
+export interface OutlineView {
+  conceptId: number;
+  name: string;
+  topic: string;
+  subPoints: string[];
+  cached: boolean;
+}
+
 /** 题目生成 SSE 首帧：题目元数据（不含 stem，stem 由后续 token 帧逐字推送） */
 export interface QuestionMeta {
   runId: number;

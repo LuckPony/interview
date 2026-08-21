@@ -55,6 +55,11 @@
   --fs-2xl: clamp(2.1rem, 4vw, 2.9rem);
   --fs-hero: clamp(2.8rem, 7vw, 5rem);
 
+  /* —— 分项字号乘数（由设置页「外观」写入 <html> 的内联变量，默认 1 不缩放）—— */
+  --scale-stem: 1;   /* 题干 */
+  --scale-body: 1;   /* 正文 / 讲解 */
+  --scale-code: 1;   /* 代码 */
+
   /* —— 间距（8 基数）—— */
   --s-1: 4px;
   --s-2: 8px;
@@ -74,4 +79,40 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);     /* ease-out-quart */
   --ease-expo: cubic-bezier(0.19, 1, 0.22, 1);   /* expo */
   --dur: 0.5s;
+}
+
+/* ============================================================
+   黑夜模式：仅重映射颜色令牌，字号/间距/形状/动效沿用浅色。
+   <html data-theme="dark"> 由设置页「外观」写入。
+   保持同一套 OKLCH 色相，只把明度翻转、降低对比冲击：
+   - 纸面变深蓝灰，卡片略高于底，墨色提亮
+   - 主色靛蓝提亮，wash 转深，保证文字对比度
+   ============================================================ */
+[data-theme='dark'] {
+  --paper: oklch(0.17 0.014 255);          /* 主背景：深蓝灰 */
+  --paper-2: oklch(0.21 0.014 255);        /* 卡片：略高于底 */
+  --paper-3: oklch(0.25 0.014 255);        /* 凹陷/输入底 */
+  --ink: oklch(0.92 0.010 250);            /* 主文字 */
+  --ink-soft: oklch(0.74 0.012 250);       /* 次级文字 */
+  --ink-faint: oklch(0.56 0.012 248);      /* Tertiary / 占位 */
+  --line: oklch(0.29 0.010 240);           /* 发丝分隔线 */
+  --line-strong: oklch(0.38 0.010 240);    /* 稍重线 */
+
+  --cinnabar: oklch(0.72 0.13 265);        /* 靛蓝主色（提亮） */
+  --cinnabar-deep: oklch(0.66 0.13 265);   /* hover / 按压 */
+  --cinnabar-wash: oklch(0.25 0.04 265);   /* 极淡底纹（转深） */
+  --on-accent: oklch(0.99 0.003 250);
+
+  --amber: oklch(0.72 0.12 180);
+  --amber-wash: oklch(0.25 0.03 180);
+
+  --good: oklch(0.72 0.11 155);
+  --good-wash: oklch(0.25 0.03 155);
+  --warn: oklch(0.75 0.14 50);
+  --warn-wash: oklch(0.26 0.04 55);
+  --bad: oklch(0.70 0.16 25);
+  --bad-wash: oklch(0.26 0.03 25);
+  --hit: oklch(0.72 0.11 155);
+  --partial: oklch(0.75 0.14 50);
+  --miss: oklch(0.70 0.16 25);
 }

@@ -3,6 +3,8 @@ import { Check } from 'lucide-react';
 import { aiSettings, type AiSettingsView } from '../api/drill';
 import { Button, Card, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
+import { useAppearance } from '../lib/useAppearance';
+import type { ThemeMode } from '../lib/appearance';
 import './Settings.css';
 
 function msg(e: unknown): string {
@@ -12,7 +14,97 @@ function msg(e: unknown): string {
 /** 是否运行在桌面端（Electron 提供了本机 key 桥）。 */
 const isDesktop = typeof window !== 'undefined' && !!window.electronAPI?.getLlmKey;
 
-/** 设置页：配置 AI 模型 provider / base-url / api-key / model / temperature。
+/* —— 外观（主题 + 字号）选项 —— */
+const THEME_OPTS: { value: ThemeMode; label: string }[] = [
+  { value: 'light', label: '白天' },
+  { value: 'dark', label: '黑夜' },
+  { value: 'system', label: '跟随系统' },
+];
+const SCALE4_OPTS: { value: number; label: string }[] = [
+  { value: 0, label: '小' },
+  { value: 1, label: '标准' },
+  { value: 2, label: '大' },
+  { value: 3, label: '特大' },
+];
+const SCALE3_OPTS: { value: number; label: string }[] = [
+  { value: 0, label: '小' },
+  { value: 1, label: '标准' },
+  { value: 2, label: '大' },
+];
+
+/** 分段选择器（一排互斥按钮）。 */
+function Seg<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="field">
+      <span className="field-label">{label}</span>
+      <div className="seg" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={String(o.value)}
+            type="button"
+            className={`seg-btn${o.value === value ? ' is-on' : ''}`}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 外观设置：主题模式 + 多处字号。存本机 localStorage，改完立即生效、无需保存。 */
+function AppearanceCard() {
+  const { prefs, update } = useAppearance();
+  return (
+    <Card className="settings-card">
+      <h2 className="settings-section-title">外观</h2>
+      <Seg
+        label="主题模式"
+        value={prefs.theme}
+        options={THEME_OPTS}
+        onChange={(v) => update({ theme: v })}
+      />
+      <Seg
+        label="整体字号"
+        value={prefs.fontScale}
+        options={SCALE4_OPTS}
+        onChange={(v) => update({ fontScale: v })}
+      />
+      <Seg
+        label="题干字号"
+        value={prefs.stemScale}
+        options={SCALE3_OPTS}
+        onChange={(v) => update({ stemScale: v })}
+      />
+      <Seg
+        label="正文 · 讲解字号"
+        value={prefs.bodyScale}
+        options={SCALE3_OPTS}
+        onChange={(v) => update({ bodyScale: v })}
+      />
+      <Seg
+        label="代码字号"
+        value={prefs.codeScale}
+        options={SCALE3_OPTS}
+        onChange={(v) => update({ codeScale: v })}
+      />
+      <p className="settings-note">主题与字号只保存在本机浏览器，改完立即生效。</p>
+    </Card>
+  );
+}
+
+/** 设置页：外观（主题/字号）+ AI 模型 provider / base-url / api-key / model / temperature。
  *  桌面端：key 只存在本机（不传服务器）；Web 端：key 按登录用户保存到服务器（每人一份，互不可见）。 */
 export function Settings() {
   const [cfg, setCfg] = useState<AiSettingsView | null>(null);
@@ -79,14 +171,16 @@ export function Settings() {
     <div className="page">
       <header className="page-head">
         <span className="eyebrow">设置 · SETTINGS</span>
-        <h1>模型设置</h1>
+        <h1>设置</h1>
         <p>
-          配置你要用的 AI 模型与密钥。支持任何 OpenAI 兼容接口（DeepSeek / 阿里 DashScope / Kimi / 自建等）。改完立即生效，无需重启。
+          调整界面主题与字号，以及 AI 模型与密钥。外观改动即时生效；模型改动保存后即时生效，无需重启。
           {isDesktop ? ' 当前为桌面端：API Key 仅保存在本机，不会上传服务器。' : ' 当前为 Web 端：API Key 将保存到你的账号下（服务器按用户隔离，不共享默认 key）。'}
         </p>
       </header>
 
       {err && <div className="banner info">{err}</div>}
+
+      <AppearanceCard />
 
       {cfg !== null && !cfg.hasApiKey && (
         <div className="banner warn">
@@ -99,6 +193,7 @@ export function Settings() {
         <Loading label="读取设置…" />
       ) : (
         <Card className="settings-card">
+          <h2 className="settings-section-title">模型</h2>
           <label className="field">
             <span className="field-label">Provider 名称（仅用于显示）</span>
             <input className="note-input" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="例如 deepseek / dashscope / kimi" />

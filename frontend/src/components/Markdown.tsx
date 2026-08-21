@@ -150,7 +150,7 @@ const components: Components = {
               borderRadius: 'var(--r-md)',
               background: 'color-mix(in oklch, var(--ink) 6%, transparent)',
               border: '1px solid color-mix(in oklch, var(--ink) 12%, transparent)',
-              fontSize: '0.85em',
+              fontSize: 'calc(0.85em * var(--scale-code, 1))',
               lineHeight: 1.6,
             }}
             codeTagProps={{

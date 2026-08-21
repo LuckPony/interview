@@ -22,6 +22,7 @@ import type {
   ReviewView,
   ConceptValidationResponse,
   KnowledgePointsView,
+  OutlineView,
 } from './types';
 
 export interface Timing {
@@ -313,15 +314,42 @@ export function chatStream(
   }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal });
 }
 
+/**
+ * 子知识点讲解 SSE 流（POST /{conceptId}/lesson?subPoint=...，SSE）：
+ * 逐 token 推讲解文本，event:done 结束。缓存命中时后端整体一帧下发。
+ */
+export function lessonStream(
+  conceptId: number,
+  subPoint: string,
+  onToken: (token: string) => void,
+  onReasoning: (text: string) => void,
+  onDone: () => void,
+  onError: (status?: number, message?: string) => void,
+): TutorStream {
+  const token = getToken();
+  const url = `${API_BASE_SSE}/api/drill/${conceptId}/lesson?subPoint=${encodeURIComponent(subPoint)}`;
+  return openSse(url, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+  }, { onToken, onReasoning, onDone: () => onDone(), onError });
+}
+
 export const drill = {
   next: () => apiFetch<QuestionView>('/drill/next', { method: 'POST' }),
 
-  // 用户自选概念开练（痛点1：用户掌 what，服务端 pickFor 定 task）
-  start: (conceptId: number) =>
+  // 用户自选概念开练（痛点1：用户掌 what，服务端 pickFor 定 task）；subPoint 用于「先教后考」限定出题到子知识点
+  start: (conceptId: number, subPoint?: string) =>
     apiFetch<QuestionView>('/drill/start', {
       method: 'POST',
-      body: JSON.stringify({ conceptId }),
+      body: JSON.stringify({ conceptId, subPoint }),
     }),
+
+  // 先教后考：拆解知识点为子知识点清单（缓存 concept.lesson_outline）
+  outline: (conceptId: number) =>
+    apiFetch<OutlineView>(`/drill/${conceptId}/outline`, { method: 'POST' }),
 
   // 方向级入口：continue=方向内确定性选题；review=方向内到期已掌握项；layer=指定层级练习
   startPlan: (planId: number, mode: 'continue' | 'review' | 'layer' = 'continue', layer?: number) =>

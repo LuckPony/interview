@@ -15,6 +15,8 @@ import java.util.List;
 public class GeneratedQuestion {
 
     public String stem;
+    /** 主问之外的更深入小问（2-4 条）。逐条在对话里追问，绝不堆进 stem。 */
+    public List<String> followups;
     public List<ConceptPoints> byConcept;
     public List<Point> points;
 
