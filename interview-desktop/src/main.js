@@ -270,7 +270,15 @@ function setupAutoUpdate() {
         cancelId: 1,
       })
       .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall();
+        if (response === 0) {
+          // 更新前显式进入「退出」状态：让窗口 close 真正关闭（而不是隐藏到托盘），
+          // 并先杀掉本地后端，否则 NSIS 安装器会判为“应用无法关闭”弹「请手动关闭」。
+          isQuitting = true;
+          killBackend();
+          autoUpdater.quitAndInstall();
+          // 兜底：几秒后仍未退干净就强制退出，确保安装器能继续（不会卡在“请手动关闭”）。
+          setTimeout(() => app.exit(0), 3000);
+        }
       });
   });
 
