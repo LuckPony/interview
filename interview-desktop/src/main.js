@@ -2,7 +2,7 @@
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
 // 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray, shell } = require('electron');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
@@ -25,6 +25,8 @@ const HEALTH_TIMEOUT_MS = 90_000;
 
 // 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）
 const APP_ICON = path.join(__dirname, 'icon.png');
+// 手动更新跳转地址（与 electron-builder.yml 的 publish.owner/repo 保持一致）
+const UPDATE_RELEASES_URL = 'https://github.com/LuckPony/interview/releases';
 
 let backend = null;
 let mainWindow = null;
@@ -194,7 +196,8 @@ function waitForBackend(timeoutMs) {
 // —— 自动更新：所有打包版启用 ——
 // 更新源由 electron-builder 的 GitHub publish 配置写入 app-update.yml。
 // Windows：NSIS 安装包可以自动下载并安装更新。
-// macOS：需要有效的 Developer ID 签名才能可靠自动更新；未签名包通常需要手动下载安装。
+// macOS：Squirrel.Mac 自动安装需要有效的 Developer ID 签名；CI 未签名，
+//         这里降级为「跳转 Releases 手动下载」，不自动下载也不尝试安装。
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
 
@@ -213,18 +216,35 @@ function setupAutoUpdate() {
     error: (message) => logUpdate('ERROR', message),
     debug: (message) => logUpdate('DEBUG', message),
   };
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = process.platform !== 'darwin'; // macOS 走手动下载，不自动下
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
-    logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
-    dialog.showMessageBox({
-      type: 'info',
-      title: '发现新版本',
-      message: `发现新版本 v${info.version}`,
-      detail: '安装包将在后台下载，下载完成后会再次提醒。',
-      buttons: ['知道了'],
-    });
+    if (process.platform === 'darwin') {
+      logUpdate('INFO', `发现新版本 v${info.version}（macOS 手动下载）`);
+      dialog
+        .showMessageBox({
+          type: 'info',
+          title: '发现新版本',
+          message: `发现新版本 v${info.version}`,
+          detail: 'macOS 版暂不支持自动安装，请下载 dmg 后手动拖入「应用程序」覆盖。',
+          buttons: ['打开下载页', '稍后再说'],
+          defaultId: 0,
+          cancelId: 1,
+        })
+        .then(({ response }) => {
+          if (response === 0) shell.openExternal(`${UPDATE_RELEASES_URL}/tag/v${info.version}`);
+        });
+    } else {
+      logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
+      dialog.showMessageBox({
+        type: 'info',
+        title: '发现新版本',
+        message: `发现新版本 v${info.version}`,
+        detail: '安装包将在后台下载，下载完成后会再次提醒。',
+        buttons: ['知道了'],
+      });
+    }
   });
   autoUpdater.on('update-not-available', (info) => {
     logUpdate('INFO', `当前已是最新版本 v${info.version}`);
@@ -236,6 +256,7 @@ function setupAutoUpdate() {
     if (tray) tray.setToolTip(`面霸 · 正在下载更新 ${Math.round(progress.percent)}%`);
   });
 
+  // 仅 Windows/Linux 会走到这里（macOS 上面已改为手动下载，不会触发下载）
   autoUpdater.on('update-downloaded', (info) => {
     if (tray) tray.setToolTip('面霸 · 备考助手');
     dialog
