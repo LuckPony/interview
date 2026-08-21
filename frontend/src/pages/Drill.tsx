@@ -752,7 +752,7 @@ export function Drill() {
   if (view === 'teach') {
     const t = teach;
     return (
-      <div className="page chat-page">
+      <div className="page chat-page teach-page">
         <header className="page-head chat-head">
           <div className="chat-head-title">
             <span className="eyebrow">先教后考</span>

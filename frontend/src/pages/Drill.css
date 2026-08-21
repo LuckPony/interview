@@ -773,6 +773,16 @@
 }
 
 /* ===== 先教后考（teach 视图：子知识点清单 + 逐个讲解）===== */
+/* teach 页面整体随内容滚动：标题栏不固定，阅读空间更大（.main 负责滚动） */
+.chat-page.teach-page {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.chat-page.teach-page .teach-panel {
+  flex: none;
+  overflow: visible;
+}
 .teach-panel {
   display: flex;
   flex-direction: column;
@@ -822,28 +832,32 @@
   list-style: none;
   margin: 0 0 16px;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 .teach-sub {
+  position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
   width: 100%;
+  min-height: 96px;
   text-align: left;
-  padding: 12px 14px;
+  padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--paper-2);
   cursor: pointer;
   font-size: 0.875rem;
   color: var(--ink);
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .teach-sub:hover {
   border-color: var(--cinnabar);
   background: var(--cinnabar-wash);
+  box-shadow: 0 8px 20px -12px rgba(35, 43, 54, 0.35);
 }
 .teach-sub.is-done {
   border-color: var(--line);
@@ -853,9 +867,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  border-radius: 7px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 8px;
   background: var(--paper-3);
   color: var(--ink-soft);
   font-size: var(--fs-xs);
@@ -866,12 +881,20 @@
   color: var(--on-accent);
 }
 .teach-sub-name {
-  flex: 1;
   font-weight: 550;
+  line-height: 1.5;
 }
 .teach-sub-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   color: var(--good);
   font-weight: 700;
+}
+@media (max-width: 760px) {
+  .teach-outline {
+    grid-template-columns: 1fr;
+  }
 }
 .teach-lesson-head {
   margin-bottom: 12px;
