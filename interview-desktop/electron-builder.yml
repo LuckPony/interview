@@ -18,6 +18,8 @@ extraResources:
 # 应用图标：build/icon.png（1024x1024）会由 electron-builder 自动转换为各平台的
 # .icns（mac）/ .ico（win）打包进安装包，同时作为运行时窗口图标（src/icon.png 同源）。
 icon: build/icon.png
+# mac 无 Apple 证书时补 ad-hoc 签名：把「包含恶意软件」降级为「无法验证开发者」（右键→打开即可）
+afterSign: ./scripts/afterSign.js
 # 自动更新源：electron-updater 启动时从 GitHub Releases 拉 latest*.yml 检查新版本。
 # 发布方式：export GH_TOKEN=xxx && npx electron-builder --win nsis --x64 --publish always
 #（仓库 LuckPony/interview 为公开仓库，安装包无需鉴权即可下载；latest*.yml 由 electron-builder 自动生成上传）
