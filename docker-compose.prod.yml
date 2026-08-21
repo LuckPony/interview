@@ -32,7 +32,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "23333:23333"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

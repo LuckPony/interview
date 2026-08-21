@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tra
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
@@ -20,7 +21,7 @@ app.commandLine.appendSwitch('proxy-bypass-list', 'localhost;127.0.0.1;[::1]');
 Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
-const BACKEND_PORT = 8080;
+const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被占导致的冲突
 const HEALTH_TIMEOUT_MS = 90_000;
 
 // 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）
@@ -32,6 +33,13 @@ let backend = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+
+// 单实例锁：同一台机器只允许一个实例。用户重复双击快捷方式时，second-instance 会唤醒已有窗口，
+// 而不是再起一个实例——否则多个实例各自拉起后端、抢同一端口（端口被占的根因之一）。
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0); // 已有实例在运行，立即退出
+}
+app.on('second-instance', () => showMainWindow());
 
 // 启动封面（后端就绪前显示的加载页）：冷调现代蓝 + 面霸式幽默。
 // 说明：Spring Boot = 咖啡品牌梗，配 ☕ 让等待不那么无聊。
@@ -170,21 +178,70 @@ function killBackend() {
   }
 }
 
-// 探活闸门：任何 HTTP 响应（含 401/404）都表示「端口在监听 = 后端已起」；
-// 只有 ECONNREFUSED（端口没人听）才说明还没好，继续轮询。
+// —— 端口占用预检：启动前先探测，被占就明确提示用户，而不是干等 90 秒再报「启动失败」 ——
+function isPortListening(port) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host: '127.0.0.1', port, timeout: 600 }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on('error', () => resolve(false));
+    sock.on('timeout', () => { sock.destroy(); resolve(false); });
+  });
+}
+
+function isOwnBackendOnPort(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/actuator/health', timeout: 800 }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve(res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)));
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+// 返回值：true=端口空闲（需要自己拉起后端）；'reuse'=已有我们自己的后端在跑（直接复用）；false=用户选择退出
+async function ensureBackendPortFree() {
+  for (;;) {
+    if (!(await isPortListening(BACKEND_PORT))) return true;      // 空闲
+    if (await isOwnBackendOnPort(BACKEND_PORT)) return 'reuse';   // 我们自己残留的后端，直接复用
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: '端口被占用',
+      message: `本地服务端口 ${BACKEND_PORT} 被其他程序占用`,
+      detail: `面霸需要该端口启动内置服务，请关闭占用该端口的程序后点「重试」。\n\n查看占用进程：命令行执行\nnetstat -ano | findstr :${BACKEND_PORT}`,
+      buttons: ['重试', '退出'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return false; // 用户选「退出」
+    // 选「重试」→ 循环再探测
+  }
+}
+
+// 探活闸门：必须命中 /actuator/health 且返回 {"status":"UP"} 才算后端就绪。
+// 这样端口被其它程序占用时（返回 404/别的），不会误判为"后端已起"，而是明确报"端口被占"。
 function waitForBackend(timeoutMs) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     const attempt = () => {
       const req = http.get(
-        { host: '127.0.0.1', port: BACKEND_PORT, path: '/', timeout: 800 },
+        { host: '127.0.0.1', port: BACKEND_PORT, path: '/actuator/health', timeout: 800 },
         (res) => {
-          res.resume();
-          resolve();
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => {
+            if (res.statusCode === 200 && /"status"\s*:\s*"UP"/.test(body)) resolve();
+            else if (Date.now() > deadline)
+              reject(new Error(`后端未就绪：端口 ${BACKEND_PORT} 被占用或后端启动失败`));
+            else setTimeout(attempt, 1000);
+          });
         }
       );
       req.on('error', () => {
-        if (Date.now() > deadline) reject(new Error('后端启动超时（请确认 Docker / JDK 已就绪）'));
+        if (Date.now() > deadline) reject(new Error(`后端启动超时：端口 ${BACKEND_PORT} 无响应`));
         else setTimeout(attempt, 1000);
       });
       req.on('timeout', () => req.destroy());
@@ -270,7 +327,15 @@ function setupAutoUpdate() {
         cancelId: 1,
       })
       .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall();
+        if (response === 0) {
+          // 更新前显式进入「退出」状态：让窗口 close 真正关闭（而不是隐藏到托盘），
+          // 并先杀掉本地后端，否则 NSIS 安装器会判为“应用无法关闭”弹「请手动关闭」。
+          isQuitting = true;
+          killBackend();
+          autoUpdater.quitAndInstall();
+          // 兜底：几秒后仍未退干净就强制退出，确保安装器能继续（不会卡在“请手动关闭”）。
+          setTimeout(() => app.exit(0), 3000);
+        }
       });
   });
 
@@ -493,8 +558,20 @@ ipcMain.handle('fs:collectPath', async (_e, p) => {
 // 云模式标记：渲染进程据此决定「选本地文件夹」是走后端读盘还是本机读盘
 ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 
-app.whenReady().then(() => {
-  if (!isCloud(loadConfig())) spawnBackend();   // 云模式不拉本地后端
+app.whenReady().then(async () => {
+  if (!isCloud(loadConfig())) {
+    // 本地模式：端口预检。被其它程序占用就明确提示，而不是干等 90 秒再报「启动失败」。
+    const portState = await ensureBackendPortFree();
+    if (portState === false) {
+      app.exit(1);
+      return;
+    }
+    if (portState === true) {
+      spawnBackend(); // 端口空闲才拉起新后端
+    }
+    // portState === 'reuse'：已有我们自己的后端在跑，直接复用，不再拉新的
+  }
+
   mainWindow = createWindow();
   createTray();
   setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
