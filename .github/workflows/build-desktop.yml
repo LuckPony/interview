@@ -8,29 +8,29 @@ on:
 permissions:
   contents: write
 
+env:
+  # jlink 精简 JRE 的模块清单（win/mac 共用）
+  JLINK_MODULES: "java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
+
 jobs:
   build:
-    name: Build ${{ matrix.target }}-${{ matrix.arch }} (${{ matrix.os }})
+    name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
+            label: win-x64
             target: win
-            arch: x64
             config: electron-builder.win.yml
             artifact: windows-package
-          - os: macos-13
+          # mac 只用一个 macos-latest（arm64）runner，交叉编译 x64 + arm64 两套包
+          - os: macos-latest
+            label: mac-x64+arm64
             target: mac
-            arch: x64
             config: electron-builder.yml
-            artifact: macos-x64-package
-          - os: macos-14
-            target: mac
-            arch: arm64
-            config: electron-builder.yml
-            artifact: macos-arm64-package
+            artifact: macos-package
 
     steps:
       - name: Checkout
@@ -56,38 +56,84 @@ jobs:
         shell: bash
         run: ./gradlew :app:bootJar --console=plain
 
-      - name: Prepare embedded runtime
-        shell: bash
-        run: |
-          rm -rf runtime runtime-win
-          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-${{ matrix.target }}"
-          rm -rf "$JLINK_OUTPUT"
-          mkdir -p runtime
-          MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
-          if [ "${{ matrix.target }}" = "win" ]; then
-            JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
-            "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$MODULES" \
-              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          else
-            "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
-              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          fi
-          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
-          mv "$JLINK_OUTPUT" runtime/jre
-          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
-          if [ "${{ matrix.target }}" = "win" ]; then
-            mv runtime runtime-win
-          fi
-
-      - name: Install and build desktop package
+      - name: Install deps and build SPA
         shell: bash
         run: |
           npm --prefix frontend ci
           npm --prefix interview-desktop ci
           cd interview-desktop
           npm run sync-spa
-          # target=win/mac, arch=x64/arm64 → 生成 mianba-<ver>-<target>-<arch>.<ext> 各架构独立产物
-          npx electron-builder --${{ matrix.target }} --${{ matrix.arch }} --config ${{ matrix.config }} --publish never
+
+      # ---------------- Windows ----------------
+      - name: Prepare embedded runtime (Windows)
+        if: matrix.target == 'win'
+        shell: bash
+        run: |
+          rm -rf runtime runtime-win
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-win"
+          rm -rf "$JLINK_OUTPUT"
+          mkdir -p runtime
+          JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
+          "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java.exe" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          mv runtime runtime-win
+
+      - name: Build Windows package
+        if: matrix.target == 'win'
+        shell: bash
+        run: |
+          cd interview-desktop
+          npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
+
+      # ---------------- macOS：单 runner 交叉编译 x64 + arm64 ----------------
+      - name: Fetch x64 JDK (Intel JRE 交叉 jlink 用)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          # arm64 runner 上跑 x64 JDK 需要 Rosetta 2；已装则跳过
+          arch -x86_64 /usr/bin/true 2>/dev/null || softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
+          curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jdk/hotspot/normal/eclipse" \
+            -o "$RUNNER_TEMP/jdk-x64.tar.gz"
+          rm -rf "$RUNNER_TEMP/jdk-x64"
+          mkdir -p "$RUNNER_TEMP/jdk-x64"
+          tar -xzf "$RUNNER_TEMP/jdk-x64.tar.gz" -C "$RUNNER_TEMP/jdk-x64" --strip-components=1
+          echo "JAVA_HOME_X64=$RUNNER_TEMP/jdk-x64/Contents/Home" >> "$GITHUB_ENV"
+          test -x "$RUNNER_TEMP/jdk-x64/Contents/Home/bin/jlink" || (echo "x64 JDK missing jlink"; exit 1)
+
+      - name: Build macOS arm64 package
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          rm -rf runtime
+          mkdir -p runtime
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-arm64"
+          rm -rf "$JLINK_OUTPUT"
+          "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          cd interview-desktop
+          npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+
+      - name: Build macOS x64 package
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          rm -rf runtime
+          mkdir -p runtime
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-x64"
+          rm -rf "$JLINK_OUTPUT"
+          "$JAVA_HOME_X64/bin/jlink" --module-path "$JAVA_HOME_X64/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          cd interview-desktop
+          npx electron-builder --mac --x64 --config electron-builder.yml --publish never
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -125,6 +171,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: '*-package'
+          merge-multiple: true
           path: release-assets
 
       - name: Publish release
@@ -133,15 +180,12 @@ jobs:
         shell: bash
         run: |
           TAG="v${{ steps.version.outputs.version }}"
-          # 每个 artifact 落在各自子目录；两个 mac 的 latest-mac.yml 会重名，
-          # 递归收集后 --clobber 上传（后者覆盖前者）。mac 未签名自动更新本就不生效，
-          # 真正参与更新的只有 Windows 的 latest.yml。
-          mapfile -d '' ASSETS < <(find release-assets -type f \
+          mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
             -print0)
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No releasable files found" >&2
-            find release-assets -print
+            find release-assets -maxdepth 2 -print
             exit 1
           fi
           printf 'Uploading %s\n' "${ASSETS[@]}"
