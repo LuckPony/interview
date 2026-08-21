@@ -1,6 +1,18 @@
 .settings-card {
   padding: var(--s-5) var(--s-6);
   max-width: 640px;
+  margin-bottom: var(--s-4);
+}
+.settings-section-title {
+  font-size: var(--fs-md);
+  font-weight: 650;
+  color: var(--ink);
+  margin: 0 0 var(--s-3);
+}
+.settings-note {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
 }
 .settings-actions {
   display: flex;
@@ -14,4 +26,32 @@
   gap: 4px;
   font-size: var(--fs-sm);
   color: var(--good);
+}
+
+/* —— 外观：分段选择器（主题 / 字号档位）—— */
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.seg-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.seg-btn:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar-deep);
+}
+.seg-btn.is-on {
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+  color: var(--on-accent);
+  font-weight: 600;
 }

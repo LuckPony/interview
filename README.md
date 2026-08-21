@@ -69,7 +69,7 @@
 - 📝 **内化复盘** —— AI 只做"critique"（提示你漏了什么、哪句错了），不替你写正文，并生成解题思路与记忆口诀
 - 🔀 **反重复去重** —— 字符级 trigram Jaccard 相似度，换个说法重出会被拦下，零网络依赖
 - 🔌 **多 LLM Provider** —— DeepSeek / 阿里百炼 DashScope / Kimi 可切换，留空自动跳过
-- 🖥️ **桌面端** —— Electron 壳拉起本地后端 + 静态 SPA，支持免上传读取本地大项目
+- 🖥️ **桌面应用** —— Electron 内嵌精简 JRE、Spring Boot 后端和静态 SPA，无需用户另装 Java 或 Docker；支持本地文件读取、系统托盘驻留、GitHub Release 自动更新，以及 Windows/macOS 安装包
 
 ## 🩺 痛点解决进度
 
@@ -95,7 +95,7 @@
 | 存储 | PostgreSQL 16 (+pgvector) · Redis · MinIO（S3 协议） |
 | AI | OpenAI 兼容多 Provider：DeepSeek / DashScope（百炼）/ Kimi；结构化输出 + SSE 流式 |
 | 前端 | Vite 5 · React 18 · TypeScript · react-router · react-markdown |
-| 桌面 | Electron 壳（拉起本地后端 + 加载 SPA + 本地 fs 桥） |
+| 桌面 | Electron · electron-builder · electron-updater · 内嵌 JRE/Spring Boot · Windows NSIS · macOS DMG |
 
 ## 🚀 快速开始
 
@@ -182,53 +182,73 @@ npm run dev         # http://localhost:5173，/api 已代理到 8080
 
 注册采用 **邮箱 + 密码**（密码 BCrypt 存储）。若配置了 `MAIL_HOST` / `MAIL_FROM`，注册后会给邮箱发 6 位验证码，应用内输码完成验证；**未配置 SMTP 时注册自动通过**（本地 / 演示）。
 
-### 6. 桌面端（可选）
+### 6. 桌面应用
 
-桌面端是一个 Electron 壳：加载 `frontend` 构建出的静态 SPA，并负责拉起本地后端（本地模式）或直连你的服务器（云端模式）。应用图标取自 `frontend/src/logo.png`，打包时自动生成各平台图标（mac 的 `.icns` / Windows 的 `.ico`，见 `interview-desktop/build/icon.png`）。
+桌面应用将 React SPA、Spring Boot fat jar 和精简 JRE 一起打包，安装后无需另行配置 Java、Gradle、Docker 或数据库。默认使用本地模式：应用启动时自动拉起内嵌后端，数据保存在 Electron 用户数据目录中。
 
-**本地开发运行**（自己跑后端，见上方第 3 步）：
+当前能力：
+
+- **完整本地运行**：内嵌 Java 运行时、Spring Boot 后端和 H2 数据库
+- **本地文件桥接**：可选择本机文件或目录作为学习资料，无需先上传到远程服务器
+- **系统托盘驻留**：关闭主窗口后应用和本地后端继续在后台运行；双击托盘图标或点击“打开面霸”可恢复窗口
+- **彻底退出**：托盘菜单点击“彻底退出”后关闭 Electron，并清理本地 Java 后端进程树
+- **自动更新**：安装版启动后检查 GitHub Releases；发现新版本时提示并在后台下载，完成后可立即重启安装
+- **平台安装包**：Windows 提供 NSIS `.exe` 和 `.zip`，macOS 提供 `.dmg` 和 `.zip`
+- **原生应用图标**：Windows 可执行文件、任务栏、快捷方式和托盘统一使用面霸图标
+
+#### 下载和安装
+
+从 [GitHub Releases](https://github.com/LuckPony/interview/releases) 下载当前平台的安装包：
+
+```text
+Windows：mianba-*-win-x64.exe
+macOS：  mianba-*-mac-x64.dmg
+```
+
+Windows 推荐使用 `.exe` 安装版，以获得完整的自动更新能力；`.zip` 主要用于便携运行。macOS 未使用有效 Developer ID 签名和公证时，可能需要通过“右键 → 打开”首次启动，自动更新也可能受系统安全策略限制。
+
+#### 本地开发运行
+
+```bash
+npm --prefix frontend install
+npm --prefix interview-desktop install
+cd interview-desktop
+npm start
+```
+
+开发模式会从源码启动本地后端；打包模式则使用安装包内嵌的 JRE 和 fat jar。
+
+#### 自动构建和发布
+
+推送到 `main` 后，GitHub Actions 会分别在 Windows 和 macOS Runner 上构建安装包；两个平台成功后，将安装包、blockmap 和 `latest*.yml` 发布到对应的 GitHub Release。
+
+也可以在 macOS 本地一键构建并发布 Windows 与 macOS 产物：
 
 ```bash
 cd interview-desktop
-npm install
-npm start          # 自动拉起本地 Spring Boot，等待就绪后加载界面
+export GH_TOKEN="具有 contents:write 权限的 GitHub Token"
+npm run release:local
 ```
 
-**打包 macOS 安装包（DMG）**：
+仅在 macOS 本地构建 Windows 安装包：
 
 ```bash
 cd interview-desktop
-npm install
-MIANBA_SERVER=https://你的服务器 npm run dist:cloud   # 云端模式：应用直连你的服务器，适合发给你朋友
-npm run dist                                          # 本地模式：应用启动时自己拉起本地后端
+npm run dist:win:local
 ```
 
-产物在 `interview-desktop/dist-electron/`：
+构建产物位于：
 
-- `面霸-0.1.0-arm64.dmg` —— 双击拖入 Applications 安装（Apple Silicon）
-- `面霸-0.1.0-arm64-mac.zip` + `latest-mac.yml` —— 自动更新用
-
-**打包 Windows 安装包（EXE）**：
-
-```bash
-cd interview-desktop
-npm install
-MIANBA_SERVER=https://你的服务器 npm run dist:win      # 云端模式
-npm run dist -- --win                                   # 本地模式
+```text
+interview-desktop/dist-electron/
 ```
 
-产物在 `interview-desktop/dist-electron/`：
+发布新版本时，需先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号。客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
 
-- `面霸 Setup 0.1.0.exe` —— NSIS 安装程序，双击安装
-- `面霸-0.1.0-win.zip` —— 便携版（解压即用）
-
-**打包注意事项：**
-
-- **DMG 只能在 macOS 上打包**（需要 Xcode 命令行工具）。
-- **EXE 建议在 Windows 机器或 GitHub Actions CI 上构建** —— macOS 交叉构建 NSIS 依赖 wine，容易踩坑。
-- 云端模式会把服务器地址烘焙进应用（写入 `interview-desktop/config.json`）：**启动时不再拉起本地后端，界面直连你的服务器**。
-- 所有 `dist` 系列命令都会先构建 `../frontend` 并复制到 `app-dist/`，请先确认 `frontend/` 下已 `npm install`。
-- 发新版本改 `interview-desktop/package.json` 的 `version` 字段（如 `0.1.0 → 0.1.1`），electron-updater 按它检查更新。
+```text
+Windows：%APPDATA%\interview-desktop\updater.log
+macOS：  ~/Library/Application Support/interview-desktop/updater.log
+```
 
 ### 7. 云端部署（后端）
 

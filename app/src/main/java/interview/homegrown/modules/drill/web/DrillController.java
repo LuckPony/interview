@@ -1,7 +1,9 @@
 package interview.homegrown.modules.drill.web;
 
+import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
 import interview.homegrown.modules.drill.domain.Concept;
+import interview.homegrown.modules.drill.domain.ConceptLesson;
 import interview.homegrown.modules.drill.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.DrillMode;
 import interview.homegrown.modules.drill.domain.DrillRun;
@@ -9,6 +11,7 @@ import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.domain.SelectedTask;
+import interview.homegrown.modules.drill.repository.ConceptLessonRepository;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
@@ -42,6 +45,7 @@ import interview.homegrown.modules.drill.web.dto.RunDetailView;
 import interview.homegrown.modules.drill.web.dto.RunSummaryView;
 import interview.homegrown.modules.drill.web.dto.SubmitRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,7 +108,9 @@ public class DrillController {
     private final QuestionBankRepository questionBankRepo;
     private final DrillTurnRepository turnRepo;
     private final ConceptRepository conceptRepo;
+    private final ConceptLessonRepository conceptLessonRepo;
     private final TutorGenerator tutorGenerator;
+    private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
     private final DailyPlanService dailyPlanService;
     private final ReviewService reviewService;
@@ -116,7 +122,9 @@ public class DrillController {
                            CorpusService corpusService, ProgressContextService progressContext,
                            DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
                            DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
-                           TutorGenerator tutorGenerator, ObjectMapper objectMapper,
+                           ConceptLessonRepository conceptLessonRepo,
+                           TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
+                           ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, ReviewService reviewService) {
         this.selectionService = selectionService;
         this.questionService = questionService;
@@ -132,7 +140,9 @@ public class DrillController {
         this.questionBankRepo = questionBankRepo;
         this.turnRepo = turnRepo;
         this.conceptRepo = conceptRepo;
+        this.conceptLessonRepo = conceptLessonRepo;
         this.tutorGenerator = tutorGenerator;
+        this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
         this.dailyPlanService = dailyPlanService;
         this.reviewService = reviewService;
@@ -154,7 +164,7 @@ public class DrillController {
         Long uid = currentUserId();
         // 债务闸门已移除（同上）
         var task = selectionService.pickFor(uid, req.conceptId());
-        return openRun(uid, task, planIdOfConcept(req.conceptId()), null, req.conceptId());
+        return openRun(uid, task, planIdOfConcept(req.conceptId()), null, req.conceptId(), req.subPoint());
     }
 
     /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
@@ -170,7 +180,7 @@ public class DrillController {
         };
         // 层级练习把显式指定的 layer 传给闸门：恢复活跃 run 时必须匹配该层，
         // 否则搁置旧 run、按目标层重新出题（否则点「练这一层」会被同方向的旧活跃题顶掉）。
-        return openRun(uid, task, req.planId(), "layer".equals(mode) ? req.layer() : null, null);
+        return openRun(uid, task, req.planId(), "layer".equals(mode) ? req.layer() : null, null, null);
     }
 
     /**
@@ -221,6 +231,112 @@ public class DrillController {
             throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
         }
         return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
+    }
+
+    // ------------------------------------------------------------ 先教后考（拆解 + 子知识点讲解）
+
+    /** 拆解知识点为子知识点清单（缓存 concept.lesson_outline；无缓存则现场拆解后写回）。 */
+    @PostMapping("/{conceptId}/outline")
+    public OutlineView outline(@PathVariable Long conceptId) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+
+        List<String> subPoints = lessonGenerator.outlineFromJson(concept.getLessonOutline());
+        boolean cached = !subPoints.isEmpty();
+        if (!cached) {
+            String context = progressContext.contextFor(uid, conceptId);
+            subPoints = lessonGenerator.decompose(concept, context);
+            if (subPoints.isEmpty()) {
+                subPoints = List.of(concept.getName());   // 降级：概念本身作为一个子点
+            }
+            String json = lessonGenerator.outlineToJson(subPoints);
+            if (json != null) {
+                concept.setLessonOutline(json);
+                conceptRepo.save(concept);
+            }
+        }
+        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, cached);
+    }
+
+    /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。 */
+    @PostMapping(value = "/{conceptId}/lesson", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> lesson(@PathVariable Long conceptId,
+                                                        @RequestParam String subPoint) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        final String sub = subPoint.trim();
+        if (sub.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        }
+
+        // 缓存命中：直接整体下发（一个 data 帧）；未命中则流式生成后写回。
+        final ConceptLesson cachedLesson = conceptLessonRepo
+                .findByConceptIdAndSubPoint(conceptId, sub).orElse(null);
+        final String context = progressContext.contextFor(uid, conceptId);
+
+        StreamingResponseBody body = out -> {
+            try {
+                out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                if (cachedLesson != null) {
+                    out.write(("data: {\"text\":\"" + jsonEscape(cachedLesson.getLessonText()) + "\"}\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } else {
+                    final StringBuilder buf = new StringBuilder();
+                    String full = lessonGenerator.streamLesson(concept, sub, context,
+                            token -> {
+                                buf.append(token);
+                                try {
+                                    out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                            .getBytes(StandardCharsets.UTF_8));
+                                    out.flush();
+                                } catch (Exception e) {
+                                    log.debug("lesson token 推送异常（已吞）: {}", e.getMessage());
+                                }
+                            },
+                            r -> sseReasoning(out, r));
+
+                    if (full != null && !full.isBlank()) {
+                        ConceptLesson cl = new ConceptLesson();
+                        cl.setConceptId(conceptId);
+                        cl.setSubPoint(sub);
+                        cl.setLessonText(full);
+                        cl.setCharCount(full.length());
+                        try {
+                            conceptLessonRepo.save(cl);
+                        } catch (Exception e) {
+                            // 并发/重复插入撞唯一索引：忽略，已有缓存即可
+                            log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
+                        }
+                    } else {
+                        out.write(("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                }
+
+                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("lesson-stream 推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
     }
 
     // ------------------------------------------------------------ 今日任务（每日自动排期）
@@ -281,20 +397,26 @@ public class DrillController {
     private static final List<DrillRunStatus> ACTIVE_STATUSES = List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING);
 
     private QuestionView openRun(Long uid, SelectedTask task) {
-        return openRun(uid, task, null, null, null);   // 自由模式：不指定目标，恢复任何活跃 run
+        return openRun(uid, task, null, null, null, null);   // 自由模式：不指定目标，恢复任何活跃 run
     }
 
     private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId) {
-        return openRun(uid, task, targetPlanId, null, null);
+        return openRun(uid, task, targetPlanId, null, null, null);
     }
 
     private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
-                                 Integer targetLayer, Long targetConceptId) {
+                                 Integer targetLayer, Long targetConceptId, String focus) {
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
         if (resumed != null) return resumed;
 
         // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
         String context = progressContext.contextFor(uid, task.conceptIds());
+        // 先教后考：出题限定到「子知识点」粒度，题目必须围绕当前子知识点，不跑偏到别的子点。
+        if (focus != null && !focus.isBlank()) {
+            context = (context == null ? "" : context + "\n\n")
+                    + "本次练习聚焦的子知识点：「" + focus + "」。题目必须围绕这个子知识点展开，"
+                    + "不要考这个概念下的其它子知识点。";
+        }
         var q = questionService.generate(task, context);       // 出题（LLM 填空）
         return openRunOnQuestion(uid, q.getId(), targetPlanId);
     }
@@ -526,6 +648,8 @@ public class DrillController {
                 : -1;
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
+        // 出题时预生成的「追问小问」清单：老师按顺序逐条问，问完就停（学生提前掌握可提前收）。
+        final List<String> followups = extractFollowups(pointsJson);
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
@@ -537,7 +661,7 @@ public class DrillController {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
-                String full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
+                String full = tutorGenerator.streamChat(stem, pointsJson, followups, allTurns, context,
                         token -> {
                             try {
                                 out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
@@ -819,6 +943,23 @@ public class DrillController {
         return b.toString();
     }
 
+    /** 从题目 points JSON 里取出出题时预生成的「追问小问」清单（空/异常则空列表）。 */
+    private List<String> extractFollowups(String pointsJson) {
+        try {
+            JsonNode root = objectMapper.readTree(pointsJson);
+            JsonNode fu = root == null ? null : root.get("followups");
+            if (fu == null || !fu.isArray()) return List.of();
+            List<String> out = new java.util.ArrayList<>();
+            for (JsonNode n : fu) {
+                String s = n.asText();
+                if (s != null && !s.isBlank()) out.add(s);
+            }
+            return out;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     // ------------------------------------------------------------- 内化
 
     @PostMapping("/{runId}/note")
@@ -948,7 +1089,9 @@ public class DrillController {
         return (Long) auth.getPrincipal();
     }
 
-    public record StartRequest(Long conceptId) {}
+    public record StartRequest(Long conceptId, String subPoint) {}
+
+    public record OutlineView(Long conceptId, String name, String topic, List<String> subPoints, boolean cached) {}
 
     public record StartPlanRequest(Long planId, String mode, Integer layer) {}
 

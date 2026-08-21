@@ -14,6 +14,8 @@ export function Plans({
   onFree,
   onStartTask,
   err,
+  teachFirst,
+  onToggleTeachFirst,
 }: {
   plans: PlanView[];
   onPick: (conceptId: number) => void;
@@ -22,6 +24,8 @@ export function Plans({
   onFree?: () => void;
   onStartTask: (taskId: number) => void;
   err: string;
+  teachFirst: boolean;
+  onToggleTeachFirst: (v: boolean) => void;
 }) {
   // 今日任务（每日自动排期 + 预生成，点开即答）；按当前学习方向过滤
   const [today, setToday] = useState<DailyTaskView[] | null>(null);
@@ -56,6 +60,14 @@ export function Plans({
         <span className="eyebrow">练习 · 快速开始</span>
         <h1>选一条路开始</h1>
         <p>点「继续学习」直接出题。想看完整大纲和概念树，去顶栏「学习计划」。</p>
+        <label className="teach-toggle">
+          <input
+            type="checkbox"
+            checked={teachFirst}
+            onChange={(e) => onToggleTeachFirst(e.target.checked)}
+          />
+          先讲解再练习（点知识点时先拆子点、逐个教考）
+        </label>
       </header>
 
       {err && <div className="banner info">{err}</div>}

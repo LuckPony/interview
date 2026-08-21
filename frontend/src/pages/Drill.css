@@ -262,7 +262,7 @@
   color: var(--ink);
 }
 .validation-ok {
-  color: var(--green, #2f7d57);
+  color: var(--good);
   font-size: var(--fs-xs);
 }
 .validation-warn {
@@ -726,11 +726,11 @@
 .chat-page .chat-bubble .md,
 .chat-page .tutor-text,
 .chat-page .me-text {
-  font-size: 0.875rem;
+  font-size: calc(0.875rem * var(--scale-body, 1));
   line-height: 1.6;
 }
 .chat-page .chat-bubble.is-stem p {
-  font-size: var(--fs-base);
+  font-size: calc(var(--fs-base) * var(--scale-stem, 1));
 }
 .chat-page .chat-input {
   padding: var(--s-2) var(--s-4);
@@ -770,4 +770,145 @@
   font-size: var(--fs-sm);
   color: var(--ink-faint);
   font-style: italic;
+}
+
+/* ===== 先教后考（teach 视图：子知识点清单 + 逐个讲解）===== */
+.teach-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+  margin: 0 auto;
+  /* 讲解文字可能很长：在固定高度的聊天页内独立滚动，避免被 .chat-page 的 overflow:hidden 裁掉 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.teach-head-topic {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+}
+.teach-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.teach-toggle input {
+  accent-color: var(--cinnabar);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.teach-card {
+  padding: 20px 22px;
+}
+.teach-title {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+.teach-hint {
+  margin: 0 0 16px;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+}
+.teach-outline {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.teach-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-2);
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+.teach-sub:hover {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+}
+.teach-sub.is-done {
+  border-color: var(--line);
+  background: var(--good-wash);
+}
+.teach-sub-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.teach-sub.is-done .teach-sub-num {
+  background: var(--good);
+  color: var(--on-accent);
+}
+.teach-sub-name {
+  flex: 1;
+  font-weight: 550;
+}
+.teach-sub-check {
+  color: var(--good);
+  font-weight: 700;
+}
+.teach-lesson-head {
+  margin-bottom: 12px;
+}
+.teach-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.teach-back:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+}
+.teach-lesson-eyebrow {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+.teach-lesson-body {
+  min-height: 60px;
+}
+.teach-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }

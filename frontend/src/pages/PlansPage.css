@@ -90,7 +90,7 @@
 
 .stat-num {
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--ink);
   line-height: 1;
@@ -101,7 +101,7 @@
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -218,7 +218,7 @@
 
 .chip-check {
   color: var(--good);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -253,7 +253,7 @@
   border-radius: 10px;
   background: var(--bad);
   color: #fff;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   padding: 0 6px;
   line-height: 1;
@@ -370,13 +370,13 @@
 
 /* AI 补充知识点 */
 .ai-revise-card { margin-bottom: 14px; }
-.ai-revise-hint { color: #5b6675; font-size: 13px; margin: 6px 0 12px; }
+.ai-revise-hint { color: var(--ink-soft); font-size: var(--fs-sm); margin: 6px 0 12px; }
 .ai-revise-row { display: flex; gap: 10px; }
 .ai-revise-row input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  font-size: 14px;
-  background: #fff;
+  font-size: 0.875rem;
+  background: var(--paper-2);
 }

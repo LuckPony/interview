@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight } from 'lucide-react';
-import { drill, chatStream, studyPlan, type TutorStream } from '../api/drill';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft } from 'lucide-react';
+import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
@@ -34,13 +34,17 @@ type SessionCtx =
   | { kind: 'free' }
   | { kind: 'concept'; conceptId: number }
   | { kind: 'plan'; planId: number; mode: 'continue' | 'review' | 'layer'; layer?: number }
-  | { kind: 'task' }; // 今日任务：做完自动接下一道预生成题
+  | { kind: 'task' } // 今日任务：做完自动接下一道预生成题
+  | { kind: 'teach'; conceptId: number; subIndex: number }; // 先教后考：做完当前子点 → 下一个子点
 
 // —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分 ——
 type Phase = 'generating' | 'chatting' | 'finishing' | 'graded';
 
 let msgCounter = 0;
 const nextMsgId = () => `m${++msgCounter}`;
+
+// 先教后考开关（localStorage，默认开）
+const TEACH_FIRST_KEY = 'mianba.teachFirst';
 
 // 把一条对话线（全部 run 的所有轮）扁平化为聊天消息数组：
 // AI 题干 → 每轮「我的回答 / AI 讲解」按时间顺序串起来。恢复对话与追问场共用。
@@ -84,8 +88,8 @@ export function Drill() {
   // 聊天滚动容器
   const threadRef = useRef<HTMLDivElement>(null);
 
-  // —— 视图状态机：home(选方向) / learn(做题) ——
-  const [view, setView] = useState<'home' | 'learn'>('home');
+  // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题) ——
+  const [view, setView] = useState<'home' | 'teach' | 'learn'>('home');
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [planErr, setPlanErr] = useState('');
 
@@ -118,6 +122,24 @@ export function Drill() {
   // —— 内化笔记弹窗 ——
   const [noteRunId, setNoteRunId] = useState<number | null>(null);
   const [noteStem, setNoteStem] = useState('');
+
+  // —— 先教后考：知识点拆解 + 子知识点讲解 ——
+  type TeachState = {
+    conceptId: number;
+    name: string;
+    topic: string;
+    subPoints: string[];
+    curIdx: number;   // -1 = 只在清单页（未选中具体子点）
+    done: string[];   // 已做过题的子点名（本次会话内）
+  };
+  const [teach, setTeach] = useState<TeachState | null>(null);
+  const [lessonText, setLessonText] = useState('');
+  const [lessonReasoning, setLessonReasoning] = useState('');
+  const [lessonBusy, setLessonBusy] = useState(false);
+  const [outlineBusy, setOutlineBusy] = useState(false);
+  const [teachFirst, setTeachFirst] = useState<boolean>(() => {
+    try { return localStorage.getItem(TEACH_FIRST_KEY) !== '0'; } catch { return true; }
+  });
 
   // —— 加载学习方向列表 ——
   const loadPlans = useCallback(async () => {
@@ -325,8 +347,86 @@ export function Drill() {
 
   const startFree = () => startQuestion(() => drill.next(), { kind: 'free' });
 
-  const startByConcept = (conceptId: number) =>
+  // 直接出题（不开讲解）
+  const directStart = (conceptId: number) =>
     startQuestion(() => drill.start(conceptId), { kind: 'concept', conceptId });
+
+  // 播放某个子知识点的讲解（SSE 流式）
+  const playSubLesson = (conceptId: number, subPoint: string) => {
+    setView('teach');
+    setLessonText('');
+    setLessonReasoning('');
+    setLessonBusy(true);
+    setErr('');
+    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+    sseRef.current = lessonStream(
+      conceptId,
+      subPoint,
+      (token) => setLessonText((prev) => prev + token),
+      (reasoning) => setLessonReasoning((prev) => prev + reasoning),
+      () => { setLessonBusy(false); sseRef.current = null; },
+      (_status, msg) => {
+        setLessonBusy(false);
+        sseRef.current = null;
+        setErr(msg || '讲解生成失败');
+      },
+    );
+  };
+
+  // 进入「先教后考」：拉子知识点清单
+  const enterTeach = async (conceptId: number) => {
+    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+    setView('teach');
+    setOutlineBusy(true);
+    setErr('');
+    setTeach({ conceptId, name: '', topic: '', subPoints: [], curIdx: -1, done: [] });
+    try {
+      const o = await drill.outline(conceptId);
+      setTeach({ conceptId, name: o.name, topic: o.topic, subPoints: o.subPoints, curIdx: -1, done: [] });
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '拆解失败');
+      // 拆解失败降级：直接出题（无讲解）
+      setTeach(null);
+      directStart(conceptId);
+    } finally {
+      setOutlineBusy(false);
+    }
+  };
+
+  const startByConcept = (conceptId: number) => {
+    if (teachFirst) enterTeach(conceptId);
+    else directStart(conceptId);
+  };
+
+  // 点某个子知识点：讲它
+  const openSubPoint = (idx: number) => {
+    if (!teach) return;
+    setTeach({ ...teach, curIdx: idx });
+    playSubLesson(teach.conceptId, teach.subPoints[idx]);
+  };
+
+  // 讲完当前子点，开始做题（限定到该子点）
+  const startSubQuiz = () => {
+    if (!teach || teach.curIdx < 0) return;
+    const t = teach;
+    const subPoint = t.subPoints[t.curIdx];
+    startQuestion(
+      () => drill.start(t.conceptId, subPoint),
+      { kind: 'teach', conceptId: t.conceptId, subIndex: t.curIdx },
+    );
+  };
+
+  // 跳过讲解，直接对这个概念出题
+  const skipTeach = () => {
+    if (!teach) return;
+    directStart(teach.conceptId);
+  };
+
+  const toggleTeachFirst = (val: boolean) => {
+    setTeachFirst(val);
+    try { localStorage.setItem(TEACH_FIRST_KEY, val ? '1' : '0'); } catch { /* ignore */ }
+  };
 
   const startByPlan = (planId: number, mode: 'continue' | 'review' | 'layer', layer?: number) =>
     startQuestion(() => drill.startPlan(planId, mode, layer), { kind: 'plan', planId, mode, layer });
@@ -427,6 +527,22 @@ export function Drill() {
       case 'concept':
         startByConcept(ctx.conceptId);
         break;
+      case 'teach': {
+        if (!teach) { directStart(ctx.conceptId); break; }
+        const curSub = teach.subPoints[ctx.subIndex] ?? '';
+        const done = curSub && !teach.done.includes(curSub) ? [...teach.done, curSub] : teach.done;
+        const nextIdx = ctx.subIndex + 1;
+        if (nextIdx < teach.subPoints.length) {
+          // 还有下一个子点：讲它
+          setTeach({ ...teach, curIdx: nextIdx, done });
+          playSubLesson(teach.conceptId, teach.subPoints[nextIdx]);
+        } else {
+          // 全部学完 → 回到清单页（全部打勾）
+          setTeach({ ...teach, curIdx: -1, done });
+          setView('teach');
+        }
+        break;
+      }
       case 'task':
         // 今日任务：自动接下一道预生成题（无则后端 404，前端显示提示）
         startQuestion(() => drill.nextTask(), { kind: 'task' });
@@ -449,6 +565,11 @@ export function Drill() {
     setGrade(null);
     setResumedGraded(false);
     setBrowseQid(null);
+    setTeach(null);
+    setLessonText('');
+    setLessonReasoning('');
+    setLessonBusy(false);
+    setOutlineBusy(false);
     restoreRef.current = null;
     setView('home');
     navigate('/drill', { replace: true });
@@ -539,6 +660,8 @@ export function Drill() {
         onFree={startFree}
         onStartTask={startByTask}
         err={planErr}
+        teachFirst={teachFirst}
+        onToggleTeachFirst={toggleTeachFirst}
       />
     );
   }
@@ -625,6 +748,117 @@ export function Drill() {
     );
   }
 
+  // ===== Teach（先教后考：子知识点清单 + 逐个讲解）=====
+  if (view === 'teach') {
+    const t = teach;
+    return (
+      <div className="page chat-page">
+        <header className="page-head chat-head">
+          <div className="chat-head-title">
+            <span className="eyebrow">先教后考</span>
+            <h1>{t?.name || '知识点讲解'}</h1>
+            {t?.topic ? <p className="teach-head-topic">{t.topic}</p> : null}
+          </div>
+          <button className="head-back" onClick={goHome}>
+            <Compass size={14} strokeWidth={1.6} /> 换个方向
+          </button>
+        </header>
+
+        {err && <div className="banner info">{err}</div>}
+
+        <div className="teach-panel">
+          <label className="teach-toggle">
+            <input
+              type="checkbox"
+              checked={teachFirst}
+              onChange={(e) => toggleTeachFirst(e.target.checked)}
+            />
+            先讲解再练习（点知识点时先拆子点、逐个教考）
+          </label>
+
+          {outlineBusy ? (
+            <div className="card teach-card">
+              <div className="chat-row chat-row-ai chat-row-loading">
+                <div className="chat-bubble chat-bubble-ai is-loading">
+                  <span className="spinner-sm" /> 正在拆解子知识点…
+                </div>
+              </div>
+            </div>
+          ) : t && t.subPoints.length > 0 && t.curIdx < 0 ? (
+            // 清单页：展示子知识点列表
+            <div className="card teach-card">
+              <h2 className="teach-title">这个概念包含 {t.subPoints.length} 个子知识点</h2>
+              <p className="teach-hint">逐个点击：先听讲解、再做题，直到全部学完。</p>
+              <ul className="teach-outline">
+                {t.subPoints.map((sp, i) => {
+                  const isDone = t.done.includes(sp);
+                  return (
+                    <li key={`${sp}-${i}`}>
+                      <button
+                        className={'teach-sub' + (isDone ? ' is-done' : '')}
+                        onClick={() => openSubPoint(i)}
+                      >
+                        <span className="teach-sub-num">{i + 1}</span>
+                        <span className="teach-sub-name">{sp}</span>
+                        {isDone && <span className="teach-sub-check">✓</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="teach-foot">
+                <Button variant="ghost" onClick={skipTeach}>跳过讲解，直接做题</Button>
+              </div>
+            </div>
+          ) : t && t.curIdx >= 0 ? (
+            // 讲解页：讲当前子知识点
+            <div className="card teach-card">
+              <div className="teach-lesson-head">
+                <button className="teach-back" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                  <ArrowLeft size={14} strokeWidth={1.6} /> 返回清单
+                </button>
+                <span className="teach-lesson-eyebrow">
+                  子知识点 {t.curIdx + 1} / {t.subPoints.length}
+                </span>
+                <h2 className="teach-title">{t.subPoints[t.curIdx]}</h2>
+              </div>
+              <div className="teach-lesson-body">
+                {lessonBusy && !lessonText ? (
+                  <div className="chat-row chat-row-ai chat-row-loading">
+                    <div className="chat-bubble chat-bubble-ai is-loading">
+                      <span className="spinner-sm" /> 正在备课…
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {lessonReasoning && (
+                      <details className="reasoning-panel" open>
+                        <summary>AI 思考过程</summary>
+                        <div className="reasoning-text"><Markdown>{lessonReasoning}</Markdown></div>
+                      </details>
+                    )}
+                    <div className="tutor-text">
+                      <Markdown>{lessonText || '（讲解内容为空）'}</Markdown>
+                      {lessonBusy && <span className="tutor-caret" aria-hidden />}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="teach-foot">
+                <Button variant="ghost" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                  返回清单
+                </Button>
+                <Button onClick={startSubQuiz} disabled={lessonBusy}>
+                  开始做题 <ChevronRight size={16} strokeWidth={1.6} />
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   // ===== Learn（聊天式 SSE 练习）=====
   const canSend = phase === 'chatting' && input.trim().length > 0;
   // 至少有一轮用户对话才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮
@@ -696,7 +930,7 @@ export function Drill() {
                     ? '题目生成中…'
                     : resumedGraded
                       ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。'
-                      : '先回答主问题；AI 确认你理解后，会针对薄弱点逐条追问（最多 4 个小问）。想直接看答案可点「看答案」。'
+                      : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问（最多 4 个小问，也可能不追问）。想直接看答案可点「看答案」。'
                 }
                 value={input}
                 disabled={phase === 'generating'}

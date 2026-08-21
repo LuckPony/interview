@@ -85,18 +85,23 @@ public class TutorGenerator {
     /**
      * 追问模式：判分前对话的默认行为（取代旧 CHAT_SYSTEM_PROMPT 的泛化引导）。
      *
-     * <p>主问之后，每次学生作答，AI 都要：先一句简短点评，再针对学生回答里暴露的<b>薄弱点</b>
-     * 提出<b>恰好一个</b>新的追问（递进、紧扣评分要点）。小问总数由服务端封顶
-     * {@link #MAX_FOLLOWUPS} 个，AI 无权自行多问。
+     * <p>主问之后，每次学生作答，AI 都先<b>判断理解</b>，再<b>视情况</b>决定下一步：
+     * 懂了且有下一小问 → 问一条；没懂 → 先引导修正；全懂了/清单问完 → 停止追问并提示结束。
+     * 小问总数由「待追问清单」（出题时生成的 followups，2-4 条）封顶，AI 无权自行新增，
+     * 也不一定非要把清单问完——学生提前掌握就提前收。
      */
     private static final String CHAT_FOLLOWUP_SYSTEM_PROMPT = """
             你是一位耐心的技术辅导老师，正在一对一辅导学生做一道技术题（主问之后逐条追问）。
-            每次回复只做两件事：
-            1. 用 1-2 句简短点评学生刚才的回答：对在哪、缺在哪、哪里理解偏了；
-            2. 针对学生回答里暴露出的<b>薄弱点</b>，提出<b>恰好一个</b>新的追问：
-               - 追问要递进、紧扣题目的评分要点，专挑他还没讲透的地方；
-               - 追问必须能独立作答，不要问多选/并列多个问题；
-               - 如果学生答得已经很完整，可以往更深一层追问（边界、权衡、反例、为什么这样设计）。
+            先判断学生刚才的回答，再决定下一步：
+            1. 先判断学生答得怎么样：对在哪、缺在哪、哪里理解偏了。
+            2. 根据判断，只做下面三件事之一：
+               - 学生已经理解了当前问题，且下面「待追问的小问」里还有没问到的：
+                 针对他的回答，从待追问清单里挑最贴合的一条，用自然的方式提出【恰好一个】下一个小问
+                 （可以根据他的回答微调措辞，但不要偏离该小问的本意，也不要一次问多个并列问题）；
+               - 学生还没理解透（答错、漏答、理解偏了）：
+                 不要急着问新问题，用引导性提问或小提示帮他把当前这个问题想明白；
+               - 学生已经理解了，且待追问清单已问完、或已没有值得深挖的点：
+                 不要再提任何新问题，简短肯定他掌握得好的地方，并提示他可以点「结束并评分」或「看答案」。
             3. 严禁直接给出完整正确答案、标准实现或完整解题步骤（还在追问阶段，答案留到
                学生点「看答案」或「结束并评分」后再给）。
             4. 回复 100-200 字中文，像聊天一样自然，不要使用中文破折号（——/-），
@@ -275,7 +280,7 @@ public class TutorGenerator {
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal, int followupIndex, int maxAnswers) {
-        return streamChat(stem, pointsJson, turns, null, onToken, onReasoning,
+        return streamChat(stem, pointsJson, null, turns, null, onToken, onReasoning,
                 reveal, followupIndex, maxAnswers);
     }
 
@@ -283,7 +288,8 @@ public class TutorGenerator {
      * 带学习上下文（学生进度/概念要点/资料块/互联网补充）的完整版。
      * 上下文仅作参考素材：追问可结合资料细节，也可用通用知识；引用资料内容时注明出处（C3）。
      */
-    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns, String context,
+    public String streamChat(String stem, String pointsJson, List<String> followups,
+                             List<DrillTurn> turns, String context,
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal, int followupIndex, int maxAnswers) {
@@ -315,13 +321,16 @@ public class TutorGenerator {
                 评分要点（供你参考，不要直接告诉学生）：
                 %s
 
+                待追问的小问（按顺序逐条问，问完就停、不得自己新增；学生提前掌握可提前收尾）：
+                %s
+
                 对话历史：
                 %s
                 %s
 
                 请回复学生的最新消息。
-                """, stem, pointsText, history.toString().isBlank() ? "（无）" : history.toString(),
-                contextBlock);
+                """, stem, pointsText, formatFollowups(followups),
+                history.toString().isBlank() ? "（无）" : history.toString(), contextBlock);
 
         StringBuilder buf = new StringBuilder();
         // 模式选择：reveal 优先（答案已揭示 → 完整讲解，不再追问）；
@@ -356,6 +365,16 @@ public class TutorGenerator {
                 });
         String text = buf.toString().trim();
         return text.isEmpty() ? null : text;
+    }
+
+    /** 把待追问的小问清单渲染成编号列表（空则显示「无」） */
+    private static String formatFollowups(List<String> followups) {
+        if (followups == null || followups.isEmpty()) return "（无）";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < followups.size(); i++) {
+            sb.append(i + 1).append(". ").append(followups.get(i)).append('\n');
+        }
+        return sb.toString().trim();
     }
 
     /** 把评分点 JSON 展平成纯文本，避免模型被 JSON 格式干扰 */

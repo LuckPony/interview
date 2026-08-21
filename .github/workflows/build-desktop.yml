@@ -5,22 +5,34 @@ on:
   push:
     branches: [main]
 
+# 同一时间只跑一个打包流水线；新 push 直接取消旧 run（避免旧产物覆盖新 release）
+concurrency:
+  group: desktop-build
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
+env:
+  # jlink 精简 JRE 的模块清单（win/mac 共用）
+  JLINK_MODULES: "java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
+
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
+            label: win-x64
             target: win
             config: electron-builder.win.yml
             artifact: windows-package
+          # mac 只用一个 macos-latest（arm64）runner，交叉编译 x64 + arm64 两套包
           - os: macos-latest
+            label: mac-x64+arm64
             target: mac
             config: electron-builder.yml
             artifact: macos-package
@@ -49,41 +61,84 @@ jobs:
         shell: bash
         run: ./gradlew :app:bootJar --console=plain
 
-      - name: Prepare embedded runtime
-        shell: bash
-        run: |
-          rm -rf runtime runtime-win
-          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-${{ matrix.target }}"
-          rm -rf "$JLINK_OUTPUT"
-          mkdir -p runtime
-          MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
-          if [ "${{ matrix.target }}" = "win" ]; then
-            JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
-            "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$MODULES" \
-              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          else
-            "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
-              --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          fi
-          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
-          mv "$JLINK_OUTPUT" runtime/jre
-          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
-          if [ "${{ matrix.target }}" = "win" ]; then
-            mv runtime runtime-win
-          fi
-
-      - name: Install and build desktop package
+      - name: Install deps and build SPA
         shell: bash
         run: |
           npm --prefix frontend ci
           npm --prefix interview-desktop ci
           cd interview-desktop
           npm run sync-spa
-          if [ "${{ matrix.target }}" = "win" ]; then
-            npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
-          else
-            npx electron-builder --mac --x64 --config electron-builder.yml --publish never
-          fi
+
+      # ---------------- Windows ----------------
+      - name: Prepare embedded runtime (Windows)
+        if: matrix.target == 'win'
+        shell: bash
+        run: |
+          rm -rf runtime runtime-win
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-win"
+          rm -rf "$JLINK_OUTPUT"
+          mkdir -p runtime
+          JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
+          "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java.exe" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          mv runtime runtime-win
+
+      - name: Build Windows package
+        if: matrix.target == 'win'
+        shell: bash
+        run: |
+          cd interview-desktop
+          npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
+
+      # ---------------- macOS：单 runner 交叉编译 x64 + arm64 ----------------
+      - name: Fetch x64 JDK (Intel JRE 交叉 jlink 用)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          # arm64 runner 上跑 x64 JDK 需要 Rosetta 2；已装则跳过
+          arch -x86_64 /usr/bin/true 2>/dev/null || softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
+          curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jdk/hotspot/normal/eclipse" \
+            -o "$RUNNER_TEMP/jdk-x64.tar.gz"
+          rm -rf "$RUNNER_TEMP/jdk-x64"
+          mkdir -p "$RUNNER_TEMP/jdk-x64"
+          tar -xzf "$RUNNER_TEMP/jdk-x64.tar.gz" -C "$RUNNER_TEMP/jdk-x64" --strip-components=1
+          echo "JAVA_HOME_X64=$RUNNER_TEMP/jdk-x64/Contents/Home" >> "$GITHUB_ENV"
+          test -x "$RUNNER_TEMP/jdk-x64/Contents/Home/bin/jlink" || (echo "x64 JDK missing jlink"; exit 1)
+
+      - name: Build macOS arm64 package
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          rm -rf runtime
+          mkdir -p runtime
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-arm64"
+          rm -rf "$JLINK_OUTPUT"
+          "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          cd interview-desktop
+          npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+
+      - name: Build macOS x64 package
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          rm -rf runtime
+          mkdir -p runtime
+          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-x64"
+          rm -rf "$JLINK_OUTPUT"
+          "$JAVA_HOME_X64/bin/jlink" --module-path "$JAVA_HOME_X64/jmods" --add-modules "$JLINK_MODULES" \
+            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
+          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
+          mv "$JLINK_OUTPUT" runtime/jre
+          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
+          cd interview-desktop
+          npx electron-builder --mac --x64 --config electron-builder.yml --publish never
 
       - name: Upload package
         uses: actions/upload-artifact@v4
