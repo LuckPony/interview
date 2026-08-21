@@ -28,6 +28,34 @@
   color: var(--good);
 }
 
+/* —— 关于：版本号 + 检查更新 —— */
+.about-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.about-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.about-version {
+  font-size: var(--fs-md);
+  font-weight: 650;
+  color: var(--ink);
+}
+.update-status {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.update-status.is-ready {
+  color: var(--good);
+  font-weight: 600;
+}
+
 /* —— 外观：分段选择器（主题 / 字号档位）—— */
 .seg {
   display: flex;

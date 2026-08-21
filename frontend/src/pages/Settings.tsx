@@ -104,6 +104,80 @@ function AppearanceCard() {
   );
 }
 
+function updateStatusText(s: UpdateStatus | null): string {
+  if (!s) return '';
+  switch (s.phase) {
+    case 'checking':
+      return '正在检查更新…';
+    case 'available':
+      return `发现新版本 v${s.version}，正在后台下载…`;
+    case 'downloading':
+      return `正在下载更新 ${s.percent ?? 0}%…`;
+    case 'downloaded':
+      return `新版本 v${s.version} 已下载完成`;
+    case 'not-available':
+      return `当前已是最新版本${s.version ? ` v${s.version}` : ''}`;
+    case 'error':
+      return `检查更新失败：${s.message ?? ''}`;
+    default:
+      return '';
+  }
+}
+
+/** 关于：版本号 + 检查更新（仅桌面端；网页态没有 Electron 桥，不渲染）。 */
+function AboutCard() {
+  const [version, setVersion] = useState('');
+  const [platform, setPlatform] = useState('');
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    window.electronAPI!.getVersion!().then(setVersion).catch(() => {});
+    window.electronAPI!.getPlatform!().then(setPlatform).catch(() => {});
+    return window.electronAPI!.onUpdateStatus!((s) => setStatus(s));
+  }, []);
+
+  const check = async () => {
+    if (!isDesktop) return;
+    setBusy(true);
+    setStatus({ phase: 'checking' });
+    const r = await window.electronAPI!.checkForUpdates!();
+    if (r?.error) setStatus({ phase: 'error', message: r.error });
+    setBusy(false);
+  };
+
+  const install = () => {
+    window.electronAPI!.installUpdate!().then((r) => {
+      if (r?.error) setStatus({ phase: 'error', message: r.error });
+    });
+  };
+
+  const isMac = platform === 'darwin';
+  const text = updateStatusText(status);
+
+  return (
+    <Card className="settings-card">
+      <h2 className="settings-section-title">关于</h2>
+      <div className="about-row">
+        <span className="about-label">版本</span>
+        <span className="about-version">{version ? `v${version}` : '—'}</span>
+        <Button variant="ghost" onClick={check} disabled={busy}>
+          {busy ? '检查中…' : '检查更新'}
+        </Button>
+      </div>
+      {text && (
+        <p className={`update-status${status?.phase === 'downloaded' ? ' is-ready' : ''}`}>{text}</p>
+      )}
+      {status?.phase === 'downloaded' && (
+        <div className="settings-actions">
+          <Button onClick={install}>{isMac ? '打开下载位置' : '立即重启'}</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** 设置页：外观（主题/字号）+ AI 模型 provider / base-url / api-key / model / temperature。
  *  桌面端：key 只存在本机（不传服务器）；Web 端：key 按登录用户保存到服务器（每人一份，互不可见）。 */
 export function Settings() {
@@ -238,6 +312,8 @@ export function Settings() {
           </div>
         </Card>
       )}
+
+      {isDesktop && <AboutCard />}
     </div>
   );
 }
