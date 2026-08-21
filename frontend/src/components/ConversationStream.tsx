@@ -1,4 +1,4 @@
-import { GRADE_LABEL, verdictClass } from '../lib/labels';
+import { GRADE_LABEL, VERDICT_LABEL, verdictClass } from '../lib/labels';
 import type { ConversationView, ConversationRun, ConversationTurn, ByConcept } from '../api/types';
 import { Markdown } from './Markdown';
 import './ConversationStream.css';
@@ -175,6 +175,9 @@ export function VerdictPanel({ run, turn }: { run: ConversationRun; turn: Conver
                 <li key={`${c.conceptId}-${i}`}>
                   <span className={`verdict-dot ${verdictClass(p.verdict)}`} />
                   <div className="point-body">
+                    <span className={`verdict-tag ${verdictClass(p.verdict)}`}>
+                      {VERDICT_LABEL[p.verdict] ?? p.verdict}
+                    </span>
                     {/* 评分点（讲解）与佐证（证据）均为 AI 生成，可能含加粗 / 代码 / 列表，统一走 markdown 渲染 */}
                     <Markdown className="point-md">{p.point}</Markdown>
                     {p.evidence && <Markdown className="evidence-md">{p.evidence}</Markdown>}

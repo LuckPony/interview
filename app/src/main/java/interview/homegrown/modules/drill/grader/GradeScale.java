@@ -18,16 +18,24 @@ public final class GradeScale {
     private GradeScale() {
     }
 
-    /** 等权命中率：HIT=1，PARTIAL=0.5，MISS=0，映射到 0-100 */
+    /** 等权命中率：HIT=1，PARTIAL=0.5，MISS=0，映射到 0-100；NA（未考察）不计入分子分母 */
     public static BigDecimal score(List<PointVerdict> results) {
         if (results == null || results.isEmpty()) {
             return BigDecimal.ZERO;
         }
         double sum = 0;
+        int scored = 0;
         for (PointVerdict r : results) {
+            if (isNotApplicable(r.verdict())) continue; // 未考察：不参与计分
             sum += weightOf(r.verdict());
+            scored++;
         }
-        return BigDecimal.valueOf(sum / results.size() * 100).setScale(2, RoundingMode.HALF_UP);
+        if (scored == 0) return BigDecimal.ZERO; // 全部未考察（理论不会：主问必考）
+        return BigDecimal.valueOf(sum / scored * 100).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static boolean isNotApplicable(String verdict) {
+        return verdict != null && "NA".equalsIgnoreCase(verdict.trim());
     }
 
     private static double weightOf(String verdict) {

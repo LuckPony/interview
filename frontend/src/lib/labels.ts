@@ -12,6 +12,7 @@ export const VERDICT_LABEL: Record<string, string> = {
   HIT: '命中',
   PARTIAL: '部分',
   MISS: '未中',
+  NA: '未考察',
 };
 
 export const PROBE_LABEL: Record<string, string> = {
@@ -45,6 +46,8 @@ export function verdictClass(v: string): string {
       return 'is-warn';
     case 'MISS':
       return 'is-bad';
+    case 'NA':
+      return 'is-na';
     default:
       return 'is-soft';
   }

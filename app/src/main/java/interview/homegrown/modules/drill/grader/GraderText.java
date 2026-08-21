@@ -54,6 +54,12 @@ public class GraderText implements Grader {
 
     @Override
     public GraderOutput grade(Long runId, QuestionBank q, String rawAnswer, boolean timed) {
+        return gradeWithConversation(runId, q, rawAnswer, timed, null);
+    }
+
+    /** 多轮对话判分：传入老师实际问过的问题实录，未被问到的评分点判 NA（不计分） */
+    public GraderOutput gradeWithConversation(Long runId, QuestionBank q, String rawAnswer,
+                                              boolean timed, String conversation) {
         // 学习上下文：run → userId → 概念 → 画像/资料块/互联网（判分依据，不额外搜索）
         String context = null;
         DrillRun run = runRepo.findById(runId).orElse(null);
@@ -62,7 +68,7 @@ public class GraderText implements Grader {
                     .map(Integer::longValue).toList();
             context = progressContext.contextFor(run.getUserId(), ids);
         }
-        return gradeRaw(q.getStem(), q.getPointsJson(), q.getConceptIds(), rawAnswer, timed, context);
+        return gradeRaw(q.getStem(), q.getPointsJson(), q.getConceptIds(), rawAnswer, timed, context, conversation);
     }
 
     /**
@@ -77,6 +83,11 @@ public class GraderText implements Grader {
 
     public GraderOutput gradeRaw(String stem, String pointsJson, Integer[] conceptIds,
                                  String rawAnswer, boolean timed, String context) {
+        return gradeRaw(stem, pointsJson, conceptIds, rawAnswer, timed, context, null);
+    }
+
+    public GraderOutput gradeRaw(String stem, String pointsJson, Integer[] conceptIds,
+                                 String rawAnswer, boolean timed, String context, String conversation) {
         GeneratedQuestion gq = parseQuestion(pointsJson);
         List<GeneratedQuestion.ConceptPoints> groups = gq.normalizedGroups();
         Map<Long, String> nameById = loadNames(conceptIds);
@@ -90,7 +101,7 @@ public class GraderText implements Grader {
                     g.conceptIndex, nameById.getOrDefault(cid, "概念" + g.conceptIndex), texts));
         }
 
-        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade, context);
+        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade, context, conversation);
 
         List<ByConcept> byConcepts = new ArrayList<>();
         List<ConceptScore> conceptScores = new ArrayList<>();
