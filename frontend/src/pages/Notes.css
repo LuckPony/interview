@@ -347,3 +347,31 @@
   color: var(--ink-faint);
   line-height: 1.5;
 }
+
+/* —— 已保存的自省笔记（只读）—— */
+.note-saved-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--s-3);
+}
+.note-saved-body {
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-3);
+}
+.note-saved-body.md {
+  font-size: var(--fs-sm);
+}
+.note-saved-meta {
+  margin-bottom: var(--s-3);
+}
+.note-saved-meta p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}

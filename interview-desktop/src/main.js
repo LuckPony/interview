@@ -6,8 +6,10 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tra
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
+const https = require('https');
 const net = require('net');
 const fs = require('fs');
+const { URL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
 // Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
@@ -45,13 +47,16 @@ const HEALTH_TIMEOUT_MS = 90_000;
 const APP_ICON = path.join(__dirname, 'icon.png');
 // 手动更新跳转地址（与 electron-builder.yml 的 publish.owner/repo 保持一致）
 const UPDATE_RELEASES_URL = 'https://github.com/LuckPony/interview/releases';
+// GitHub Release 资产下载根（latest-mac.yml 里的相对文件名拼到它后面，得到 dmg 等文件的绝对地址）
+const GITHUB_DOWNLOAD_BASE = 'https://github.com/LuckPony/interview/releases/download';
 
 let backend = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 let manualUpdateInFlight = false; // 手动「检查更新」进行中：由设置页内联展示，不再弹窗
-let lastUpdateInfo = null;         // { version, downloadedFile }：下载完成后供「打开下载位置/立即重启」用
+let lastUpdateInfo = null;         // 完整 UpdateInfo（含 files/version）；下载完成后含 downloadedFile
+let lastDownloadedFile = null;     // macOS：手动下载的 dmg 绝对路径，供「立即更新」打开
 
 // 单实例锁：同一台机器只允许一个实例。用户重复双击快捷方式时，second-instance 会唤醒已有窗口，
 // 而不是再起一个实例——否则多个实例各自拉起后端、抢同一端口（端口被占的根因之一）。
@@ -276,21 +281,43 @@ function waitForBackend(timeoutMs) {
 
 // —— 自动更新：所有打包版启用 ——
 // 更新源由 electron-builder 的 GitHub publish 配置写入 app-update.yml。
-// Windows：NSIS 安装包可自动下载并安装（quitAndInstall）。
-// macOS：CI 未签名无法自动安装，但可自动下载 zip，完成后打开文件位置让用户手动装。
-// 更新状态通过 update:status 事件推给渲染进程（设置页「检查更新」内联展示）；
-// 启动时的自动检查仍弹窗提醒，设置页手动检查则只在页内展示、不重复弹窗。
+// 流程分两步：检查（只查不下载）→ 下载（按平台下载正确格式）→ 立即更新。
+// - Windows/Linux：electron-updater 下载 NSIS 安装包 / AppImage，quitAndInstall 一键安装。
+// - macOS（CI 未签名）：手动下载 GitHub Release 里的 .dmg（和手动装是同一个文件），
+//   下载完成后打开 dmg，用户把新 app 拖进「应用程序」覆盖。
+// 更新状态通过 update:status 事件推给渲染进程（设置页内联展示进度与按钮）；
+// 启动时的自动检查只弹「发现新版本」提醒，不自动下载。
 function broadcastUpdate(payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('update:status', payload);
   }
 }
 
+// 更新日志写盘：排查下载/安装问题时看 userData/updater.log（源码运行不写）
+function updateLog(level, message) {
+  if (!app.isPackaged) return;
+  const text = message instanceof Error ? message.stack || message.message : String(message);
+  try {
+    fs.appendFileSync(
+      path.join(app.getPath('userData'), 'updater.log'),
+      `${new Date().toISOString()} [${level}] ${text}\n`,
+    );
+  } catch {
+    // 日志失败不能影响应用启动。
+  }
+}
+
 function installDownloadedUpdate(info) {
   if (process.platform === 'darwin') {
-    // macOS 未签名：打开已下载文件所在位置（Finder），用户解压后拖入「应用程序」
-    if (info && info.downloadedFile) shell.showItemInFolder(info.downloadedFile);
-    else shell.openExternal(`${UPDATE_RELEASES_URL}/latest`);
+    // macOS 未签名：挂载并打开 dmg，用户在 Finder 里把新 app 拖进「应用程序」覆盖
+    const dmg = lastDownloadedFile || (info && info.downloadedFile);
+    if (dmg) {
+      shell.openPath(dmg).then((err) => {
+        if (err) updateLog('ERROR', `打开 dmg 失败：${err}`);
+      });
+    } else {
+      shell.openExternal(`${UPDATE_RELEASES_URL}/latest`);
+    }
     return;
   }
   // Windows/Linux：更新前显式进入「退出」状态 + 先杀本地后端，否则 NSIS 安装器会判“应用无法关闭”。
@@ -306,12 +333,12 @@ function showUpdateDownloadedDialog(info) {
   dialog
     .showMessageBox({
       type: 'info',
-      title: '发现新版本',
+      title: '更新已就绪',
       message: `新版本 v${info.version} 已下载完成`,
       detail: isMac
-        ? 'macOS 未签名无法自动安装：已自动下载，请解压后拖入「应用程序」覆盖。'
-        : '重启应用即可完成更新。',
-      buttons: [isMac ? '打开下载位置' : '立即重启', '稍后再说'],
+        ? '点击「立即更新」打开 dmg 安装包，把新版本拖进「应用程序」覆盖即可。'
+        : '点击「立即更新」重启并完成安装。',
+      buttons: ['立即更新', '稍后再说'],
       defaultId: 0,
       cancelId: 1,
     })
@@ -320,27 +347,105 @@ function showUpdateDownloadedDialog(info) {
     });
 }
 
+// GitHub Release 里 mac 的 .dmg 文件（与 zip 并列；electron-updater 默认只下 zip，这里手动下 dmg）
+function findDmgFile(info) {
+  const files = (info && Array.isArray(info.files) && info.files) || [];
+  return (
+    files.find((f) => f && f.url && f.url.toLowerCase().endsWith('.dmg')) ||
+    files.find((f) => f && String(f.type).toLowerCase() === 'dmg')
+  );
+}
+
+// latest-mac.yml 里的 url 是相对文件名，拼成 GitHub Release 的绝对下载地址
+function assetUrl(info, file) {
+  const u = (file && file.url) || '';
+  if (/^https?:\/\//i.test(u)) return u;
+  return `${GITHUB_DOWNLOAD_BASE}/v${info.version}/${u.replace(/^\//, '')}`;
+}
+
+// 用 Node https 下载 GitHub Release 资产（自动跟随 302 重定向，走系统代理），边下边回报进度。
+function downloadFile(url, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    const doRequest = (currentUrl, redirects) => {
+      if (redirects > 5) {
+        reject(new Error('下载重定向次数过多'));
+        return;
+      }
+      let parsed;
+      try {
+        parsed = new URL(currentUrl);
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      const req = https.get(
+        parsed,
+        { headers: { 'User-Agent': `mianba-desktop/${app.getVersion()}` } },
+        (res) => {
+          const status = res.statusCode || 0;
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            doRequest(new URL(res.headers.location, parsed).toString(), redirects + 1);
+            return;
+          }
+          if (status !== 200) {
+            res.resume();
+            reject(new Error(`下载失败 HTTP ${status}`));
+            return;
+          }
+          const total = Number(res.headers['content-length'] || 0);
+          let received = 0;
+          const out = fs.createWriteStream(destPath);
+          out.on('error', (e) => {
+            res.destroy();
+            reject(e);
+          });
+          res.on('data', (chunk) => {
+            received += chunk.length;
+            if (onProgress && total > 0) onProgress(Math.round((received / total) * 100));
+          });
+          res.on('end', () => out.end(() => resolve(destPath)));
+          res.on('error', (e) => {
+            out.destroy();
+            reject(e);
+          });
+          res.pipe(out);
+        },
+      );
+      req.on('error', reject);
+    };
+    doRequest(url, 0);
+  });
+}
+
+// macOS：下载对应架构的 dmg 到「下载」目录，完成后广播 downloaded。
+async function downloadMacDmg(info) {
+  const dmg = findDmgFile(info);
+  if (!dmg) throw new Error('未在更新信息里找到 dmg 下载地址');
+  const filename = path.basename(dmg.url);
+  const destPath = path.join(app.getPath('downloads'), filename);
+  updateLog('INFO', `开始下载 dmg：${assetUrl(info, dmg)} -> ${destPath}`);
+  await downloadFile(assetUrl(info, dmg), destPath, (percent) => {
+    broadcastUpdate({ phase: 'downloading', percent });
+  });
+  lastDownloadedFile = destPath;
+  updateLog('INFO', `dmg 下载完成：${destPath}`);
+  manualUpdateInFlight = false; // 手动流程走完（已下载），复位
+  broadcastUpdate({ phase: 'downloaded', version: info.version });
+}
+
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // 源码运行（npm start）不检查更新
 
-  const updateLog = path.join(app.getPath('userData'), 'updater.log');
-  const logUpdate = (level, message) => {
-    const text = message instanceof Error ? message.stack || message.message : String(message);
-    try {
-      fs.appendFileSync(updateLog, `${new Date().toISOString()} [${level}] ${text}\n`);
-    } catch {
-      // 日志失败不能影响应用启动。
-    }
-  };
   autoUpdater.logger = {
-    info: (message) => logUpdate('INFO', message),
-    warn: (message) => logUpdate('WARN', message),
-    error: (message) => logUpdate('ERROR', message),
-    debug: (message) => logUpdate('DEBUG', message),
+    info: (message) => updateLog('INFO', message),
+    warn: (message) => updateLog('WARN', message),
+    error: (message) => updateLog('ERROR', message),
+    debug: (message) => updateLog('DEBUG', message),
   };
-  // 检查到新版本后自动下载：Windows 与 macOS 都自动下（macOS 仅下载、不自动安装）
-  autoUpdater.autoDownload = true;
-  // 安装只由显式操作触发（Windows 弹窗/设置页点「立即重启」→ quitAndInstall）；
+  // 只检查不下载：下载由设置页「下载更新」显式触发（Windows/Linux 走 electron-updater，mac 手动下 dmg）
+  autoUpdater.autoDownload = false;
+  // 安装只由显式操作触发（设置页/弹窗点「立即更新」→ quitAndInstall）；
   // 关掉 onAppQuit 自动装，避免 macOS 未签名在退出时尝试安装而失败/报错。
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -349,14 +454,15 @@ function setupAutoUpdate() {
   });
 
   autoUpdater.on('update-available', (info) => {
+    lastUpdateInfo = info; // 完整 UpdateInfo（含 files），供下载/安装使用
     broadcastUpdate({ phase: 'available', version: info.version });
+    updateLog('INFO', `发现新版本 v${info.version}`);
     if (manualUpdateInFlight) return; // 手动检查：设置页内联展示，不弹窗
-    logUpdate('INFO', `发现新版本 v${info.version}，开始后台下载`);
     dialog.showMessageBox({
       type: 'info',
       title: '发现新版本',
       message: `发现新版本 v${info.version}`,
-      detail: '安装包将在后台下载，下载完成后会再次提醒。',
+      detail: '去「设置 → 检查更新」下载并更新。',
       buttons: ['知道了'],
     });
   });
@@ -364,13 +470,13 @@ function setupAutoUpdate() {
   autoUpdater.on('update-not-available', (info) => {
     broadcastUpdate({ phase: 'not-available', version: info.version });
     manualUpdateInFlight = false;
-    logUpdate('INFO', `当前已是最新版本 v${info.version}`);
+    updateLog('INFO', `当前已是最新版本 v${info.version}`);
   });
 
   autoUpdater.on('error', (error) => {
     broadcastUpdate({ phase: 'error', message: error && error.message ? error.message : String(error) });
     manualUpdateInFlight = false;
-    logUpdate('ERROR', error);
+    updateLog('ERROR', error);
   });
 
   autoUpdater.on('download-progress', (progress) => {
@@ -379,7 +485,7 @@ function setupAutoUpdate() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    lastUpdateInfo = { version: info.version, downloadedFile: info.downloadedFile };
+    lastUpdateInfo = info;
     const wasManual = manualUpdateInFlight;
     manualUpdateInFlight = false;
     broadcastUpdate({ phase: 'downloaded', version: info.version });
@@ -388,9 +494,9 @@ function setupAutoUpdate() {
     showUpdateDownloadedDialog(info);
   });
 
-  // 启动后检查；失败写入 updater.log，不再静默吞掉。
+  // 启动后检查（只查不下载）；失败写入 updater.log，不再静默吞掉。
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((error) => logUpdate('ERROR', error));
+    autoUpdater.checkForUpdates().catch((error) => updateLog('ERROR', error));
   }, 8000); // 等窗口起来再查，避免拖慢首屏
 }
 
@@ -621,9 +727,31 @@ ipcMain.handle('app:checkForUpdates', async () => {
     manualUpdateInFlight = false;
     return { error: (e && e.message) || '检查更新失败' };
   }
-  // 结果不从这里返回：检查/下载的每一步都通过 update:status 事件推给设置页，
+  // 结果不从这里返回：检查结果通过 update:status 事件推给设置页，
   // manualUpdateInFlight 在 update-not-available / error / update-downloaded 里复位。
   return { ok: true };
+});
+
+// 只下载、不安装：Windows/Linux 走 electron-updater（正确格式的安装包），macOS 手动下 dmg。
+ipcMain.handle('app:downloadUpdate', async () => {
+  if (!app.isPackaged) return { error: '开发模式不支持下载更新，请使用打包后的应用' };
+  if (!lastUpdateInfo) return { error: '请先检查更新' };
+  if (process.platform === 'darwin') {
+    try {
+      await downloadMacDmg(lastUpdateInfo);
+      return { ok: true };
+    } catch (e) {
+      updateLog('ERROR', e);
+      return { error: (e && e.message) || '下载更新失败' };
+    }
+  }
+  try {
+    await autoUpdater.downloadUpdate();
+    return { ok: true };
+  } catch (e) {
+    updateLog('ERROR', e);
+    return { error: (e && e.message) || '下载更新失败' };
+  }
 });
 
 ipcMain.handle('app:installUpdate', () => {

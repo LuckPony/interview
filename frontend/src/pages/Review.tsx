@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { drill } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { ApiError } from '../api/client';
-import type { ReviewView, NoteView } from '../api/types';
+import type { ReviewView } from '../api/types';
 import './Notes.css';
 
 function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '操作失败';
 }
 
-/** 复盘子页面：题目 + AI 复盘报告（欠缺/思路/口诀）+ 自省笔记。 */
+/** 复盘子页面：题目 + AI 复盘报告（欠缺/思路/口诀）+ 自省笔记（Markdown 写 + 预览）。 */
 export function ReviewPage() {
   const { runId } = useParams();
   const navigate = useNavigate();
@@ -24,8 +25,22 @@ export function ReviewPage() {
   const [gapFound, setGapFound] = useState('');
   const [nextAction, setNextAction] = useState('');
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<NoteView | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const load = (id: number) => {
+    setLoading(true);
+    drill
+      .review(id)
+      .then((rv) => {
+        setReview(rv);
+        // 已有笔记则回填编辑区（读态展示；无笔记时是空表单）
+        setMyWords(rv.myWords ?? '');
+        setGapFound(rv.gapFound ?? '');
+        setNextAction(rv.nextAction ?? '');
+      })
+      .catch((e) => setErr(msg(e)))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     const id = Number(runId);
@@ -34,11 +49,7 @@ export function ReviewPage() {
       setLoading(false);
       return;
     }
-    drill
-      .review(id)
-      .then(setReview)
-      .catch((e) => setErr(msg(e)))
-      .finally(() => setLoading(false));
+    load(id);
   }, [runId]);
 
   /** 删除这条作答记录（级联删除判分/复盘/笔记），删除前二次确认 */
@@ -71,14 +82,16 @@ export function ReviewPage() {
     setBusy(true);
     setErr('');
     try {
-      const nv = await drill.note(review.runId, { myWords, gapFound, nextAction });
-      setDone(nv);
+      await drill.note(review.runId, { myWords, gapFound, nextAction });
+      await load(review.runId); // 重新拉取 → 切换为已保存的读态
     } catch (e) {
       setErr(msg(e));
     } finally {
       setBusy(false);
     }
   };
+
+  const hasNote = review != null && review.myWords != null;
 
   return (
     <div className="page">
@@ -94,18 +107,7 @@ export function ReviewPage() {
 
       {loading ? (
         <Loading label="读取复盘…" />
-      ) : !review ? null : done ? (
-        <Card className="note-done">
-          <div className="done-icon">
-            <Check size={34} strokeWidth={1.5} />
-          </div>
-          <h3>已内化</h3>
-          <p className="done-left">还剩 {done.debtLeft} 条欠账</p>
-          <Button variant="ghost" onClick={() => navigate('/notes')}>
-            返回内化复盘
-          </Button>
-        </Card>
-      ) : (
+      ) : !review ? null : (
         <div className="review-page">
           {/* 题目 + 薄弱点（markdown 渲染） */}
           <Card className="review-question">
@@ -144,47 +146,75 @@ export function ReviewPage() {
             </div>
           </div>
 
-          {/* 自省笔记 */}
-          <Card className="note-form">
-            <span className="eyebrow">你的自省</span>
-            <label className="field">
-              <span className="field-label">用自己的话复述</span>
-              <textarea
-                className="note-area"
-                rows={5}
-                placeholder="关上资料，凭记忆写。抄题干会被拦下。"
-                value={myWords}
-                onChange={(e) => setMyWords(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field-label">这次暴露的缺口</span>
-              <textarea
-                className="note-area"
-                rows={2}
-                placeholder="哪一点没答上、哪点讲错了？"
-                value={gapFound}
-                onChange={(e) => setGapFound(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field-label">下一步怎么补（可留空）</span>
-              <input
-                className="note-input"
-                placeholder="例如：重看 JVM 内存模型一节"
-                value={nextAction}
-                onChange={(e) => setNextAction(e.target.value)}
-              />
-            </label>
-            <div className="note-actions">
-              <Button variant="ghost" onClick={() => navigate('/notes')}>
-                取消
-              </Button>
-              <Button onClick={submit} disabled={busy}>
-                {busy ? '提交中…' : '保存笔记'}
-              </Button>
-            </div>
-          </Card>
+          {/* 自省笔记：已保存 → 只读展示；未保存 → Markdown 表单 */}
+          {hasNote ? (
+            <Card className="note-form note-saved">
+              <div className="note-saved-head">
+                <span className="eyebrow">你的自省</span>
+                <Badge kind="good">已内化</Badge>
+              </div>
+              <div className="note-saved-body">
+                <Markdown>{review.myWords ?? ''}</Markdown>
+              </div>
+              {review.gapFound && (
+                <div className="note-saved-meta">
+                  <span className="field-label">这次暴露的缺口</span>
+                  <p>{review.gapFound}</p>
+                </div>
+              )}
+              {review.nextAction && (
+                <div className="note-saved-meta">
+                  <span className="field-label">下一步</span>
+                  <p>{review.nextAction}</p>
+                </div>
+              )}
+              <div className="note-actions">
+                <Button variant="ghost" onClick={() => navigate('/notes')}>
+                  返回内化复盘
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <Card className="note-form">
+              <span className="eyebrow">你的自省</span>
+              <label className="field">
+                <span className="field-label">用自己的话复述（支持 Markdown）</span>
+                <MarkdownEditor
+                  rows={9}
+                  placeholder={'关上资料，凭记忆写。抄题干会被拦下。\n支持 Markdown：```python ... ``` 贴代码、**加粗**、- 列表。'}
+                  value={myWords}
+                  onChange={setMyWords}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label">这次暴露的缺口</span>
+                <textarea
+                  className="note-area"
+                  rows={2}
+                  placeholder="哪一点没答上、哪点讲错了？"
+                  value={gapFound}
+                  onChange={(e) => setGapFound(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label">下一步怎么补（可留空）</span>
+                <input
+                  className="note-input"
+                  placeholder="例如：重看 JVM 内存模型一节"
+                  value={nextAction}
+                  onChange={(e) => setNextAction(e.target.value)}
+                />
+              </label>
+              <div className="note-actions">
+                <Button variant="ghost" onClick={() => navigate('/notes')}>
+                  取消
+                </Button>
+                <Button onClick={submit} disabled={busy}>
+                  {busy ? '保存中…' : '保存笔记'}
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* 删除这条记录：清掉判分/复盘/笔记，不可恢复 */}
           <div className="review-delete">
