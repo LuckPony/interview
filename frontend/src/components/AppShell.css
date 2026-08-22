@@ -124,15 +124,9 @@
 /* —— 主区 —— */
 .main {
   min-width: 0;
+  width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* 80% 宽度只用于足够宽的桌面窗口；低于此宽度时铺满，避免内部内容被继续压缩。 */
-@media (min-width: 1500px) {
-  .app-frame {
-    width: 80%;
-  }
 }
 
 @media (max-width: 760px) {

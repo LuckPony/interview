@@ -2,7 +2,7 @@
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
 // 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray, shell, Notification } = require('electron');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
@@ -57,6 +57,8 @@ let isQuitting = false;
 let manualUpdateInFlight = false; // 手动「检查更新」进行中：由设置页内联展示，不再弹窗
 let lastUpdateInfo = null;         // 完整 UpdateInfo（含 files/version）；下载完成后含 downloadedFile
 let lastDownloadedFile = null;     // macOS：手动下载的 dmg 绝对路径，供「立即更新」打开
+let reminderTimer = null;
+let reminderTaskCounts = { learn: 0, review: 0 };
 
 // 单实例锁：同一台机器只允许一个实例。用户重复双击快捷方式时，second-instance 会唤醒已有窗口，
 // 而不是再起一个实例——否则多个实例各自拉起后端、抢同一端口（端口被占的根因之一）。
@@ -500,9 +502,14 @@ function setupAutoUpdate() {
   }, 8000); // 等窗口起来再查，避免拖慢首屏
 }
 
-function showMainWindow() {
+function showMainWindow(route) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createWindow();
+  }
+  if (route && mainWindow.webContents) {
+    const openRoute = () => mainWindow.webContents.executeJavaScript(`location.hash=${JSON.stringify(route)}`);
+    if (mainWindow.webContents.isLoading()) mainWindow.webContents.once('did-finish-load', openRoute);
+    else openRoute();
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -599,6 +606,62 @@ function createWindow() {
 
   return win;
 }
+
+// —— 学习提醒：窗口隐藏到托盘后主进程仍存活，到点发送系统通知。——
+const REMINDER_FILE = () => path.join(app.getPath('userData'), 'learning-reminder.json');
+function readReminder() {
+  try {
+    return { enabled: true, time: '20:00', ...JSON.parse(fs.readFileSync(REMINDER_FILE(), 'utf8')) };
+  } catch {
+    return { enabled: true, time: '20:00' };
+  }
+}
+function writeReminder(value) {
+  const safe = {
+    enabled: value?.enabled !== false,
+    time: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(value?.time || '') ? value.time : '20:00',
+  };
+  fs.writeFileSync(REMINDER_FILE(), JSON.stringify(safe));
+  scheduleLearningReminder();
+  return safe;
+}
+function scheduleLearningReminder() {
+  if (reminderTimer) clearTimeout(reminderTimer);
+  reminderTimer = null;
+  const cfg = readReminder();
+  if (!cfg.enabled) return;
+  const [hour, minute] = cfg.time.split(':').map(Number);
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(hour, minute, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  reminderTimer = setTimeout(() => {
+    const total = reminderTaskCounts.learn + reminderTaskCounts.review;
+    if (total > 0 && Notification.isSupported()) {
+      const body = `今天还有 ${reminderTaskCounts.learn} 项学习、${reminderTaskCounts.review} 项复习，花一点时间继续推进吧。`;
+      const notification = new Notification({ title: '面霸提醒：该学习了', body, icon: APP_ICON });
+      notification.on('click', () => showMainWindow('/drill'));
+      notification.show();
+    }
+    scheduleLearningReminder();
+  }, Math.max(1000, next.getTime() - now.getTime()));
+}
+ipcMain.handle('reminder:get', () => readReminder());
+ipcMain.handle('reminder:set', (_e, value) => writeReminder(value));
+ipcMain.handle('reminder:updateTasks', (_e, counts) => {
+  reminderTaskCounts = {
+    learn: Math.max(0, Number(counts?.learn) || 0),
+    review: Math.max(0, Number(counts?.review) || 0),
+  };
+  return true;
+});
+ipcMain.handle('reminder:test', () => {
+  if (!Notification.isSupported()) return false;
+  const n = new Notification({ title: '面霸提醒', body: '提醒设置成功，到时间会叫你回来学习。', icon: APP_ICON });
+  n.on('click', () => showMainWindow('/drill'));
+  n.show();
+  return true;
+});
 
 // —— 本地 LLM key 桥：用户的 AI key 只存本机（Electron userData），不落服务器 ——
 // 渲染进程每次请求时读出并带 X-LLM-Key 头，后端「只用不存」。
@@ -776,6 +839,7 @@ app.whenReady().then(async () => {
 
   mainWindow = createWindow();
   createTray();
+  scheduleLearningReminder();
   setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
 
   app.on('activate', showMainWindow);

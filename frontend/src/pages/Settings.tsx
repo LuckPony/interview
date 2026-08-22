@@ -205,6 +205,43 @@ function AboutCard() {
   );
 }
 
+function ReminderCard() {
+  const api = window.electronAPI;
+  const [enabled, setEnabled] = useState(true);
+  const [time, setTime] = useState('20:00');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api?.getReminder?.().then((v) => { setEnabled(v.enabled); setTime(v.time); }).catch(() => {});
+  }, [api]);
+
+  if (!api?.getReminder) return null;
+  const save = async () => {
+    const v = await api.setReminder({ enabled, time });
+    setEnabled(v.enabled); setTime(v.time); setSaved(true);
+    window.setTimeout(() => setSaved(false), 1800);
+  };
+  return (
+    <Card className="settings-card">
+      <h2 className="settings-section-title">学习提醒</h2>
+      <label className="reminder-toggle">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        应用挂在后台时，到点发送系统通知
+      </label>
+      <label className="field">
+        <span className="field-label">每天提醒时间</span>
+        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!enabled} />
+      </label>
+      <div className="settings-actions">
+        <Button onClick={save}>保存提醒</Button>
+        <Button variant="ghost" onClick={() => api.testReminder()}>测试通知</Button>
+        {saved && <span className="settings-saved"><Check size={14} /> 已保存</span>}
+      </div>
+      <p className="settings-note">关闭窗口会隐藏到托盘，不会退出应用；只有托盘中选择“彻底退出”后提醒才会停止。</p>
+    </Card>
+  );
+}
+
 /** 设置页：外观（主题/字号）+ AI 模型 provider / base-url / api-key / model / temperature。
  *  桌面端：key 只存在本机（不传服务器）；Web 端：key 按登录用户保存到服务器（每人一份，互不可见）。 */
 export function Settings() {
@@ -282,6 +319,7 @@ export function Settings() {
       {err && <div className="banner info">{err}</div>}
 
       <AppearanceCard />
+      <ReminderCard />
 
       {cfg !== null && !cfg.hasApiKey && (
         <div className="banner warn">

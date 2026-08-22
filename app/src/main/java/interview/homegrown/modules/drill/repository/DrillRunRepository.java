@@ -20,11 +20,37 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
     // 物理闸门读取（按 mode 区分主线）：避免把活跃 REHEARSAL 当 LEARN 新题返回
     List<DrillRun> findByUserIdAndStatusInAndMode(Long userId, List<DrillRunStatus> statuses, DrillMode mode);
 
+    List<DrillRun> findByUserIdAndPlanIdAndPurposeAndStatus(
+            Long userId, Long planId, interview.homegrown.modules.drill.domain.DrillPurpose purpose,
+            DrillRunStatus status);
+
+    List<DrillRun> findByUserIdAndPlanIdAndPurposeAndAssessmentConceptIdAndStatus(
+            Long userId, Long planId, interview.homegrown.modules.drill.domain.DrillPurpose purpose,
+            Long assessmentConceptId, DrillRunStatus status);
+
+    List<DrillRun> findByUserIdAndPlanIdAndPurposeAndAssessmentLayerAndStatus(
+            Long userId, Long planId, interview.homegrown.modules.drill.domain.DrillPurpose purpose,
+            Integer assessmentLayer, DrillRunStatus status);
+
+    /** 同一子知识点最近的练习，用于新一轮出题参考此前题目、回答和辅导过程。 */
+    List<DrillRun> findTop20ByUserIdAndFocusSubPointAndStatusOrderByIdDesc(
+            Long userId, String focusSubPoint, DrillRunStatus status);
+
     Optional<DrillRun> findByUserIdAndId(Long userId, Long id);
 
-    /** 用户已评分的「先教后考」run，用于按子知识点恢复独立完成状态。 */
-    List<DrillRun> findByUserIdAndStatusAndFocusSubPointIsNotNull(
-            Long userId, DrillRunStatus status);
+    /** 用户已通过评分的「先教后考」run；只有达到及格线的子知识点才算达标。 */
+    @Query("""
+            select r
+            from DrillRun r, GradeResult g
+            where g.runId = r.id
+              and r.userId = :userId
+              and r.status = :status
+              and r.focusSubPoint is not null
+              and g.rawScore >= :passLine
+            """)
+    List<DrillRun> findPassedFocusedRuns(@Param("userId") Long userId,
+                                         @Param("status") DrillRunStatus status,
+                                         @Param("passLine") BigDecimal passLine);
 
     /**
      * 内化债务：已判分、分数没过线、却还没写笔记的作答。

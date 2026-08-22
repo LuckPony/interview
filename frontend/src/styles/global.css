@@ -149,8 +149,8 @@ dialog::backdrop {
 .page {
   width: 100%;
   max-width: none;
-  margin: 0 auto;
-  padding: var(--s-7) var(--s-6) var(--s-8);
+  margin: 0;
+  padding: clamp(var(--s-5), 2.4vw, var(--s-7)) clamp(var(--s-4), 2.8vw, var(--s-7)) var(--s-8);
   animation: fade 0.4s var(--ease-out);
 }
 

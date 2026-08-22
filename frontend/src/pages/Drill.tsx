@@ -34,8 +34,10 @@ type SessionCtx =
   | { kind: 'free' }
   | { kind: 'concept'; conceptId: number }
   | { kind: 'plan'; planId: number; mode: 'continue' | 'review' | 'layer'; layer?: number }
+  | { kind: 'workflow'; planId: number }
+  | { kind: 'assessment'; planId: number; mode: 'concept-assessment' | 'level-assessment'; layer: number; conceptId?: number }
   | { kind: 'task' } // 今日任务：做完自动接下一道预生成题
-  | { kind: 'teach'; conceptId: number; subIndex: number }; // 先教后考：做完当前子点 → 下一个子点
+  | { kind: 'teach'; conceptId: number; subIndex: number; planId?: number; taskId?: number }; // 先教后考：做完当前子点 → 下一个子点/综合检测
 
 // —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分 ——
 type Phase = 'generating' | 'chatting' | 'finishing' | 'graded';
@@ -131,6 +133,8 @@ export function Drill() {
     subPoints: string[];
     curIdx: number;   // -1 = 只在清单页（未选中具体子点）
     done: string[];   // 已做过题的子点名（本次会话内）
+    planId?: number;  // 从统一工作流进入时保留，全部子点后接综合检测
+    taskId?: number;  // 今日新学任务：子点达标后才消费，不在打开教学时提前完成
   };
   const [teach, setTeach] = useState<TeachState | null>(null);
   const [lessonText, setLessonText] = useState('');
@@ -178,8 +182,8 @@ export function Drill() {
   useEffect(() => {
     const st = location.state as {
       viewQuestionId?: number;
-      planId?: number; planMode?: 'continue' | 'review' | 'layer'; layer?: number;
-      conceptId?: number; taskId?: number; mode?: string; view?: string;
+      planId?: number; planMode?: 'continue' | 'review' | 'layer' | 'workflow'; layer?: number;
+      conceptId?: number; taskId?: number; mode?: string; view?: string; openSubPoints?: boolean;
     } | null;
     if (!st) return;
 
@@ -190,12 +194,14 @@ export function Drill() {
     if (navKey && restoreRef.current !== navKey) {
       if (st.planId != null && st.planMode) {
         restoreRef.current = navKey;
-        startByPlan(st.planId, st.planMode, st.planMode === 'layer' ? st.layer : undefined);
+        if (st.planMode === 'workflow') startWorkflow(st.planId);
+        else startByPlan(st.planId, st.planMode, st.planMode === 'layer' ? st.layer : undefined);
         return;
       }
       if (st.conceptId != null) {
         restoreRef.current = navKey;
-        startByConcept(st.conceptId);
+        if (st.openSubPoints) enterTeach(st.conceptId);
+        else startByConcept(st.conceptId);
         return;
       }
       if (st.taskId != null) {
@@ -413,6 +419,62 @@ export function Drill() {
     playSubLesson(teach.conceptId, teach.subPoints[idx]);
   };
 
+  /** 从统一工作流直接进入指定的下一个子知识点，不再先展示一整棵重复的概念选择树。 */
+  const enterTeachAt = async (conceptId: number, subPoint: string, planId?: number, taskId?: number) => {
+    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+    setView('teach');
+    setOutlineBusy(true);
+    setErr('');
+    try {
+      const o = await drill.outline(conceptId);
+      const idx = Math.max(0, o.subPoints.indexOf(subPoint));
+      const next = {
+        conceptId,
+        name: o.name,
+        topic: o.topic,
+        subPoints: o.subPoints,
+        curIdx: idx,
+        done: o.completedSubPoints ?? [],
+        planId,
+        taskId,
+      };
+      setTeach(next);
+      playSubLesson(conceptId, o.subPoints[idx]);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '读取学习进度失败');
+      setView('home');
+    } finally {
+      setOutlineBusy(false);
+    }
+  };
+
+  /** 后端决定唯一下一步：L1→L5、子点教学练习、知识点检测、层级检测。 */
+  const startWorkflow = async (planId: number) => {
+    setErr('');
+    try {
+      const next = await drill.learningNext(planId);
+      if (next.stepType === 'SUB_POINT' && next.conceptId != null && next.subPoint) {
+        await enterTeachAt(next.conceptId, next.subPoint, planId);
+      } else if (next.stepType === 'CONCEPT_ASSESSMENT' && next.conceptId != null) {
+        startQuestion(
+          () => drill.startPlan(planId, 'concept-assessment', next.layer, next.conceptId!),
+          { kind: 'assessment', planId, mode: 'concept-assessment', layer: next.layer, conceptId: next.conceptId },
+        );
+      } else if (next.stepType === 'LEVEL_ASSESSMENT') {
+        startQuestion(
+          () => drill.startPlan(planId, 'level-assessment', next.layer),
+          { kind: 'assessment', planId, mode: 'level-assessment', layer: next.layer },
+        );
+      } else {
+        setErr(next.message || '这个学习方向已经完成');
+        setView('home');
+      }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '无法读取下一学习任务');
+      setView('home');
+    }
+  };
+
   // 讲完当前子点，开始做题（限定到该子点）
   const startSubQuiz = () => {
     if (!teach || teach.curIdx < 0) return;
@@ -420,7 +482,7 @@ export function Drill() {
     const subPoint = t.subPoints[t.curIdx];
     startQuestion(
       () => drill.start(t.conceptId, subPoint),
-      { kind: 'teach', conceptId: t.conceptId, subIndex: t.curIdx },
+      { kind: 'teach', conceptId: t.conceptId, subIndex: t.curIdx, planId: t.planId, taskId: t.taskId },
     );
   };
 
@@ -438,8 +500,21 @@ export function Drill() {
   const startByPlan = (planId: number, mode: 'continue' | 'review' | 'layer', layer?: number) =>
     startQuestion(() => drill.startPlan(planId, mode, layer), { kind: 'plan', planId, mode, layer });
 
-  const startByTask = (taskId: number) =>
+  // 连续今日任务：复习直接答题；新学任务由页面先进入该知识点的下一个子知识点教学。
+  const startByTask = async (taskId: number) => {
+    try {
+      const task = (await drill.today()).find((t) => t.id === taskId);
+      if (task?.kind === 'NEW') {
+        const outline = await drill.outline(task.conceptId);
+        const nextSub = outline.subPoints.find((s) => !outline.completedSubPoints.includes(s));
+        if (nextSub) {
+          await enterTeachAt(task.conceptId, nextSub, task.planId ?? undefined, taskId);
+          return;
+        }
+      }
+    } catch { /* 读取失败降级为原有预生成题 */ }
     startQuestion(() => drill.startTask(taskId), { kind: 'task' });
+  };
 
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
   // reveal=true 为「看答案」：不需要输入内容，直接向 AI 索要完整答案；服务端会记录
@@ -501,6 +576,14 @@ export function Drill() {
           mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
         ));
       },
+      (g) => {
+        // 回答完整且无需追问，或参考答案已经给出时，服务端直接结束并评分。
+        setGrade(g);
+        if (g.rawScore >= 60 && ctx?.kind === 'teach' && ctx.taskId != null) {
+          drill.completeTask(ctx.taskId).catch(() => {});
+        }
+        setPhase('graded');
+      },
     );
   };
 
@@ -512,6 +595,9 @@ export function Drill() {
     try {
       const g = await drill.finish(meta.runId);
       setGrade(g);
+      if (g.rawScore >= 60 && ctx?.kind === 'teach' && ctx.taskId != null) {
+        drill.completeTask(ctx.taskId).catch(() => {});
+      }
       setPhase('graded');
     } catch (e) {
       setPhase('chatting');
@@ -531,20 +617,31 @@ export function Drill() {
       case 'plan':
         startByPlan(ctx.planId, ctx.mode, ctx.layer);
         break;
+      case 'workflow':
+        startWorkflow(ctx.planId);
+        break;
+      case 'assessment':
+        // 一道综合题完成后重新询问工作流；达到题数就自动进入下一知识点或下一层。
+        startWorkflow(ctx.planId);
+        break;
       case 'concept':
         startByConcept(ctx.conceptId);
         break;
       case 'teach': {
         if (!teach) { directStart(ctx.conceptId); break; }
         const curSub = teach.subPoints[ctx.subIndex] ?? '';
-        const done = curSub && !teach.done.includes(curSub) ? [...teach.done, curSub] : teach.done;
+        // 子知识点只有达到统一及格线才标记“达标”；低分仍保留在清单中供重新练习。
+        const passed = grade != null && grade.rawScore >= 60;
+        const done = passed && curSub && !teach.done.includes(curSub) ? [...teach.done, curSub] : teach.done;
         const nextIdx = ctx.subIndex + 1;
         if (nextIdx < teach.subPoints.length) {
           // 还有下一个子点：讲它
           setTeach({ ...teach, curIdx: nextIdx, done });
           playSubLesson(teach.conceptId, teach.subPoints[nextIdx]);
+        } else if (ctx.planId != null) {
+          // 当前大知识点的全部子点已处理，交回工作流决定重练未通过子点或开始综合检测。
+          startWorkflow(ctx.planId);
         } else {
-          // 全部学完 → 回到清单页（全部打勾）
           setTeach({ ...teach, curIdx: -1, done });
           setView('teach');
         }
@@ -662,7 +759,7 @@ export function Drill() {
       <Plans
         plans={plans}
         onPick={startByConcept}
-        onContinue={(id) => startByPlan(id, 'continue')}
+        onContinue={(id) => startWorkflow(id)}
         onReview={(id) => startByPlan(id, 'review')}
         onFree={startFree}
         onStartTask={startByTask}

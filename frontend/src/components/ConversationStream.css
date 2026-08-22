@@ -2,14 +2,16 @@
 .chat-stream {
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-3) 0;
+  gap: var(--s-4);
+  width: 100%;
+  padding: var(--s-4) 0;
 }
 
 .chat-row {
   display: flex;
   align-items: flex-start;
   gap: var(--s-3);
+  width: 100%;
 }
 .chat-row-ai {
   justify-content: flex-start;
@@ -40,14 +42,22 @@
 }
 
 .chat-bubble {
-  width: 100%;
-  max-width: none;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(76%, 920px);
   padding: var(--s-3) var(--s-4);
   border-radius: 16px;
   line-height: 1.65;
+  overflow-wrap: anywhere;
   word-break: break-word;
   white-space: pre-wrap;   /* 提问/回答保留换行 */
   font-size: calc(var(--fs-base) * var(--scale-body, 1));
+}
+/* 题干、判分与长讲解承载结构化内容，可以使用更宽的阅读区域；短消息仍按文字收缩。 */
+.chat-bubble.is-stem,
+.chat-bubble.is-verdict,
+.chat-bubble.is-tutor {
+  max-width: min(88%, 1120px);
 }
 .chat-bubble p {
   margin: 0;
@@ -340,6 +350,25 @@
 /* 弹窗模式（History）：沿用 */
 .conv-dialog .chat-stream {
   width: 100%;
+}
+
+@media (max-width: 760px) {
+  .chat-stream {
+    gap: var(--s-3);
+  }
+  .chat-row {
+    gap: var(--s-2);
+  }
+  .chat-avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .chat-bubble,
+  .chat-bubble.is-stem,
+  .chat-bubble.is-verdict,
+  .chat-bubble.is-tutor {
+    max-width: calc(100% - 36px);
+  }
 }
 
 /* —— AI 思考过程（reasoning_content）：可折叠展示，正文保持干净 —— */

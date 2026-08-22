@@ -94,6 +94,21 @@ export interface DebtView {
   planId: number | null; // 所属学习方向（按方向分组）
 }
 
+export interface LearningNextView {
+  planId: number;
+  planTitle: string;
+  stepType: 'SUB_POINT' | 'CONCEPT_ASSESSMENT' | 'LEVEL_ASSESSMENT' | 'COMPLETE';
+  layer: number;
+  conceptId: number | null;
+  conceptName: string | null;
+  subPoint: string | null;
+  subPointIndex: number;
+  subPointTotal: number;
+  assessmentDone: number;
+  assessmentRequired: number;
+  message: string;
+}
+
 /** 今日任务：复习 / 新学，含预生成的题目信息（READY 后 stem 非空） */
 export interface DailyTaskView {
   id: number;
@@ -169,6 +184,10 @@ export interface PlanConceptView {
   layer: number;
   masteryLevel: number;
   note: string | null; // 一句话提示（可编辑）
+  /** 已生成的子知识点；尚未进入“先教后考”的知识点可能为空。 */
+  subPoints: string[];
+  /** 得分达到及格线（当前 60 分）的子知识点。 */
+  completedSubPoints: string[];
 }
 
 /** 学习计划编辑请求体（方向或知识点通用字段） */

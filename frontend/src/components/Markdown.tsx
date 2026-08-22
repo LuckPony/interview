@@ -121,6 +121,14 @@ const LANG_LABEL: Record<string, string> = {
   r: 'R',
 };
 
+function removeMermaidArtifacts(id: string) {
+  // mermaid.render() 默认把临时 SVG 挂到 document.body。解析失败时旧版本可能来不及自行移除，
+  // 因而页面底部会残留“Syntax error in text”。这里成功、失败和卸载时都做兜底清理。
+  document.getElementById(id)?.remove();
+  document.getElementById(`d${id}`)?.remove();
+  document.getElementById(`i${id}`)?.remove();
+}
+
 function MermaidDiagram({ source }: { source: string }) {
   const reactId = useId();
   const [svg, setSvg] = useState('');
@@ -128,18 +136,37 @@ function MermaidDiagram({ source }: { source: string }) {
 
   useEffect(() => {
     let active = true;
+    let renderId = '';
     setSvg('');
     setFailed(false);
-    import('mermaid').then(({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' });
-      const id = `mermaid-${reactId.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
-      return mermaid.render(id, source);
-    }).then(({ svg: rendered }) => {
-      if (active) setSvg(rendered);
-    }).catch(() => {
-      if (active) setFailed(true);
-    });
-    return () => { active = false; };
+
+    // 聊天内容是逐 token 到达的。若立即绘图，半截的 flowchart/sequenceDiagram 会被 Mermaid
+    // 当成语法错误；等内容短暂停止变化后再绘制，避免一次回复产生几十个失败 SVG。
+    const timer = window.setTimeout(() => {
+      import('mermaid').then(({ default: mermaid }) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'neutral',
+          // 解析失败只抛异常给组件回退，不让 Mermaid 在 body 中绘制炸弹错误图。
+          suppressErrorRendering: true,
+        });
+        renderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
+        return mermaid.render(renderId, source);
+      }).then(({ svg: rendered }) => {
+        if (active) setSvg(rendered);
+      }).catch(() => {
+        if (active) setFailed(true);
+      }).finally(() => {
+        if (renderId) removeMermaidArtifacts(renderId);
+      });
+    }, 450);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      if (renderId) removeMermaidArtifacts(renderId);
+    };
   }, [reactId, source]);
 
   if (svg) {

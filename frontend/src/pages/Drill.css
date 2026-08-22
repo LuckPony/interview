@@ -205,11 +205,13 @@
   text-align: center;
 }
 .bubble {
-  max-width: 82%;
+  width: fit-content;
+  max-width: min(76%, 920px);
   padding: var(--s-3) var(--s-4);
   border-radius: var(--r-md);
   font-size: var(--fs-base);
   line-height: 1.7;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 .bubble.user {
