@@ -21,6 +21,8 @@ export interface OutlineView {
   name: string;
   topic: string;
   subPoints: string[];
+  /** 已完成评分的子知识点；完成标记按子点展示，不代表整个大知识点完成。 */
+  completedSubPoints: string[];
   cached: boolean;
 }
 
@@ -90,6 +92,21 @@ export interface DebtView {
   weakPoints: string[]; // 判分里没打中的评分点（薄弱点清单）
   conceptId: number | null; // 主概念 id，供「判断自测」出新题
   planId: number | null; // 所属学习方向（按方向分组）
+}
+
+export interface LearningNextView {
+  planId: number;
+  planTitle: string;
+  stepType: 'SUB_POINT' | 'CONCEPT_ASSESSMENT' | 'LEVEL_ASSESSMENT' | 'COMPLETE';
+  layer: number;
+  conceptId: number | null;
+  conceptName: string | null;
+  subPoint: string | null;
+  subPointIndex: number;
+  subPointTotal: number;
+  assessmentDone: number;
+  assessmentRequired: number;
+  message: string;
 }
 
 /** 今日任务：复习 / 新学，含预生成的题目信息（READY 后 stem 非空） */
@@ -167,6 +184,10 @@ export interface PlanConceptView {
   layer: number;
   masteryLevel: number;
   note: string | null; // 一句话提示（可编辑）
+  /** 已生成的子知识点；尚未进入“先教后考”的知识点可能为空。 */
+  subPoints: string[];
+  /** 得分达到及格线（当前 60 分）的子知识点。 */
+  completedSubPoints: string[];
 }
 
 /** 学习计划编辑请求体（方向或知识点通用字段） */

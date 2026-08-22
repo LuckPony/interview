@@ -2,6 +2,7 @@ package interview.homegrown.modules.drill.service;
 
 import interview.homegrown.common.ai.LlmRawClient;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
+import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.domain.Mastery;
@@ -9,7 +10,9 @@ import interview.homegrown.modules.drill.domain.StudyPlan;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.ConceptChunkRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
+import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
+import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
 import interview.homegrown.modules.drill.web.dto.ChatMessage;
 import interview.homegrown.modules.drill.web.dto.IntakeResponse;
@@ -23,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -33,6 +37,7 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static interview.homegrown.modules.drill.grader.GradeScale.PASS_LINE;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -99,6 +104,9 @@ public class StudyPlanService {
     private final StudyPlanRepository planRepo;
     private final ConceptRepository conceptRepo;
     private final MasteryRepository masteryRepo;
+    private final DrillRunRepository runRepo;
+    private final QuestionBankRepository questionRepo;
+    private final LessonGenerator lessonGenerator;
     private final CorpusRepository corpusRepo;
     private final CorpusService corpusService;
     private final StructuredOutputInvoker invoker;
@@ -107,13 +115,18 @@ public class StudyPlanService {
     private final WebEnrichmentService webEnrichmentService;
 
     public StudyPlanService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
-                            MasteryRepository masteryRepo, CorpusRepository corpusRepo,
+                            MasteryRepository masteryRepo, DrillRunRepository runRepo,
+                            QuestionBankRepository questionRepo, LessonGenerator lessonGenerator,
+                            CorpusRepository corpusRepo,
                             CorpusService corpusService, StructuredOutputInvoker invoker,
                             LlmRawClient rawClient, ConceptChunkRepository conceptChunkRepo,
                             WebEnrichmentService webEnrichmentService) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
+        this.runRepo = runRepo;
+        this.questionRepo = questionRepo;
+        this.lessonGenerator = lessonGenerator;
         this.corpusRepo = corpusRepo;
         this.corpusService = corpusService;
         this.invoker = invoker;
@@ -399,9 +412,26 @@ public class StudyPlanService {
         Map<Long, Integer> lvl = allM.stream()
                 .collect(Collectors.toMap(Mastery::getConceptId, Mastery::getMasteryLevel,
                         (a, b) -> a));
+        Map<Long, List<String>> passedSubPoints = new java.util.HashMap<>();
+        runRepo.findPassedFocusedRuns(userId, interview.homegrown.modules.drill.domain.DrillRunStatus.GRADED,
+                        PASS_LINE).forEach(run ->
+                questionRepo.findById(run.getQuestionId()).ifPresent(q -> {
+                    if (q.getConceptIds() == null) return;
+                    for (Integer conceptId : q.getConceptIds()) {
+                        if (conceptId != null) {
+                            passedSubPoints.computeIfAbsent(conceptId.longValue(), ignored -> new ArrayList<>())
+                                    .add(run.getFocusSubPoint());
+                        }
+                    }
+                }));
         List<PlanConceptView> concepts = conceptRepo.findByStudyPlanId(plan.getId()).stream()
-                .map(c -> new PlanConceptView(c.getId(), c.getName(), c.getTopic(), c.getLayer(),
-                        lvl.getOrDefault(c.getId(), 0), c.getDescription()))
+                .map(c -> {
+                    List<String> subPoints = lessonGenerator.outlineFromJson(c.getLessonOutline());
+                    Set<String> passed = new HashSet<>(passedSubPoints.getOrDefault(c.getId(), List.of()));
+                    List<String> completed = subPoints.stream().filter(passed::contains).toList();
+                    return new PlanConceptView(c.getId(), c.getName(), c.getTopic(), c.getLayer(),
+                            lvl.getOrDefault(c.getId(), 0), c.getDescription(), subPoints, completed);
+                })
                 .sorted(Comparator.comparingInt(PlanConceptView::layer))
                 .toList();
         long mastered = concepts.stream().filter(c -> c.masteryLevel() > 0).count();

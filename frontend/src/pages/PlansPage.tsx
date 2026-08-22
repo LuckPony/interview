@@ -81,6 +81,10 @@ export function PlansPage() {
   useEffect(() => { load(); }, [load]);
 
   const activePlan = plans[activeIdx] ?? null;
+  const currentConceptId = activePlan?.concepts
+    .slice()
+    .sort((a, b) => a.layer - b.layer || a.id - b.id)
+    .find((c) => !c.subPoints.length || c.completedSubPoints.length < c.subPoints.length)?.id;
 
   const enterEdit = () => {
     if (!activePlan) return;
@@ -217,8 +221,8 @@ export function PlansPage() {
                 )}
                 {/* 操作按钮：开始练习 / 复习 / 编辑 / 删除方向 */}
                 <div className="plan-summary-actions">
-                  <Button variant="primary" onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'continue' }, replace: true })}>
-                    <Play size={15} strokeWidth={1.8} /> 开始练习
+                  <Button variant="primary" onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'workflow' }, replace: true })}>
+                    <Play size={15} strokeWidth={1.8} /> 继续学习
                   </Button>
                   <Button
                     variant="ghost"
@@ -292,7 +296,7 @@ export function PlansPage() {
                   </div>
                 </>
               ) : (
-                /* ====== 概念树：按 layer 分层展示 ====== */
+                /* ====== 完整学习路线：始终展示所有层级和知识点；继续学习仍按顺序，知识点也可自由进入 ====== */
                 activePlan.concepts.length === 0 ? (
                   <div className="empty small">
                     <p>这个方向还没有概念。先去「开始练习」，系统会帮你选题。</p>
@@ -301,14 +305,17 @@ export function PlansPage() {
                   <div className="concept-tree">
                     {Object.entries(groupByLayer(activePlan.concepts))
                       .sort(([a], [b]) => Number(a) - Number(b))
-                      .map(([layer, concepts]) => (
-                        <div className="concept-layer" key={layer}>
+                      .map(([layer, concepts]) => {
+                        const isCurrentLayer = concepts.some((c) => c.id === currentConceptId);
+                        return (
+                        <div className={'concept-layer' + (isCurrentLayer ? ' current' : '')} key={layer}>
                           <div className="layer-head">
                             <Layers size={15} strokeWidth={1.6} />
                             <span className="layer-label">{LAYER_LABEL[Number(layer)] ?? `L${layer}`}</span>
                             <span className="layer-count">
-                              {concepts.filter(c => c.masteryLevel > 0).length}/{concepts.length} 掌握
+                              {concepts.filter(c => c.subPoints.length > 0 && c.completedSubPoints.length === c.subPoints.length).length}/{concepts.length} 知识点子项达标
                             </span>
+                            {isCurrentLayer && <span className="due-badge">当前学习层</span>}
                             <Button
                               variant="ghost"
                               className="layer-practice"
@@ -318,20 +325,44 @@ export function PlansPage() {
                             </Button>
                           </div>
                           <div className="layer-chips">
-                            {concepts.map((c) => (
-                              <button
-                                className={'concept-chip' + (c.masteryLevel > 0 ? ' mastered' : '')}
-                                key={c.id}
-                                onClick={() => navigate('/drill', { state: { conceptId: c.id }, replace: true })}
-                              >
-                                <span className="chip-name">{c.name}</span>
-                                {c.masteryLevel > 0 && <span className="chip-check">✓</span>}
-                                <ChevronRight size={12} strokeWidth={1.6} className="chip-arrow" />
-                              </button>
-                            ))}
+                            {concepts.map((c) => {
+                              const passed = c.completedSubPoints ?? [];
+                              const total = c.subPoints?.length ?? 0;
+                              const isCurrent = c.id === currentConceptId;
+                              return (
+                                <div className={'concept-progress' + (isCurrent ? ' current' : '')} key={c.id}>
+                                  <button
+                                    className="concept-chip"
+                                    onClick={() => navigate('/drill', { state: { conceptId: c.id, openSubPoints: true }, replace: true })}
+                                    title={`进入「${c.name}」并选择子知识点学习`}
+                                  >
+                                    <span className="chip-name">{c.name}</span>
+                                    {isCurrent && <span className="current-concept-badge">当前</span>}
+                                    {total > 0 ? (
+                                      <span className={'chip-progress' + (passed.length === total ? ' complete' : '')}>
+                                        {passed.length}/{total} 子点达标
+                                      </span>
+                                    ) : (
+                                      <span className="chip-progress not-started">未开始</span>
+                                    )}
+                                    <ChevronRight size={12} strokeWidth={1.6} className="chip-arrow" />
+                                  </button>
+                                  {passed.length > 0 && (
+                                    <div className="passed-subpoints" aria-label={`${c.name} 已达标子知识点`}>
+                                      {passed.map((subPoint) => (
+                                        <span className="passed-subpoint" key={subPoint}>
+                                          <span aria-hidden>✓</span>{subPoint}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 )
               )}

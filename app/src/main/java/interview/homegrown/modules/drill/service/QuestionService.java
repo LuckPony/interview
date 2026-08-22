@@ -36,7 +36,7 @@ public class QuestionService {
     /** 相似度超过它就判定为重复题 */
     private static final double DUP_THRESHOLD = 0.85;
     /** 出题只调一次 LLM：推理模型每次要几十秒，重试代价太高；去重靠「优先未用 probe + 历史题干注入」 */
-    private static final int MAX_ATTEMPTS = 1;
+    private static final int MAX_ATTEMPTS = 2;
     private static final int HISTORY_LIMIT = 10;
 
     private final QuestionBankRepository qbRepo;
@@ -58,11 +58,26 @@ public class QuestionService {
     }
 
     public QuestionBank generate(SelectedTask task, String referenceText) {
+        return generate(task, referenceText, List.of());
+    }
+
+    /**
+     * 生成新题，并额外避开当前用户在该子知识点真正做过的题。
+     * userHistory 同时参与提示词去重和生成后相似度校验；referenceText 可包含历史作答对话，
+     * 让模型针对已经答过、答对和薄弱的内容换场景、换角度继续考察。
+     */
+    public QuestionBank generate(SelectedTask task, String referenceText, List<String> userHistory) {
         int arity = task.arity();
         Long primaryId = task.conceptId();
 
         List<String> usedProbes = qbRepo.findUsedProbeTypes(primaryId, arity);
-        List<String> history = qbRepo.findRecentStems(primaryId, HISTORY_LIMIT);
+        List<String> history = new ArrayList<>(qbRepo.findRecentStems(primaryId, HISTORY_LIMIT));
+        if (userHistory != null) {
+            userHistory.stream()
+                    .filter(s -> s != null && !s.isBlank() && !history.contains(s))
+                    .limit(HISTORY_LIMIT)
+                    .forEach(history::add);
+        }
         ResponseFormat format = ResponseFormat.FREE_TEXT;   // MVP 主路径，CHOICE 走摸底链路
 
         List<ProbeType> tried = new ArrayList<>();
@@ -83,8 +98,11 @@ public class QuestionService {
             }
             log.warn("出题重复度过高 sim={} concept={} probe={} attempt={}，换认知动作重出",
                     String.format("%.3f", sim), primaryId, probe, attempt + 1);
-            accepted = gq;              // 兜底：最后一次的结果仍然收下，避免拿不到题
+            accepted = gq;
             acceptedProbe = probe;
+            referenceText = (referenceText == null ? "" : referenceText + "\n\n")
+                    + "上一版新题与历史题过于相似（相似度 " + String.format("%.2f", sim)
+                    + "），本次必须更换实际场景、示例代码和核心问法，不得只改措辞。";
         }
 
         return persist(task, accepted, acceptedProbe, format);

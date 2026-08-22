@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // LLM key 本机存取：key 只存在用户桌面，不发给服务器持久化（随请求临时带上）
   getLlmKey: () => ipcRenderer.invoke('llm:getKey'),
   setLlmKey: (key) => ipcRenderer.invoke('llm:setKey', key),
+  // 学习提醒：设置保存在 Electron userData，主进程在窗口隐藏后仍会定时通知。
+  getReminder: () => ipcRenderer.invoke('reminder:get'),
+  setReminder: (value) => ipcRenderer.invoke('reminder:set', value),
+  updateReminderTasks: (counts) => ipcRenderer.invoke('reminder:updateTasks', counts),
+  testReminder: () => ipcRenderer.invoke('reminder:test'),
   // 版本号 + 检查更新
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),

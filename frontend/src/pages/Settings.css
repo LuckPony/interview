@@ -27,6 +27,21 @@
   font-size: var(--fs-sm);
   color: var(--good);
 }
+.reminder-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  color: var(--ink);
+}
+.settings-card input[type="time"] {
+  width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+}
 
 /* —— 关于：版本号 + 检查更新 —— */
 .about-row {

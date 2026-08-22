@@ -55,9 +55,9 @@ export function ConversationStream({ conv, footer, showStem = true }: Props) {
 }
 
 function TurnBubbles({ run, turn }: { run: ConversationRun; turn: ConversationTurn }) {
-  // round 0 的 AI stem = 题目本体（上面 showStem 已展示），这里不再重复
-  // round >= 1 是追问 stem，要再显示
-  const showAsk = turn.round > 0;
+  // REHEARSAL 的 round >= 1 才有独立追问题干。
+  // LEARN 聊天的每个 turn.stem 都只是数据库为判分保存的原始主问题，不能重复渲染成“追问”。
+  const showAsk = run.mode === 'REHEARSAL' && turn.round > 0;
   // 评分只在真正判过分的轮次渲染（判分会把 byConceptJson 写回 turn）。
   // 已判分记录「继续对话」追加的纯提问轮没有判分数据，不渲染空判分面板。
   const showVerdict = run.mode === 'LEARN' && turn.byConceptJson != null;

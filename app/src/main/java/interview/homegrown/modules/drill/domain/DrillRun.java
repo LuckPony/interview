@@ -68,6 +68,27 @@ public class DrillRun {
      */
     private Long sourceRunId;
 
+    /**
+     * 「先教后考」本次作答聚焦的子知识点。只有该字段非空的已评分 run 才会让对应子点显示完成；
+     * 不再因为概念 mastery 被更新，就把整个大知识点直接显示为完成。
+     */
+    @Column(name = "focus_sub_point", length = 300)
+    private String focusSubPoint;
+
+    /** 学习工作流用途；综合检测仍复用普通聊天和评分，只额外记录统计口径。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private DrillPurpose purpose = DrillPurpose.SUB_POINT_PRACTICE;
+
+    /** 本次练习所属方向；旧自由练习可空。 */
+    private Long planId;
+
+    /** 大知识点综合检测目标。 */
+    private Long assessmentConceptId;
+
+    /** L1-L5 层级综合检测目标。 */
+    private Integer assessmentLayer;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 

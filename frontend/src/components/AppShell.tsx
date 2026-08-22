@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import logo from '../logo.png';
 import {
@@ -14,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { drill } from '../api/drill';
 import './AppShell.css';
 
 interface NavItem {
@@ -38,6 +40,23 @@ const NAV: NavItem[] = [
 export function AppShell({ children }: { children: ReactNode }) {
   const { userId, logout } = useAuth();
   const navigate = useNavigate();
+
+  // 主进程在窗口隐藏后仍负责定时通知；渲染层只需周期性同步今天还剩多少学习/复习任务。
+  useEffect(() => {
+    if (!window.electronAPI?.updateReminderTasks) return;
+    let alive = true;
+    const sync = () => drill.today().then((tasks) => {
+      if (!alive) return;
+      const active = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
+      return window.electronAPI?.updateReminderTasks({
+        learn: active.filter((t) => t.kind === 'NEW').length,
+        review: active.filter((t) => t.kind === 'REVIEW').length,
+      });
+    }).catch(() => {});
+    sync();
+    const timer = window.setInterval(sync, 10 * 60 * 1000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [userId]);
 
   const onLogout = () => {
     logout();

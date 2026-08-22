@@ -144,6 +144,11 @@
   padding: var(--s-4);
 }
 
+.concept-layer.current {
+  border-color: color-mix(in oklch, var(--accent) 42%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
 .layer-head {
   display: flex;
   align-items: center;
@@ -178,9 +183,79 @@
 }
 
 .layer-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: start;
+  gap: var(--s-3);
+}
+
+.concept-progress {
+  min-width: 0;
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+
+.concept-progress.current {
+  border-color: color-mix(in oklch, var(--accent) 55%, var(--border));
+  background: color-mix(in oklch, var(--accent) 4%, var(--bg));
+}
+
+.concept-progress .concept-chip {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  text-align: left;
+}
+.concept-progress .concept-chip:hover {
+  box-shadow: none;
+}
+.concept-progress .chip-name {
+  min-width: 0;
+  flex: 1;
+}
+.chip-progress {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.chip-progress.complete {
+  color: var(--good);
+  font-weight: 600;
+}
+.chip-progress.not-started {
+  color: var(--ink-faint, var(--ink-soft));
+}
+.current-concept-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.passed-subpoints {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-2);
+  gap: 6px;
+  padding: var(--s-1) 6px 4px;
+}
+.passed-subpoint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--good) 10%, transparent);
+  color: var(--good);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
 }
 
 /* concept chip — in PlansPage context */

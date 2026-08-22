@@ -20,11 +20,13 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static interview.homegrown.modules.drill.grader.GradeScale.PASS_LINE;
 import static org.springframework.http.HttpStatus.*;
 
 /**
@@ -65,6 +67,7 @@ public class DrillController {
     private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
     private final DailyPlanService dailyPlanService;
+    private final LearningWorkflowService learningWorkflowService;
     private final ReviewService reviewService;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
@@ -77,7 +80,8 @@ public class DrillController {
                            ConceptLessonRepository conceptLessonRepo,
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
                            ObjectMapper objectMapper,
-                           DailyPlanService dailyPlanService, ReviewService reviewService) {
+                           DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
+                           ReviewService reviewService) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
@@ -97,6 +101,7 @@ public class DrillController {
         this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
         this.dailyPlanService = dailyPlanService;
+        this.learningWorkflowService = learningWorkflowService;
         this.reviewService = reviewService;
     }
 
@@ -110,13 +115,22 @@ public class DrillController {
         return openRun(uid, task);
     }
 
+    /** 学习计划的确定性下一步：严格按层级、概念、子点、综合检测推进。 */
+    @GetMapping("/learning-next/{planId}")
+    public LearningNextView learningNext(@PathVariable Long planId) {
+        return learningWorkflowService.next(currentUserId(), planId);
+    }
+
     /** 用户自选概念开练（痛点1：用户掌 what，服务端仍用 pickFor 定 task）。 */
     @PostMapping("/start")
     public QuestionView start(@RequestBody StartRequest req) {
         Long uid = currentUserId();
         // 债务闸门已移除（同上）
         var task = selectionService.pickFor(uid, req.conceptId());
-        return openRun(uid, task, planIdOfConcept(req.conceptId()), null, req.conceptId(), req.subPoint());
+        QuestionView view = openRun(uid, task, planIdOfConcept(req.conceptId()), null, req.conceptId(), req.subPoint());
+        tagRun(view.runId(), req.subPoint() == null ? DrillPurpose.FREE_PRACTICE : DrillPurpose.SUB_POINT_PRACTICE,
+                planIdOfConcept(req.conceptId()), req.conceptId(), null);
+        return view;
     }
 
     /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
@@ -125,14 +139,20 @@ public class DrillController {
         Long uid = currentUserId();
         // 债务闸门已移除（同上）
         String mode = req.mode() == null ? "continue" : req.mode();
+        if ("concept-assessment".equals(mode) || "level-assessment".equals(mode)) {
+            return openAssessmentRun(uid, req.planId(), mode, req.layer(), req.conceptId());
+        }
         SelectedTask task = switch (mode) {
             case "review" -> selectionService.pickReviewWithinPlan(uid, req.planId());
             case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
             default -> selectionService.pickNextWithinPlan(uid, req.planId());
         };
-        // 层级练习把显式指定的 layer 传给闸门：恢复活跃 run 时必须匹配该层，
-        // 否则搁置旧 run、按目标层重新出题（否则点「练这一层」会被同方向的旧活跃题顶掉）。
-        return openRun(uid, task, req.planId(), "layer".equals(mode) ? req.layer() : null, null, null);
+        Integer targetLayer = "layer".equals(mode) ? req.layer() : null;
+        Long targetConcept = null;
+        QuestionView view = openRun(uid, task, req.planId(), targetLayer, targetConcept, null);
+        DrillPurpose purpose = "review".equals(mode) ? DrillPurpose.REVIEW : DrillPurpose.FREE_PRACTICE;
+        tagRun(view.runId(), purpose, req.planId(), req.conceptId(), req.layer());
+        return view;
     }
 
     /**
@@ -185,6 +205,63 @@ public class DrillController {
         return new QuestionView(run.getId(), q.getId(), q.getStem(), q.getProbeType().name(), q.getResponseFormat().name());
     }
 
+    private QuestionView openAssessmentRun(Long uid, Long planId, String mode, Integer layer, Long conceptId) {
+        // 综合检测必须新开对应范围的题，不能被同方向另一条普通子点题“恢复”并冒充检测题。
+        for (DrillRun active : runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN)) {
+            active.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(active);
+        }
+        List<Concept> scope;
+        DrillPurpose purpose;
+        if ("concept-assessment".equals(mode)) {
+            Concept target = conceptRepo.findById(conceptId)
+                    .filter(c -> planId.equals(c.getStudyPlanId()))
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "综合检测知识点不存在"));
+            scope = List.of(target);
+            layer = target.getLayer();
+            purpose = DrillPurpose.CONCEPT_ASSESSMENT;
+        } else {
+            final int targetLayer = layer == null ? 1 : layer;
+            List<Concept> layerPool = conceptRepo.findByStudyPlanId(planId).stream()
+                    .filter(c -> c.getLayer() == targetLayer)
+                    .sorted(Comparator.comparing(Concept::getId))
+                    .toList();
+            int already = runRepo.findByUserIdAndPlanIdAndPurposeAndAssessmentLayerAndStatus(
+                    uid, planId, DrillPurpose.LEVEL_ASSESSMENT, targetLayer, DrillRunStatus.GRADED).size();
+            int take = Math.min(3, layerPool.size());
+            scope = java.util.stream.IntStream.range(0, take)
+                    .mapToObj(i -> layerPool.get((already + i) % layerPool.size()))
+                    .toList();
+            if (scope.isEmpty()) throw new ResponseStatusException(NOT_FOUND, "该层没有可检测的知识点");
+            layer = targetLayer;
+            purpose = DrillPurpose.LEVEL_ASSESSMENT;
+        }
+        List<ConceptRef> refs = java.util.stream.IntStream.range(0, scope.size())
+                .mapToObj(i -> ConceptRef.of(scope.get(i), i == 0 ? ConceptRole.PRIMARY : ConceptRole.ANCHOR))
+                .toList();
+        SelectedTask task = new SelectedTask(refs);
+        String context = progressContext.contextFor(uid, task.conceptIds());
+        context = (context == null ? "" : context + "\n\n")
+                + (purpose == DrillPurpose.CONCEPT_ASSESSMENT
+                ? "这是大知识点综合检测。题目应综合该知识点下多个子知识点，考察组合运用，不要只重复单个定义。"
+                : "这是 L" + layer + " 层级综合检测。题目应在当前层的多个知识点间建立真实工程联系，难度不得超过当前层级。")
+                + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
+        QuestionBank q = questionService.generate(task, context);
+        QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
+        tagRun(view.runId(), purpose, planId, conceptId, layer);
+        return view;
+    }
+
+    private void tagRun(Long runId, DrillPurpose purpose, Long planId, Long conceptId, Integer layer) {
+        runRepo.findById(runId).ifPresent(run -> {
+            run.setPurpose(purpose);
+            run.setPlanId(planId);
+            run.setAssessmentConceptId(conceptId);
+            run.setAssessmentLayer(layer);
+            runRepo.save(run);
+        });
+    }
+
     // ------------------------------------------------------------ 先教后考（拆解 + 子知识点讲解）
 
     /** 拆解知识点为子知识点清单（缓存 concept.lesson_outline；无缓存则现场拆解后写回）。 */
@@ -208,7 +285,14 @@ public class DrillController {
                 conceptRepo.save(concept);
             }
         }
-        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, cached);
+        List<String> completedSubPoints = runRepo
+                .findPassedFocusedRuns(uid, DrillRunStatus.GRADED, PASS_LINE).stream()
+                .filter(r -> questionContainsConcept(r.getQuestionId(), conceptId))
+                .map(DrillRun::getFocusSubPoint)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, completedSubPoints, cached);
     }
 
     /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。 */
@@ -234,7 +318,15 @@ public class DrillController {
                 out.flush();
 
                 if (cachedLesson != null) {
-                    out.write(("data: {\"text\":\"" + jsonEscape(cachedLesson.getLessonText()) + "\"}\n\n")
+                    String cachedText = cachedLesson.getLessonText();
+                    String normalized = lessonGenerator.normalizeLesson(cachedText);
+                    if (!normalized.equals(cachedText == null ? "" : cachedText.trim())) {
+                        // 旧缓存可能保存了模型“讲完后从第 1 节重新开始”的重复尾段，读取时自动修复。
+                        cachedLesson.setLessonText(normalized);
+                        cachedLesson.setCharCount(normalized.length());
+                        conceptLessonRepo.save(cachedLesson);
+                    }
+                    out.write(("data: {\"text\":\"" + jsonEscape(normalized) + "\"}\n\n")
                             .getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 } else {
@@ -320,6 +412,14 @@ public class DrillController {
         return view;
     }
 
+    @PostMapping("/task/{taskId}/done")
+    public Map<String, Object> completeTask(@PathVariable Long taskId) {
+        Long uid = currentUserId();
+        dailyPlanService.requireTask(uid, taskId);
+        dailyPlanService.markDone(taskId);
+        return Map.of("ok", true);
+    }
+
     /** 连续下一题：取今日下一个 READY 任务开 run；今日已全部完成则 404，由前端提示。 */
     @PostMapping("/next-task")
     public QuestionView nextTask() {
@@ -359,7 +459,16 @@ public class DrillController {
     private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
                                  Integer targetLayer, Long targetConceptId, String focus) {
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
-        if (resumed != null) return resumed;
+        if (resumed != null) {
+            if (focus == null || focus.isBlank()) return resumed;
+            DrillRun active = runRepo.findById(resumed.runId()).orElse(null);
+            if (active != null && focus.equals(active.getFocusSubPoint())) return resumed;
+            // 同一大知识点下切换到另一个子知识点时，不能恢复上一子点的题。
+            if (active != null) {
+                active.setStatus(DrillRunStatus.PARKED);
+                runRepo.save(active);
+            }
+        }
 
         // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
         String context = progressContext.contextFor(uid, task.conceptIds());
@@ -369,8 +478,62 @@ public class DrillController {
                     + "本次练习聚焦的子知识点：「" + focus + "」。题目必须围绕这个子知识点展开，"
                     + "不要考这个概念下的其它子知识点。";
         }
-        var q = questionService.generate(task, context);       // 出题（LLM 填空）
-        return openRunOnQuestion(uid, q.getId(), targetPlanId);
+        List<String> practicedStems = List.of();
+        if (focus != null && !focus.isBlank()) {
+            List<DrillRun> priorRuns = priorFocusedRuns(uid, task.conceptId(), focus);
+            practicedStems = priorRuns.stream()
+                    .map(r -> questionBankRepo.findById(r.getQuestionId()).map(QuestionBank::getStem).orElse(null))
+                    .filter(s -> s != null && !s.isBlank())
+                    .distinct()
+                    .limit(5)
+                    .toList();
+            String dialogue = focusedPracticeContext(priorRuns);
+            if (!dialogue.isBlank()) {
+                context += "\n\n用户此前在这个子知识点的已完成练习对话：\n" + dialogue
+                        + "\n请据此出一道真正的新题：避开已问过的题干、场景和直接结论；"
+                        + "对已经正确回答的内容换认知动作或应用场景，对暴露出的薄弱处做针对性考察。";
+            }
+        }
+        var q = questionService.generate(task, context, practicedStems);       // 出题（LLM 填空）
+        return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
+    }
+
+    /** 取同一用户、同一概念、同一子点最近完成的练习，防止同名子点跨概念串线。 */
+    private List<DrillRun> priorFocusedRuns(Long uid, Long conceptId, String focus) {
+        return runRepo.findTop20ByUserIdAndFocusSubPointAndStatusOrderByIdDesc(
+                        uid, focus, DrillRunStatus.GRADED).stream()
+                .filter(r -> questionBankRepo.findById(r.getQuestionId())
+                        .map(q -> java.util.Arrays.stream(q.getConceptIds())
+                                .anyMatch(cid -> conceptId.equals(cid.longValue())))
+                        .orElse(false))
+                .limit(5)
+                .toList();
+    }
+
+    /** 历史对话只用于个性化出题，限制长度避免持续练习后撑爆模型上下文。 */
+    private String focusedPracticeContext(List<DrillRun> runs) {
+        StringBuilder out = new StringBuilder();
+        for (DrillRun run : runs) {
+            QuestionBank q = questionBankRepo.findById(run.getQuestionId()).orElse(null);
+            if (q == null) continue;
+            out.append("题目：").append(truncateForPrompt(q.getStem(), 800)).append('\n');
+            for (DrillTurn turn : turnRepo.findByRunIdOrderByRoundAsc(run.getId())) {
+                if (turn.getRawAnswer() != null && !turn.getRawAnswer().isBlank()) {
+                    out.append("用户：").append(truncateForPrompt(turn.getRawAnswer(), 500)).append('\n');
+                }
+                if (turn.getTutorText() != null && !turn.getTutorText().isBlank()) {
+                    out.append("老师：").append(truncateForPrompt(turn.getTutorText(), 500)).append('\n');
+                }
+            }
+            out.append('\n');
+            if (out.length() >= 6000) break;
+        }
+        return truncateForPrompt(out.toString(), 6000);
+    }
+
+    private static String truncateForPrompt(String text, int max) {
+        if (text == null || text.length() <= max) return text == null ? "" : text;
+        return text.substring(0, max) + "…";
     }
 
     /**
@@ -413,6 +576,10 @@ public class DrillController {
     }
 
     private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId) {
+        return openRunOnQuestion(uid, questionId, targetPlanId, null);
+    }
+
+    private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId, String focusSubPoint) {
         QuestionBank q = questionBankRepo.findById(questionId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, null, null);
@@ -423,6 +590,7 @@ public class DrillController {
         run.setQuestionId(q.getId());
         run.setMode(DrillMode.LEARN);
         run.setStatus(DrillRunStatus.READY);
+        run.setFocusSubPoint(focusSubPoint);
         try {
             run = runRepo.save(run);
         } catch (DataIntegrityViolationException e) {
@@ -604,6 +772,7 @@ public class DrillController {
         final List<String> followups = extractFollowups(pointsJson);
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
+        final boolean fPreGraded = isPreGraded;
         final String context = contextOf(uid, run.getQuestionId());
 
         StreamingResponseBody body = out -> {
@@ -626,10 +795,19 @@ public class DrillController {
                         r -> sseReasoning(out, r),
                         fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
 
-                // 完整文本写回 turn
+                // 完整文本写回 turn。老师判断无需继续追问，或答案已揭示时，本题直接自动评分。
                 if (full != null) {
-                    fTurn.setTutorText(full);
+                    String visible = full.replace(TutorGenerator.FINISH_MARKER, "").trim();
+                    fTurn.setTutorText(visible);
                     turnRepo.save(fTurn);
+                    boolean shouldFinish = fPreGraded
+                            && (fReveal || full.contains(TutorGenerator.FINISH_MARKER));
+                    if (shouldFinish) {
+                        GradeView grade = answerService.finish(uid, runId);
+                        out.write(("event: grade\ndata: " + objectMapper.writeValueAsString(grade) + "\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
                 }
 
                 out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
@@ -1023,6 +1201,13 @@ public class DrillController {
         return progressContext.contextFor(uid, ids);
     }
 
+    private boolean questionContainsConcept(Long questionId, Long conceptId) {
+        QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
+        if (q == null || q.getConceptIds() == null) return false;
+        return java.util.Arrays.stream(q.getConceptIds())
+                .anyMatch(id -> id != null && id.longValue() == conceptId.longValue());
+    }
+
     /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */
     private void sseReasoning(java.io.OutputStream out, String reasoning) {
         try {
@@ -1043,9 +1228,10 @@ public class DrillController {
 
     public record StartRequest(Long conceptId, String subPoint) {}
 
-    public record OutlineView(Long conceptId, String name, String topic, List<String> subPoints, boolean cached) {}
+    public record OutlineView(Long conceptId, String name, String topic, List<String> subPoints,
+                              List<String> completedSubPoints, boolean cached) {}
 
-    public record StartPlanRequest(Long planId, String mode, Integer layer) {}
+    public record StartPlanRequest(Long planId, String mode, Integer layer, Long conceptId) {}
 
 
     public record RestartRequest(Long runId) {}

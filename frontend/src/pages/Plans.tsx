@@ -34,7 +34,14 @@ export function Plans({
     drill
       .today()
       .then((t) => {
-        if (alive) setToday(t);
+        if (alive) {
+          setToday(t);
+          const active = t.filter((x) => x.status !== 'DONE' && x.status !== 'SKIPPED');
+          window.electronAPI?.updateReminderTasks?.({
+            learn: active.filter((x) => x.kind === 'NEW').length,
+            review: active.filter((x) => x.kind === 'REVIEW').length,
+          }).catch(() => {});
+        }
       })
       .catch(() => {
         if (alive) setToday([]);
@@ -58,8 +65,8 @@ export function Plans({
     <div className="page">
       <header className="page-head">
         <span className="eyebrow">练习 · 快速开始</span>
-        <h1>选一条路开始</h1>
-        <p>点「继续学习」直接出题。想看完整大纲和概念树，去顶栏「学习计划」。</p>
+        <h1>今日学习</h1>
+        <p>按今天安排的复习和新学逐项完成；“继续学习”会自动进入当前 L 层的下一个子知识点。</p>
         <label className="teach-toggle">
           <input
             type="checkbox"
@@ -166,18 +173,19 @@ export function Plans({
                 </Button>
               </div>
 
-              <div className="plan-concepts">
-                {p.concepts.length === 0 ? (
-                  <span className="eyebrow">暂无知识点，先去练「系统帮我选」</span>
-                ) : (
-                  p.concepts.map((c) => (
-                    <button className="concept-chip" key={c.id} onClick={() => onPick(c.id)}>
-                      <span className="chip-name">{c.name}</span>
-                      <Tag>L{c.layer}</Tag>
-                      {c.masteryLevel > 0 && <span className="chip-done">✓</span>}
+              <div className="plan-concepts current-learning">
+                {(() => {
+                  const pending = p.concepts
+                    .slice()
+                    .sort((a, b) => a.layer - b.layer || a.id - b.id)
+                    .find((c) => !c.subPoints.length || c.completedSubPoints.length < c.subPoints.length);
+                  return pending ? (
+                    <button className="concept-chip" onClick={() => onPick(pending.id)}>
+                      <span className="chip-name">正在学习：{pending.name}</span>
+                      <Tag>L{pending.layer}</Tag>
                     </button>
-                  ))
-                )}
+                  ) : <span className="eyebrow">子知识点已完成，继续学习将进入综合检测</span>;
+                })()}
               </div>
             </Card>
           ))}

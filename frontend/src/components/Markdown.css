@@ -126,6 +126,22 @@
 
 .md img { max-width: 100%; border-radius: var(--r-md); }
 
+/* AI 可用 ```mermaid 生成流程图、结构图和时序图，降低纯文字理解成本。 */
+.md-diagram,
+.md-diagram-loading {
+  width: 100%;
+  margin: 0.8em 0;
+  padding: var(--s-4);
+  overflow-x: auto;
+  text-align: center;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.md-diagram svg { max-width: 100%; height: auto; }
+.md-diagram-loading { color: var(--ink-soft); font-size: var(--fs-sm); }
+.md-diagram-fallback { text-align: left; }
+
 /* —— 气泡内：覆盖 .chat-bubble 的 pre-wrap 与 p{margin:0} —— */
 .chat-bubble .md { white-space: normal; }
 .chat-bubble .md p { margin: 0 0 0.7em; }

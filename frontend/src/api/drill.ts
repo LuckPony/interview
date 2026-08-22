@@ -21,6 +21,7 @@ import type {
   DailyTaskView,
   ReviewView,
   ConceptValidationResponse,
+  LearningNextView,
   KnowledgePointsView,
   OutlineView,
 } from './types';
@@ -301,6 +302,7 @@ export function chatStream(
   onDone: () => void,
   onError: (status?: number, message?: string) => void,
   onReveal?: () => void,
+  onGrade?: (grade: GradeView) => void,
 ): TutorStream {
   const token = getToken();
   const url = `${API_BASE_SSE}/api/drill/${runId}/chat`;
@@ -311,7 +313,7 @@ export function chatStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ rawAnswer, reveal }),
-  }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal });
+  }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal, onGrade });
 }
 
 /**
@@ -351,11 +353,19 @@ export const drill = {
   outline: (conceptId: number) =>
     apiFetch<OutlineView>(`/drill/${conceptId}/outline`, { method: 'POST' }),
 
-  // 方向级入口：continue=方向内确定性选题；review=方向内到期已掌握项；layer=指定层级练习
-  startPlan: (planId: number, mode: 'continue' | 'review' | 'layer' = 'continue', layer?: number) =>
+  learningNext: (planId: number) =>
+    apiFetch<LearningNextView>(`/drill/learning-next/${planId}`),
+
+  // 方向级入口：综合检测仍复用 QuestionView + 聊天 + finish
+  startPlan: (
+    planId: number,
+    mode: 'continue' | 'review' | 'layer' | 'concept-assessment' | 'level-assessment' = 'continue',
+    layer?: number,
+    conceptId?: number,
+  ) =>
     apiFetch<QuestionView>('/drill/start-plan', {
       method: 'POST',
-      body: JSON.stringify({ planId, mode, layer }),
+      body: JSON.stringify({ planId, mode, layer, conceptId }),
     }),
 
   // —— 流式出题：思考 + 题干逐字推送（不用干等） ——
@@ -469,6 +479,9 @@ export const drill = {
 
   startTask: (taskId: number) =>
     apiFetch<QuestionView>(`/drill/task/${taskId}/start`, { method: 'POST' }),
+
+  completeTask: (taskId: number) =>
+    apiFetch<{ ok: boolean }>(`/drill/task/${taskId}/done`, { method: 'POST' }),
 
   nextTask: () => apiFetch<QuestionView>('/drill/next-task', { method: 'POST' }),
 };

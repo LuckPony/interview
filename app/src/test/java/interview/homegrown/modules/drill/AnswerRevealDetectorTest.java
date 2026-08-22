@@ -24,6 +24,8 @@ class AnswerRevealDetectorTest {
         assertTrue(AnswerRevealDetector.isRevealRequest("这题怎么实现？"));
         assertTrue(AnswerRevealDetector.isRevealRequest("没思路，讲讲吧"));
         assertTrue(AnswerRevealDetector.isRevealRequest("完全不会，教教我"));
+        assertTrue(AnswerRevealDetector.isRevealRequest("能否给我完整代码让我看看"));
+        assertTrue(AnswerRevealDetector.isRevealRequest("返回所有解的代码是什么"));
     }
 
     @Test

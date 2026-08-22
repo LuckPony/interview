@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 先教后考生成器（用户 2026-08-20 决策：练习前先「教」再「考」）。
@@ -33,6 +35,17 @@ public class LessonGenerator {
     private static final int MAX_SUB_POINT_CHARS = 200;
     /** 讲解注入的学习上下文上限（防止超长资料块把 prompt 撑爆）。 */
     private static final int MAX_CONTEXT_CHARS = 8000;
+
+    /**
+     * 模型偶尔在一篇讲解已经收尾后再次说“开始上课”，并从第 1 节重新生成。
+     * 该重复正文如果进入 concept_lesson 缓存，之后每次打开都会重复展示。
+     */
+    private static final int RESTART_DETECT_AFTER_CHARS = 400;
+    private static final int MAX_LESSON_CHARS = 5000;
+    private static final Pattern SECTION_ONE = Pattern.compile(
+            "(?m)^\\s*(?:#{1,4}\\s*)?(?:\\*\\*)?1[.、]\\s*[^\\n]+");
+    private static final Pattern RESTART_INTRO = Pattern.compile(
+            "(?m)^\\s*(?:好的|好)[，,。！!\\s]*(?:我们)?(?:现在)?开始(?:上课|学习|讲解)");
 
     private final StructuredOutputInvoker invoker;
     private final LlmRawClient rawClient;
@@ -67,8 +80,10 @@ public class LessonGenerator {
             要求：
             1. 200-400 字中文，像站在白板前讲课，从最基础讲起，假设学习者对这个子知识点一无所知
             2. 讲清楚：这个子知识点是什么、核心要点（分点列出）、一个最小可运行/贴近工程的例子
-            3. 例子要具体；涉及代码时【必须】用围栏代码块（```语言 ... ```，代码原样保留缩进与换行），
-               关键术语加粗
+            3. 例子必须具体。只要涉及程序行为、API、配置、数据结构或实现方式，就必须给出最小代码/配置，
+               不能只用文字描述；代码必须用围栏代码块（```语言 ... ```，原样保留缩进与换行）。
+               涉及调用链、生命周期、架构、状态流转或图片式关系时，再给出一个 ```mermaid 图，
+               使用 flowchart 或 sequenceDiagram，节点文字保持简短，让前端直接渲染成示意图
             4. 优先结合学习上下文（用户上传资料 / 互联网补充）讲解，引用资料内容时可注明出处；
                资料没覆盖的部分用通用知识讲，不得编造资料或互联网内容里没有的事实
             5. 不要使用中文破折号（——），改用逗号或句号
@@ -141,13 +156,27 @@ public class LessonGenerator {
                 subPoint, contextBlock(context));
 
         StringBuilder buf = new StringBuilder();
+        boolean[] stopped = {false};
         rawClient.stream(LESSON_SYSTEM, user,
                 token -> {
-                    buf.append(token);
-                    try {
-                        onToken.accept(token);
-                    } catch (Exception e) {
-                        log.debug("lesson onToken 回调异常（已吞）: {}", e.getMessage());
+                    if (stopped[0]) return;
+                    String candidate = buf + token;
+                    int cut = findRestartIndex(candidate);
+                    if (cut < 0 && candidate.length() > MAX_LESSON_CHARS) cut = MAX_LESSON_CHARS;
+                    int acceptedEnd = cut >= 0 ? Math.max(buf.length(), cut) : candidate.length();
+                    String accepted = candidate.substring(buf.length(), acceptedEnd);
+                    if (!accepted.isEmpty()) {
+                        buf.append(accepted);
+                        try {
+                            onToken.accept(accepted);
+                        } catch (Exception e) {
+                            log.debug("lesson onToken 回调异常（已吞）: {}", e.getMessage());
+                        }
+                    }
+                    if (cut >= 0) {
+                        stopped[0] = true;
+                        log.debug("检测到讲解重复开头或异常超长，已截断 (concept={}, subPoint={})",
+                                concept.getId(), subPoint);
                     }
                 },
                 err -> log.warn("子知识点讲解流式生成失败: {}", err.getMessage()),
@@ -158,8 +187,35 @@ public class LessonGenerator {
                     } catch (Exception ignored) {
                     }
                 });
-        String text = buf.toString().trim();
+        String text = normalizeLesson(buf.toString());
         return text.isEmpty() ? null : text;
+    }
+
+    /** 清理旧缓存中已经存在的“讲完后从头再讲”尾段。 */
+    public String normalizeLesson(String text) {
+        if (text == null || text.isBlank()) return "";
+        int cut = findRestartIndex(text);
+        if (cut < 0 && text.length() > MAX_LESSON_CHARS) cut = MAX_LESSON_CHARS;
+        return (cut >= 0 ? text.substring(0, cut) : text).trim();
+    }
+
+    private static int findRestartIndex(String text) {
+        if (text == null || text.length() < RESTART_DETECT_AFTER_CHARS) return -1;
+
+        Matcher sections = SECTION_ONE.matcher(text);
+        int sectionCount = 0;
+        while (sections.find()) {
+            sectionCount++;
+            if (sectionCount >= 2 && sections.start() >= RESTART_DETECT_AFTER_CHARS) {
+                return sections.start();
+            }
+        }
+
+        Matcher intro = RESTART_INTRO.matcher(text);
+        while (intro.find()) {
+            if (intro.start() >= RESTART_DETECT_AFTER_CHARS) return intro.start();
+        }
+        return -1;
     }
 
     private String cleanSubPoint(String s) {

@@ -32,6 +32,11 @@ declare global {
     getLlmKey: () => Promise<string>;
     /** 把 LLM key 保存到本机（Electron userData，系统支持时加密）。 */
     setLlmKey: (key: string) => Promise<boolean>;
+    /** 学习提醒设置及今日剩余任务同步。 */
+    getReminder: () => Promise<{ enabled: boolean; time: string }>;
+    setReminder: (value: { enabled: boolean; time: string }) => Promise<{ enabled: boolean; time: string }>;
+    updateReminderTasks: (counts: { learn: number; review: number }) => Promise<boolean>;
+    testReminder: () => Promise<boolean>;
     /** 应用版本号（来自 package.json）。 */
     getVersion: () => Promise<string>;
     /** 运行平台（darwin / win32 / linux）。 */
