@@ -1,66 +1,21 @@
 package interview.homegrown.modules.drill.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
-import interview.homegrown.modules.drill.domain.Concept;
-import interview.homegrown.modules.drill.domain.ConceptLesson;
-import interview.homegrown.modules.drill.domain.DailyTask;
-import interview.homegrown.modules.drill.domain.DrillMode;
-import interview.homegrown.modules.drill.domain.DrillRun;
-import interview.homegrown.modules.drill.domain.DrillRunStatus;
-import interview.homegrown.modules.drill.domain.DrillTurn;
-import interview.homegrown.modules.drill.domain.QuestionBank;
-import interview.homegrown.modules.drill.domain.SelectedTask;
-import interview.homegrown.modules.drill.repository.ConceptLessonRepository;
-import interview.homegrown.modules.drill.repository.ConceptRepository;
-import interview.homegrown.modules.drill.repository.DrillRunRepository;
-import interview.homegrown.modules.drill.repository.DrillTurnRepository;
-import interview.homegrown.modules.drill.repository.QuestionBankRepository;
-import interview.homegrown.modules.drill.service.AnswerService;
-import interview.homegrown.modules.drill.service.AnswerRevealDetector;
-import interview.homegrown.modules.drill.service.CorpusService;
-import interview.homegrown.modules.drill.service.DailyPlanService;
-import interview.homegrown.modules.drill.service.HistoryService;
-import interview.homegrown.modules.drill.service.NoteService;
-import interview.homegrown.modules.drill.service.ProfileService;
-import interview.homegrown.modules.drill.service.ProgressContextService;
-import interview.homegrown.modules.drill.service.RecordCleanupService;
-import interview.homegrown.modules.drill.service.QuestionService;
-import interview.homegrown.modules.drill.service.RehearsalService;
-import interview.homegrown.modules.drill.service.ReviewService;
-import interview.homegrown.modules.drill.service.SelectionService;
-import interview.homegrown.modules.drill.web.dto.ConversationView;
-import interview.homegrown.modules.drill.web.dto.ChatRequest;
-import interview.homegrown.modules.drill.web.dto.DailyTaskView;
-import interview.homegrown.modules.drill.web.dto.DebtView;
-import interview.homegrown.modules.drill.web.dto.GradeView;
-import interview.homegrown.modules.drill.web.dto.NoteRequest;
-import interview.homegrown.modules.drill.web.dto.NoteView;
-import interview.homegrown.modules.drill.web.dto.QuestionView;
-import interview.homegrown.modules.drill.web.dto.RehearsalAnswerRequest;
-import interview.homegrown.modules.drill.web.dto.ReviewView;
-import interview.homegrown.modules.drill.web.dto.RehearsalStartRequest;
-import interview.homegrown.modules.drill.web.dto.RehearsalView;
-import interview.homegrown.modules.drill.web.dto.RunDetailView;
-import interview.homegrown.modules.drill.web.dto.RunSummaryView;
-import interview.homegrown.modules.drill.web.dto.SubmitRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import org.springframework.dao.DataIntegrityViolationException;
+import interview.homegrown.modules.drill.domain.*;
+import interview.homegrown.modules.drill.repository.*;
+import interview.homegrown.modules.drill.service.*;
+import interview.homegrown.modules.drill.web.dto.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
@@ -70,10 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.CONFLICT;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
-import static org.springframework.http.HttpStatus.UNAUTHORIZED;
+import static org.springframework.http.HttpStatus.*;
 
 /**
  * 学习模块唯一 REST 入口。所有端点需 JWT（见 SecurityConfig.drillSecurityFilterChain）。
@@ -739,7 +691,6 @@ public class DrillController {
         Long uid = currentUserId();
         return rehearsalService.start(uid, req == null ? null : req.conceptId());
     }
-
     /**
      * 模拟面试作答并流式讲解（SSE 单端点，与 LEARN {@code submit} 同构）。
      *
@@ -756,6 +707,7 @@ public class DrillController {
      * 讲解针对"刚作答的那一轮"（view.round），写成 JSON 后再逐 token 推，避免旧两段式里
      * answer 同步卡慢 + 前端再单独开 tutor-stream 拉讲解的双重 LLM 往返。
      */
+
     @PostMapping(value = "/rehearsal/{runId}/answer", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> rehearsalAnswer(
             @PathVariable Long runId, @RequestBody RehearsalAnswerRequest req) {

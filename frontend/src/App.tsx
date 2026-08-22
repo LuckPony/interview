@@ -13,6 +13,7 @@ import { HistoryPage } from './pages/History';
 import { PlansPage } from './pages/PlansPage';
 import { IntakeChat } from './pages/IntakeChat';
 import { Settings } from './pages/Settings';
+import {CapturePage} from "./pages/CapturePage.tsx";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { userId } = useAuth();
@@ -127,6 +128,14 @@ export function App() {
           </RequireAuth>
         }
       />
+        <Route
+            path="/capture"
+            element={
+            <RequireAuth>
+                <AppShell>
+                    <CapturePage />
+                </AppShell>
+            </RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

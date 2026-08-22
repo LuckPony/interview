@@ -1,28 +1,12 @@
 package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.modules.drill.ai.GeneratedQuestion;
-import interview.homegrown.modules.drill.domain.Concept;
-import interview.homegrown.modules.drill.domain.ConceptRole;
-import interview.homegrown.modules.drill.domain.DrillMode;
-import interview.homegrown.modules.drill.domain.DrillRun;
-import interview.homegrown.modules.drill.domain.DrillRunStatus;
-import interview.homegrown.modules.drill.domain.DrillTurn;
-import interview.homegrown.modules.drill.domain.Grade;
-import interview.homegrown.modules.drill.domain.GradeResult;
-import interview.homegrown.modules.drill.domain.Mastery;
-import interview.homegrown.modules.drill.domain.QuestionBank;
-import interview.homegrown.modules.drill.domain.SelectedTask;
+import interview.homegrown.modules.drill.domain.*;
 import interview.homegrown.modules.drill.grader.ConceptScore;
 import interview.homegrown.modules.drill.grader.GradeScale;
 import interview.homegrown.modules.drill.grader.Grader;
 import interview.homegrown.modules.drill.grader.GraderText;
-import interview.homegrown.modules.drill.repository.ConceptRepository;
-import interview.homegrown.modules.drill.repository.DrillRunRepository;
-import interview.homegrown.modules.drill.repository.DrillTurnRepository;
-import interview.homegrown.modules.drill.repository.GradeResultRepository;
-import interview.homegrown.modules.drill.repository.MasteryRepository;
-import interview.homegrown.modules.drill.repository.QuestionBankRepository;
+import interview.homegrown.modules.drill.repository.*;
 import interview.homegrown.modules.drill.web.dto.RehearsalView;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -35,10 +19,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.CONFLICT;
-import static org.springframework.http.HttpStatus.FORBIDDEN;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.*;
 
 /**
  * 模拟面试（痛点 4 的无语音版）。
@@ -196,6 +177,23 @@ public class RehearsalService {
             throw new ResponseStatusException(FORBIDDEN,
                     "该概念写模式尚未达标（当前 L" + level + "，需 L" + ENTRY_LEVEL + "）");
         }
+    }
+    /** 从学习计划启动：从该方向「已掌握(level>=2)」的概念里，挑最久没练的一个 */
+    @Transactional
+    public RehearsalView startFromPlan(Long userId, Long planId) {
+        List<Concept> planConcepts = conceptRepo.findByStudyPlanId(planId);
+        if (planConcepts.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "该方向还没有知识点");
+        }
+        List<Long> conceptIds = planConcepts.stream().map(Concept::getId).toList();
+        Long pick = masteryRepo.findByUserId(userId).stream()
+                .filter(m -> conceptIds.contains(m.getConceptId()))
+                .filter(m -> m.getMasteryLevel() >= ENTRY_LEVEL)
+                .min(Comparator.comparing(m -> m.getDueAt() == null ? java.time.Instant.EPOCH : m.getDueAt()))
+                .map(Mastery::getConceptId)
+                .orElseThrow(() -> new ResponseStatusException(FORBIDDEN,
+                        "该方向还没有达到写模式达标（L2）的概念，先去 LEARN 模式练"));
+        return start(userId, pick);
     }
 
     // --------------------------------------------------------------- answer

@@ -271,3 +271,18 @@ export interface ReviewView {
   gapFound: string | null;
   nextAction: string | null;
 }
+
+/** 新增日常对话，并概括涉及到的知识点同步到计划和复习中*/
+export interface KnowledgeCard {
+    id: number;
+    userId: number;
+    source: string;
+    question: string;
+    answer: string | null;
+    tags: string[];
+    conceptId: number | null;
+    planId: number | null;
+    dueAt: string | null;
+    reviewCount: number;
+    createdAt: string;
+}

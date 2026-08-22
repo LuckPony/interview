@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import {useEffect, useState} from 'react';
 import { MicOff, CheckCircle2, XCircle, RotateCcw, MessagesSquare } from 'lucide-react';
-import { drill, rehearsalAnswerStream } from '../api/drill';
+import {drill, rehearsalAnswerStream, studyPlan} from '../api/drill';
 import { Button, Badge, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
 import { GRADE_LABEL, gradeClass } from '../lib/labels';
-import type { RehearsalView } from '../api/types';
+import type {PlanView, RehearsalView} from '../api/types';
 import { Markdown } from '../components/Markdown';
 import './Rehearsal.css';
 
@@ -21,12 +21,33 @@ export function Rehearsal() {
   // 流式讲解：逐 token 累积，done 后定稿。key 用作答轮 round，避免被下一轮 result 覆盖。
   const [tutor, setTutor] = useState<{ round: number; text: string; done: boolean } | null>(null);
 
+  const [plans, setPlans] = useState<PlanView[]>([]);
+
+  useEffect(() => {
+    studyPlan.list().then(setPlans).catch(() => {});
+  }, []);
+
   const start = async () => {
     setBusy(true);
     setErr('');
     setStarted(true);
     try {
       setView(await drill.rehearsalStart());
+      setAnswer('');
+    } catch (e) {
+      setErr(msg(e));
+      setStarted(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startFromPlan = async (planId: number) => {
+    setBusy(true);
+    setErr('');
+    setStarted(true);
+    try {
+      setView(await drill.rehearsalStartFromPlan(planId));
       setAnswer('');
     } catch (e) {
       setErr(msg(e));
@@ -97,6 +118,19 @@ export function Rehearsal() {
 
       {phase === 'start' && (
         <div className="rehearsal-start card">
+          <p>选择进入模拟面试的方式：</p>
+          <Button onClick={start} disabled={busy}>系统帮我选</Button>
+
+          {plans.length > 0 && (
+              <div className="rehearsal-plans">
+                <p className="rehearsal-plans-label">从学习计划开始：</p>
+                {plans.map((p) => (
+                    <Button key={p.id} variant="ghost" disabled={busy} onClick={() => startFromPlan(p.id)}>
+                      {p.title}
+                    </Button>
+                ))}
+              </div>
+          )}
           <span className="rehearsal-ico">
             <MessagesSquare size={26} strokeWidth={1.5} />
           </span>

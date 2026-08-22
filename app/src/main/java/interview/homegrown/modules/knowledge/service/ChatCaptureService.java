@@ -1,6 +1,8 @@
 package interview.homegrown.modules.knowledge.service;
 
 import interview.homegrown.common.ai.StructuredOutputInvoker;
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.knowledge.domain.KnowledgeCard;
@@ -69,15 +71,22 @@ public class ChatCaptureService {
                 raw,
                 CardDraft.class);
 
+        // 无实质内容的对话（闲聊/寒暄/一次性事务）：不落库，直接提示用户，避免沉淀一堆空卡片
+        if (draft.question() == null || draft.question().isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "这段对话没有值得沉淀的内容，未生成卡片");
+        }
+
         //尝试关联概念（不相关返回NULL,不影响画像）
-        Long conceptId = matchConcept(draft.tags());
+        Long conceptId = (draft.tags() == null || draft.tags().isEmpty())
+                ? null
+                : matchConcept(draft.tags());
 
         //落库
         KnowledgeCard card = new KnowledgeCard();
         card.setUserId(userId);
-        card.setQuestion(draft.question());
+        card.setQuestion(draft.question().trim());
         card.setAnswer(draft.answer());
-        card.setTags(String.join(",", draft.tags()));
+        card.setTags(draft.tags() == null ? "" : String.join(",", draft.tags()));
         card.setConceptId(conceptId);
         card.setDueAt(Instant.now().plus(FIRST_REVIEW_DAYS, ChronoUnit.DAYS));
         return cardRepo.save(card);
