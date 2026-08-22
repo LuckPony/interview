@@ -52,7 +52,7 @@ public class KnowledgeController {
 
     public record AskRequest(String question, String provider) {}
     public record CaptureRequest(List<Msg> conversation) { public record Msg(String role, String content) {} }
-    public record UpdateRequest(String question, String answer, String tags, Long planId) {}
+    public record UpdateRequest(String question, String answer, String tags, Long planId, String detail) {}
     public record ReviewRequest(boolean mastered) {}
 
     // ==================== 卡片 CRUD ====================
@@ -76,7 +76,7 @@ public class KnowledgeController {
 
     @PutMapping("/cards/{id}")
     public Result<KnowledgeCard> update(@PathVariable Long id, @RequestBody UpdateRequest req) {
-        return Result.success(cardService.update(uid(), id, req.question(), req.answer(), req.tags(), req.planId()));
+        return Result.success(cardService.update(uid(), id, req.question(), req.answer(), req.tags(), req.planId(), req.detail()));
     }
 
     @PostMapping("/cards/{id}/review")
@@ -94,12 +94,13 @@ public class KnowledgeController {
     public ResponseEntity<StreamingResponseBody> ask(@RequestBody AskRequest req){
 
         String systemPrompt = """
-                你是一个知识沉淀过滤器。请客观判断下面这段对话：
-                1. 如果对话中有值得长期回顾的知识点（如某个技术原理、解决方案、易错点、关键结论），
-                   提炼成一张知识卡片：question（一句话问题/要点）、answer（精简回答，1-3句）、tags（2-4个标签）。
-                2. 如果只是闲聊、寒暄、一次性事务（如'今天天气''帮我算个账'），
-                   则返回 question 为空字符串、answer 为空、tags 为空数组。
-                不要为了生成卡片而强行提炼，没有价值就明确返回空。""";
+                你是一个知识问答助手，回答要完整、有深度、结构清晰。
+                要求：
+                1. 直接给出答案，不要输出任何字段标签或前缀（如 question:、answer:、tags:、问题：、回答：等一律禁止）。
+                2. 用 Markdown 组织内容：要点分条、关键术语加粗、涉及代码时用代码块、涉及对比时用表格，让回答可读性强。
+                3. 内容要有干货：先给结论/定义，再讲原理或推理过程，补一个具体例子，最后给易错点或延伸建议。
+                4. 不确定的地方明确说明，不要编造。
+                如果是闲聊或无需长期保存的话题，正常简短回应即可，同样不要输出字段标签。""";
 
         StreamingResponseBody body = out -> {
             // 注意：这里不能走 LlmProviderRegistry 的静态 ChatClient —— 它由启动配置（application.yml）

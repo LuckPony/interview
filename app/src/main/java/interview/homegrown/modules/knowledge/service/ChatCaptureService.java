@@ -12,13 +12,19 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 //把一段日常对话收敛为一张知识卡片，并尝试关联到已有概念（不相关则不关联）。
 @Service
 public class ChatCaptureService {
 
-    private static final long FIRST_REVIEW_DAYS = 3;
+    /**
+     * 新卡首次复习：当天（创建即到期，晚上复盘就能看到）。
+     * 注意 minus 30 秒：Hibernate 写 timestamp 会丢毫秒且按 UTC 解释，若 due_at == now 同秒内
+     * `due_at < now` 不成立会晚一秒才可见，减 30 秒保证创建后立即出现在内化复盘。
+     */
+    private static final long FIRST_REVIEW_SECONDS = -30;
 
     private final KnowledgeCardRepository cardRepo;
     private final ConceptRepository conceptRepo;
@@ -67,6 +73,7 @@ public class ChatCaptureService {
         CardDraft draft = invoker.invoke(
                 "你是一个知识整理助手。把下面的对话提炼成一张知识卡片："
                         + "question(一句话问题/要点)、answer(精简回答，1-3句)、tags(2-4个标签)。"
+                        + "注意：输出值不要带任何字段名前缀（如 question:、answer:、tags:）。"
                         + "若对话无实质内容则返回空 question。",
                 raw,
                 CardDraft.class);
@@ -84,11 +91,32 @@ public class ChatCaptureService {
         //落库
         KnowledgeCard card = new KnowledgeCard();
         card.setUserId(userId);
-        card.setQuestion(draft.question().trim());
-        card.setAnswer(draft.answer());
-        card.setTags(draft.tags() == null ? "" : String.join(",", draft.tags()));
+        card.setQuestion(stripFieldPrefix(draft.question()));
+        card.setAnswer(stripFieldPrefix(draft.answer()));
+        // 详细答案：对话里 AI 的完整回复（可能多轮，按序拼接），供「查看详细答案」展示
+        String detail = conversation.stream()
+                .filter(m -> "ai".equalsIgnoreCase(m.role()))
+                .map(Message::content)
+                .filter(s -> s != null && !s.isBlank())
+                .collect(Collectors.joining("\n\n"));
+        card.setDetail(detail.isBlank() ? null : detail);
+        card.setTags(draft.tags() == null
+                ? ""
+                : draft.tags().stream()
+                    .map(this::stripFieldPrefix)
+                    .filter(t -> !t.isBlank())
+                    .distinct()
+                    .collect(Collectors.joining(",")));
         card.setConceptId(conceptId);
-        card.setDueAt(Instant.now().plus(FIRST_REVIEW_DAYS, ChronoUnit.DAYS));
+        card.setDueAt(Instant.now().plus(FIRST_REVIEW_SECONDS, ChronoUnit.SECONDS));
         return cardRepo.save(card);
+    }
+
+    /** 去掉模型可能在字段值里加上的名字前缀（question:/问题：/answer:/tags: 等），避免存进卡片内容。 */
+    private String stripFieldPrefix(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        t = t.replaceFirst("^(?i)(question|问题|answer|答案|tags|标签)\\s*[:：]\\s*", "");
+        return t.trim();
     }
 }

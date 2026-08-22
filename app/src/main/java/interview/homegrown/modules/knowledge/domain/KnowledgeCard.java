@@ -31,6 +31,10 @@ public class KnowledgeCard {
     /** 逗号分隔标签 */
     private String tags;
 
+    /** AI 当时回复的完整内容（Markdown 原文）；answer 是提炼后的精简答案，detail 是完整记录 */
+    @Column(columnDefinition = "text")
+    private String detail;
+
     /** 可选关联概念（LLM 判断相关才打，不强制） */
     @Column(name = "concept_id")
     private Long conceptId;

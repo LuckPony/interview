@@ -298,6 +298,8 @@ export interface KnowledgeCard {
     source: string;
     question: string;
     answer: string | null;
+    /** AI 当时回复的完整内容（Markdown 原文）；answer 是提炼摘要，detail 是完整记录 */
+    detail: string | null;
     tags: string[];
     conceptId: number | null;
     planId: number | null;
