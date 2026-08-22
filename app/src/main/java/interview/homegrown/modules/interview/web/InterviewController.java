@@ -1,4 +1,4 @@
-package interview.homegrown.modules.interview.controller;
+package interview.homegrown.modules.interview.web;
 
 import interview.homegrown.common.result.Result;
 import interview.homegrown.modules.interview.model.CreateSessionRequest;

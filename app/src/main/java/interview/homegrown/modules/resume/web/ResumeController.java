@@ -1,4 +1,4 @@
-package interview.homegrown.modules.resume.controller;
+package interview.homegrown.modules.resume.web;
 
 
 import interview.homegrown.common.result.Result;
