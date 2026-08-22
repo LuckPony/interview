@@ -1,13 +1,12 @@
-/* 桌面级应用框架：像原生软件的窗口，而非网页 */
+/* 桌面级应用框架：中小窗口优先保证内部可用宽度；仅在超宽屏收窄主框架。
+   框架始终从视口左侧开始，确保侧边栏紧贴最左侧。 */
 .app-frame {
   display: grid;
-  grid-template-columns: 250px 1fr;
+  grid-template-columns: 250px minmax(0, 1fr);
   height: 100vh;
-  width: 80%;
-  max-width: none;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   background: var(--paper);
-  border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
   overflow: hidden;
 }
@@ -124,14 +123,21 @@
 
 /* —— 主区 —— */
 .main {
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* 80% 宽度只用于足够宽的桌面窗口；低于此宽度时铺满，避免内部内容被继续压缩。 */
+@media (min-width: 1500px) {
+  .app-frame {
+    width: 80%;
+  }
+}
+
 @media (max-width: 760px) {
   .app-frame {
-    width: 100%;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr;
   }
   .sidebar {
