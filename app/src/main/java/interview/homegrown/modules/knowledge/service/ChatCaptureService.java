@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 //把一段日常对话收敛为一张知识卡片，并尝试关联到已有概念（不相关则不关联）。
@@ -67,6 +68,7 @@ public class ChatCaptureService {
         CardDraft draft = invoker.invoke(
                 "你是一个知识整理助手。把下面的对话提炼成一张知识卡片："
                         + "question(一句话问题/要点)、answer(精简回答，1-3句)、tags(2-4个标签)。"
+                        + "注意：输出值不要带任何字段名前缀（如 question:、answer:、tags:）。"
                         + "若对话无实质内容则返回空 question。",
                 raw,
                 CardDraft.class);
@@ -84,11 +86,25 @@ public class ChatCaptureService {
         //落库
         KnowledgeCard card = new KnowledgeCard();
         card.setUserId(userId);
-        card.setQuestion(draft.question().trim());
-        card.setAnswer(draft.answer());
-        card.setTags(draft.tags() == null ? "" : String.join(",", draft.tags()));
+        card.setQuestion(stripFieldPrefix(draft.question()));
+        card.setAnswer(stripFieldPrefix(draft.answer()));
+        card.setTags(draft.tags() == null
+                ? ""
+                : draft.tags().stream()
+                    .map(this::stripFieldPrefix)
+                    .filter(t -> !t.isBlank())
+                    .distinct()
+                    .collect(Collectors.joining(",")));
         card.setConceptId(conceptId);
         card.setDueAt(Instant.now().plus(FIRST_REVIEW_DAYS, ChronoUnit.DAYS));
         return cardRepo.save(card);
+    }
+
+    /** 去掉模型可能在字段值里加上的名字前缀（question:/问题：/answer:/tags: 等），避免存进卡片内容。 */
+    private String stripFieldPrefix(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        t = t.replaceFirst("^(?i)(question|问题|answer|答案|tags|标签)\\s*[:：]\\s*", "");
+        return t.trim();
     }
 }
