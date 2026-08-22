@@ -1,6 +1,6 @@
 // 桌面壳主进程：拉起本地 Spring Boot 后端 → 探活闸门 → 加载 React SPA → 退出清理。
 // 打包版自包含：内嵌 jlink 精简 JRE + Spring Boot fat jar（electron-builder extraResources
-// 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则直接调用当前平台的 Gradle Wrapper。
+// 塞进 Resources/runtime），无需用户安装 Java / Docker / Gradle；源码运行则走 start.sh。
 
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, nativeImage, Menu, Tray, shell } = require('electron');
 const path = require('path');
@@ -137,43 +137,6 @@ function isCloud(cfg) {
   return url && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url);
 }
 
-function sourceDevelopmentEnv(env) {
-  const envPath = path.join(REPO_ROOT, '.env');
-  if (!fs.existsSync(envPath)) return;
-  for (const raw of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#') || !line.includes('=')) continue;
-    const separator = line.indexOf('=');
-    const key = line.slice(0, separator).trim();
-    let value = line.slice(separator + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (key && env[key] === undefined) env[key] = value;
-  }
-}
-
-function findWindowsJava21() {
-  const roots = [
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Eclipse Adoptium'),
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Java'),
-  ];
-  for (const root of roots) {
-    try {
-      const home = fs.readdirSync(root, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && /^jdk-21(?:\.|-|$)/i.test(entry.name))
-        .map((entry) => path.join(root, entry.name))
-        .sort()
-        .reverse()
-        .find((candidate) => fs.existsSync(path.join(candidate, 'bin', 'java.exe')));
-      if (home) return home;
-    } catch {
-      // 继续检查其它常见安装目录。
-    }
-  }
-  return null;
-}
-
 function spawnBackend() {
   // detached + 进程组，退出时才能连 JVM 一起杀掉（光 kill 直接子进程杀不掉 gradle→JVM）
   // 后端日志（含异常堆栈）重定向到 backend.log，否则 stdio:'ignore' 会把 500 堆栈吞掉，难以排查
@@ -187,17 +150,6 @@ function spawnBackend() {
     JAVA_TOOL_OPTIONS:
       '-Djava.net.useSystemProxies=false -DsocksProxyHost= -Dhttp.nonProxyHosts=localhost|127.0.0.1|*.local',
   };
-
-  sourceDevelopmentEnv(env);
-  if (!app.isPackaged && process.platform === 'win32') {
-    // Windows 源码模式不能调用 `bash start.sh`：系统的 bash 通常指向 WSL，既看不到
-    // Windows 的 JDK，也会让后端日志保持为空。直接使用 gradlew.bat，并优先选择已安装的 JDK 21。
-    const java21 = findWindowsJava21();
-    if (java21) {
-      env.JAVA_HOME = java21;
-      env.Path = `${path.join(java21, 'bin')};${env.Path || env.PATH || ''}`;
-    }
-  }
 
   if (app.isPackaged) {
     // 打包版：拉起内嵌精简 JRE + fat jar（electron-builder extraResources 塞进 Resources/runtime）
@@ -217,16 +169,8 @@ function spawnBackend() {
       stdio: ['ignore', logFd, logFd],
       env,
     });
-  } else if (process.platform === 'win32') {
-    backend = spawn(path.join(REPO_ROOT, 'gradlew.bat'), [':app:bootRun', '--console=plain'], {
-      cwd: REPO_ROOT,
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', logFd, logFd],
-      env,
-    });
   } else {
-    // macOS / Linux 源码运行。
+    // 源码运行（npm start）：走 start.sh（gradle bootRun，开发用）
     backend = spawn('bash', ['start.sh'], {
       cwd: REPO_ROOT,
       detached: true,
