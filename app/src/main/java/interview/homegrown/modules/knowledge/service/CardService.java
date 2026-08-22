@@ -54,13 +54,14 @@ public class CardService {
     }
 
     //更新卡片
-    public KnowledgeCard update(Long userId,Long cardId,String question,String answer, String tags, Long planId){
+    public KnowledgeCard update(Long userId,Long cardId,String question,String answer, String tags, Long planId, String detail){
 
         KnowledgeCard card = requireOwned(userId,cardId);
         if (question != null) card.setQuestion(question);
         if (answer != null) card.setAnswer(answer);
         if (tags != null) card.setTags(tags);
         if (planId != null) card.setPlanId(planId);
+        if (detail != null) card.setDetail(detail);
         return cardRepo.save(card);
 
     }

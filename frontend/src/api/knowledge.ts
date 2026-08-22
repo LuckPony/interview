@@ -130,6 +130,12 @@ export const knowledgeApi = {
             method: 'POST', body: JSON.stringify({ mastered }),
         })).then(normalizeCard);
     },
+    /** 编辑卡片（question / answer / detail / tags，tags 传逗号分隔字符串）。保存后同步到内化复盘（同一张表）。 */
+    update(id: number, req: { question: string; answer: string; tags: string; detail: string }): Promise<KnowledgeCard> {
+        return unwrap(apiFetch<Envelope<KnowledgeCard>>(`/knowledge/cards/${id}`, {
+            method: 'PUT', body: JSON.stringify(req),
+        })).then(normalizeCard);
+    },
     remove(id: number): Promise<void> {
         return apiFetch<void>(`/knowledge/cards/${id}`, { method: 'DELETE' });
     },

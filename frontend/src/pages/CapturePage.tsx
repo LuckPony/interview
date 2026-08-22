@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Send, Sparkles, X, PencilLine, Search, ChevronDown, ChevronUp, EyeOff, FileText } from 'lucide-react';
 import { knowledgeApi, askStream, type ChatMsg } from '../api/knowledge';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
@@ -16,6 +16,64 @@ function msg(e: unknown): string {
 /** 卡片每页条数 */
 const PAGE_SIZE = 8;
 
+/** 空状态示例问题（兜底：没有卡片/标签时用）；有标签时按标签频次动态推荐 */
+const DEFAULT_SUGGESTIONS = [
+    '什么是 CAP 定理？',
+    'Java 内存模型 JMM 讲一下',
+    'Spring 循环依赖怎么解决？',
+    'Redis 缓存穿透怎么办？',
+];
+
+/** 按高频标签生成推荐问题的模板（与 top4 一一对应，避免每次都是同一个句式） */
+const SUGGEST_TEMPLATES = [
+    (t: string) => `再深入讲讲「${t}」？`,
+    (t: string) => `「${t}」常见的坑有哪些？`,
+    (t: string) => `工作中怎么用好「${t}」？`,
+    (t: string) => `「${t}」和哪些知识点容易混？`,
+];
+
+/** 卡片标签块：默认最多两行；若第二行还要换行，就在右下角显示带箭头的「展开」，点击展开全部 */
+function CardTags({ tags }: { tags: string[] }) {
+    const [expanded, setExpanded] = useState(false);
+    const [overflow, setOverflow] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    // useLayoutEffect：测量类副作用必须在布局阶段同步执行，避免 useEffect 异步时序导致误判。
+    // 溢出判断用 scrollHeight（内容全高，不受 max-height/transition 裁剪影响），可靠稳定。
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const check = () => {
+            const first = el.querySelector('.badge');
+            const rowH = first ? first.getBoundingClientRect().height : 22;
+            const gap = 8; // var(--s-2)
+            const twoRows = rowH * 2 + gap;
+            el.style.maxHeight = expanded ? '' : `${twoRows.toFixed(1)}px`;
+            setOverflow(el.scrollHeight > twoRows + 1);
+        };
+        check();
+        const ro = new ResizeObserver(check);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [tags, expanded]);
+
+    return (
+        <div className={'card-tags-wrap' + (overflow ? ' has-toggle' : '')}>
+            <div ref={ref} className={'card-tags' + (expanded ? ' expanded' : '')}>
+                {tags.map(t => <Badge key={t}>{t}</Badge>)}
+            </div>
+            {(overflow || expanded) && (
+                <button className="card-tags-toggle" onClick={() => setExpanded(v => !v)}>
+                    {expanded ? <><ChevronUp size={12} strokeWidth={2} /> 收起</> : <><ChevronDown size={12} strokeWidth={2} /> 展开</>}
+                </button>
+            )}
+        </div>
+    );
+}
+
+/** 正在编辑的卡片表单 */
+interface EditForm { question: string; answer: string; tags: string; detail: string }
+
 export function CapturePage() {
     const [msgs, setMsgs] = useState<ChatMsg[]>([]);
     const [cards, setCards] = useState<KnowledgeCard[]>([]);
@@ -25,6 +83,17 @@ export function CapturePage() {
     const [err, setErr] = useState('');
     const [page, setPage] = useState(1);
     const [filterTag, setFilterTag] = useState<string | null>(null);
+    const [search, setSearch] = useState('');
+    // 筛选标签栏：默认最多两行，溢出时显示「展开全部标签」
+    const [filtersExpanded, setFiltersExpanded] = useState(false);
+    const [filtersOverflow, setFiltersOverflow] = useState(false);
+    const filtersRef = useRef<HTMLDivElement>(null);
+    const [editing, setEditing] = useState<KnowledgeCard | null>(null);
+    const [editForm, setEditForm] = useState<EditForm>({ question: '', answer: '', tags: '', detail: '' });
+    const [editErr, setEditErr] = useState('');
+    const [editBusy, setEditBusy] = useState(false);
+    // 对话沉淀页：默认显示摘要答案，点「查看详细答案」再展开 AI 完整回复
+    const [showDetail, setShowDetail] = useState<Map<number, boolean>>(new Map());
     const timer = useRef<number>();
     const streamRef = useRef<{ cancel: () => void } | null>(null);
     const composingRef = useRef(false);
@@ -40,14 +109,46 @@ export function CapturePage() {
         cards.forEach(c => c.tags.forEach(t => s.add(t)));
         return [...s].sort((a, b) => a.localeCompare(b, 'zh'));
     }, [cards]);
+
+    // 筛选标签栏两行检测：内容全高 > 两行高度即溢出（useLayoutEffect 布局阶段同步测量）
+    useLayoutEffect(() => {
+        const el = filtersRef.current;
+        if (!el) return;
+        const check = () => {
+            const first = el.querySelector('.capture-filter');
+            const rowH = first ? first.getBoundingClientRect().height : 30;
+            const gap = 8;
+            const twoRows = rowH * 2 + gap;
+            el.style.maxHeight = filtersExpanded ? '' : `${twoRows.toFixed(1)}px`;
+            setFiltersOverflow(el.scrollHeight > twoRows + 1);
+        };
+        check();
+        const ro = new ResizeObserver(check);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [filtersExpanded, allTags]);
     const tagCounts = useMemo(() => {
         const m = new Map<string, number>();
         cards.forEach(c => c.tags.forEach(t => m.set(t, (m.get(t) ?? 0) + 1)));
         return m;
     }, [cards]);
-    const filtered = useMemo(() =>
-        filterTag ? cards.filter(c => c.tags.includes(filterTag)) : cards,
-        [cards, filterTag]);
+    // 空状态推荐问题：按标签出现频次取 top4 生成；无标签时回退到默认示例
+    const suggestions = useMemo(() => {
+        if (cards.length === 0) return DEFAULT_SUGGESTIONS;
+        const top = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+        if (top.length === 0) return DEFAULT_SUGGESTIONS;
+        return top.map(([tag], i) => SUGGEST_TEMPLATES[i % SUGGEST_TEMPLATES.length](tag));
+    }, [cards, tagCounts]);
+    const filtered = useMemo(() => {
+        let list = filterTag ? cards.filter(c => c.tags.includes(filterTag)) : cards;
+        const kw = search.trim().toLowerCase();
+        if (kw) {
+            list = list.filter(c =>
+                c.question.toLowerCase().includes(kw) ||
+                c.tags.some(t => t.toLowerCase().includes(kw)));
+        }
+        return list;
+    }, [cards, filterTag, search]);
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const safePage = Math.min(page, totalPages);
     const pageCards = useMemo(() =>
@@ -102,6 +203,44 @@ export function CapturePage() {
         return () => window.clearTimeout(timer.current);
     }, [msgs, auto, streaming]);
 
+    // ===== 卡片查看：默认显示摘要，点「查看详细答案」展开 AI 完整回复 =====
+    const toggleDetail = (id: number) => {
+        setShowDetail(prev => {
+            const n = new Map(prev);
+            n.set(id, !(n.get(id) ?? false));
+            return n;
+        });
+    };
+
+    // ===== 卡片编辑 =====
+    const openEdit = (c: KnowledgeCard) => {
+        setEditing(c);
+        setEditForm({ question: c.question, answer: c.answer ?? '', tags: c.tags.join(','), detail: c.detail ?? '' });
+        setEditErr('');
+        setEditBusy(false);
+    };
+    const saveEdit = async () => {
+        if (!editing) return;
+        if (!editForm.question.trim()) { setEditErr('问题不能为空'); return; }
+        setEditBusy(true);
+        setEditErr('');
+        try {
+            const updated = await knowledgeApi.update(editing.id, {
+                question: editForm.question.trim(),
+                answer: editForm.answer.trim(),
+                tags: editForm.tags,
+                detail: editForm.detail,
+            });
+            // 同步本地列表（含当前筛选/分页视图）
+            setCards(cs => cs.map(c => (c.id === updated.id ? updated : c)));
+            setEditing(null);
+        } catch (e) {
+            setEditErr(msg(e));
+        } finally {
+            setEditBusy(false);
+        }
+    };
+
     return (
         <div className="page capture">
             <header className="page-head">
@@ -117,16 +256,34 @@ export function CapturePage() {
             {err && <div className="banner warn">{err}</div>}
 
             <Card className="capture-chat">
-                {msgs.map((m, i) => (
-                    <div key={i} className={'msg ' + m.role}>
-                        {m.role === 'user' ? (
-                            m.content
-                        ) : (
-                            <Markdown>{m.content || ' '}</Markdown>
-                        )}
+                {msgs.length === 0 ? (
+                    <div className="capture-empty">
+                        <Sparkles size={30} strokeWidth={1.4} className="capture-empty-icon" />
+                        <p>想到什么问什么，有价值的对话会沉淀成知识卡片。</p>
+                        <div className="capture-suggestions">
+                            {suggestions.map(s => (
+                                <button key={s} className="capture-suggestion" onClick={() => ask(s)} disabled={streaming}>
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                ))}
-                {streaming && <div className="msg ai cursor-blink">▍</div>}
+                ) : (
+                    msgs.map((m, i) => (
+                        <div key={i} className={'msg ' + m.role}>
+                            {m.role === 'user' ? (
+                                m.content
+                            ) : m.content ? (
+                                <Markdown>{m.content}</Markdown>
+                            ) : (
+                                <span className="thinking">
+                                    思考中<span className="thinking-dots">…</span>
+                                    <span className="cursor-blink">▍</span>
+                                </span>
+                            )}
+                        </div>
+                    ))
+                )}
             </Card>
 
             <Card className="capture-composer">
@@ -172,50 +329,100 @@ export function CapturePage() {
                     <div className="empty">还没有卡片，试着提问并保存一次吧</div>
                 ) : (
                     <>
-                        {/* 标签筛选 chips */}
-                        <div className="capture-filters">
-                            <button
-                                className={'capture-filter' + (filterTag === null ? ' active' : '')}
-                                onClick={() => pickTag(null)}
-                            >
-                                全部
-                                <span className="capture-filter-count">{cards.length}</span>
-                            </button>
-                            {allTags.map(t => (
-                                <button
-                                    key={t}
-                                    className={'capture-filter' + (filterTag === t ? ' active' : '')}
-                                    onClick={() => pickTag(t)}
-                                >
-                                    {t}
-                                    <span className="capture-filter-count">{tagCounts.get(t)}</span>
+                        {/* 搜索框：按标签名 / 问题内容模糊查询 */}
+                        <div className="capture-search">
+                            <Search size={15} strokeWidth={1.8} className="capture-search-icon" />
+                            <input
+                                className="capture-search-input"
+                                value={search}
+                                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                                placeholder="搜索标签或问题…"
+                            />
+                            {search && (
+                                <button className="capture-search-clear" onClick={() => { setSearch(''); setPage(1); }} aria-label="清空搜索">
+                                    <X size={14} strokeWidth={1.8} />
                                 </button>
-                            ))}
+                            )}
+                        </div>
+
+                        {/* 标签筛选 chips（默认最多两行，多出显示「展开全部标签」） */}
+                        <div className="capture-filters-wrap">
+                            <div ref={filtersRef} className={'capture-filters' + (filtersExpanded ? ' expanded' : '')}>
+                                <button
+                                    className={'capture-filter' + (filterTag === null ? ' active' : '')}
+                                    onClick={() => pickTag(null)}
+                                >
+                                    全部
+                                    <span className="capture-filter-count">{cards.length}</span>
+                                </button>
+                                {allTags.map(t => (
+                                    <button
+                                        key={t}
+                                        className={'capture-filter' + (filterTag === t ? ' active' : '')}
+                                        onClick={() => pickTag(t)}
+                                    >
+                                        {t}
+                                        <span className="capture-filter-count">{tagCounts.get(t)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {(filtersOverflow || filtersExpanded) && (
+                                <button className="capture-filters-toggle" onClick={() => setFiltersExpanded(v => !v)}>
+                                    {filtersExpanded
+                                        ? <><ChevronUp size={12} strokeWidth={2} /> 收起</>
+                                        : <><ChevronDown size={12} strokeWidth={2} /> 展开全部标签（{allTags.length + 1}）</>}
+                                </button>
+                            )}
                         </div>
 
                         {pageCards.length === 0 ? (
-                            <div className="empty">这个标签下还没有卡片</div>
+                            <div className="empty">{search.trim() ? '没有匹配的卡片' : '这个标签下还没有卡片'}</div>
                         ) : (
-                            pageCards.map(c => (
-                                <Card key={c.id} className="card-item">
-                                    <div className="card-q">{c.question}</div>
-                                    {c.answer && <div className="card-a">{c.answer}</div>}
-                                    {c.tags.length > 0 && (
-                                        <div className="card-tags">
-                                            {c.tags.map(t => <Badge key={t}>{t}</Badge>)}
+                            pageCards.map(c => {
+                                const detailOpen = showDetail.get(c.id) ?? false;
+                                return (
+                                    <Card key={c.id} className="card-item">
+                                        <div className="card-q">{c.question}</div>
+                                        {c.answer && <div className="card-a"><Markdown>{c.answer}</Markdown></div>}
+                                        {detailOpen && (
+                                            c.detail ? (
+                                                <div className="card-detail">
+                                                    <span className="card-detail-label">AI 完整回答</span>
+                                                    <Markdown>{c.detail}</Markdown>
+                                                </div>
+                                            ) : (
+                                                <div className="card-a">（没有保存详细回答）</div>
+                                            )
+                                        )}
+                                        {c.tags.length > 0 && <CardTags tags={c.tags} />}
+                                        <div className="card-ops">
+                                            {c.detail && (
+                                                <button className="card-view" onClick={() => toggleDetail(c.id)}>
+                                                    {detailOpen
+                                                        ? <><EyeOff size={13} strokeWidth={1.8} /> 收起</>
+                                                        : <><FileText size={13} strokeWidth={1.8} /> 查看详细答案</>}
+                                                </button>
+                                            )}
+                                            <button
+                                                className="card-edit"
+                                                onClick={() => openEdit(c)}
+                                                title="编辑卡片（会同步到内化复盘）"
+                                            >
+                                                <PencilLine size={13} strokeWidth={1.8} /> 编辑
+                                            </button>
+                                            <button
+                                                className="card-del"
+                                                onClick={() => knowledgeApi.remove(c.id).then(() => removeCard(c.id))}
+                                            >
+                                                删除
+                                            </button>
                                         </div>
-                                    )}
-                                    <button
-                                        className="card-del"
-                                        onClick={() => knowledgeApi.remove(c.id).then(() => removeCard(c.id))}
-                                    >
-                                        删除
-                                    </button>
-                                </Card>
-                            ))
+                                    </Card>
+                                );
+                            })
                         )}
 
-                        {/* 分页器 */}
+                        {/* 分页器（数据超过一页才显示） */}
                         {totalPages > 1 && (
                             <div className="capture-pager">
                                 <button
@@ -240,6 +447,63 @@ export function CapturePage() {
                     </>
                 )}
             </section>
+
+            {/* 编辑卡片弹窗（含完整内容：摘要 + 详细回答） */}
+            {editing && (
+                <div className="card-edit-backdrop" onClick={() => setEditing(null)}>
+                    <div className="card-edit-dialog" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                        <header className="card-edit-head">
+                            <span className="eyebrow">编辑知识卡片 · CARD</span>
+                            <button className="card-edit-close" onClick={() => setEditing(null)} aria-label="关闭">
+                                <X size={16} strokeWidth={1.8} />
+                            </button>
+                        </header>
+                        {editErr && <div className="banner warn">{editErr}</div>}
+                        <label className="field">
+                            <span className="field-label">问题 / 要点</span>
+                            <textarea
+                                className="note-area"
+                                rows={2}
+                                value={editForm.question}
+                                onChange={e => setEditForm(f => ({ ...f, question: e.target.value }))}
+                            />
+                        </label>
+                        <label className="field">
+                            <span className="field-label">答案摘要（查看答案时显示，支持 Markdown）</span>
+                            <textarea
+                                className="note-area"
+                                rows={4}
+                                value={editForm.answer}
+                                onChange={e => setEditForm(f => ({ ...f, answer: e.target.value }))}
+                            />
+                        </label>
+                        <label className="field">
+                            <span className="field-label">详细答案（查看详细答案时显示，AI 当时回复的完整内容）</span>
+                            <textarea
+                                className="note-area"
+                                rows={8}
+                                value={editForm.detail}
+                                onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))}
+                            />
+                        </label>
+                        <label className="field">
+                            <span className="field-label">标签（逗号分隔）</span>
+                            <input
+                                className="note-input"
+                                placeholder="如：java,并发"
+                                value={editForm.tags}
+                                onChange={e => setEditForm(f => ({ ...f, tags: e.target.value }))}
+                            />
+                        </label>
+                        <div className="card-edit-actions">
+                            <Button variant="ghost" onClick={() => setEditing(null)}>取消</Button>
+                            <Button onClick={saveEdit} disabled={editBusy}>
+                                {editBusy ? '保存中…' : '保存'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

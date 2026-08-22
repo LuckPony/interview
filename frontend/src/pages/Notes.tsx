@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Target, PenLine, Trash2 } from 'lucide-react';
+import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, ChevronDown, FileText } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
+import { Markdown } from '../components/Markdown';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
 import type {DebtView, KnowledgeCard, PlanView} from '../api/types';
@@ -46,12 +47,25 @@ export function Notes() {
 
   const [tab, setTab] = useState<'debt' | 'card'>('debt');
   const [dueCards, setDueCards] = useState<KnowledgeCard[]>([]);
+  // 复习前默认只显示标题；查看状态：hidden → summary(摘要) → detail(AI 完整回答)
+  const [reveal, setReveal] = useState<Map<number, 'summary' | 'detail'>>(new Map());
 
-  // 卡片：首次进入或切到卡片 tab 时拉取到期待复习卡片
+  // 卡片：切到卡片 tab 时拉取到期待复习卡片
   const loadDue = () => knowledgeApi.due().then(setDueCards).catch(() => {});
   useEffect(() => {
-    if (tab === 'card') loadDue();
+    if (tab === 'card') {
+      setReveal(new Map());
+      loadDue();
+    }
   }, [tab]);
+
+  const setCardView = (id: number, v: 'hidden' | 'summary' | 'detail') => {
+    setReveal(prev => {
+      const next = new Map(prev);
+      if (v === 'hidden') next.delete(id); else next.set(id, v);
+      return next;
+    });
+  };
 
   // 卡片操作
   // 卡片操作：复习反馈后刷新列表
@@ -122,21 +136,21 @@ export function Notes() {
 
       {err && <div className="banner info">{err}</div>}
 
-      {/* ===== Tab 切换：练习欠账 / 知识卡片 ===== */}
-      <div className="notes-tabs">
-        <button
-            className={'notes-tab' + (tab === 'debt' ? ' active' : '')}
-            onClick={() => setTab('debt')}
+      {/* ===== 顶部：下拉框选择「学习中 / 知识卡片」 ===== */}
+      <div className="notes-select-wrap">
+        <select
+          className="notes-select"
+          value={tab}
+          onChange={(e) => setTab(e.target.value as 'debt' | 'card')}
+          aria-label="选择内化复盘类型"
         >
-          练习欠账
-        </button>
-        <button
-            className={'notes-tab' + (tab === 'card' ? ' active' : '')}
-            onClick={() => setTab('card')}
-        >
-          知识卡片
-          {dueCards.length > 0 && <span className="notes-tab-badge">{dueCards.length}</span>}
-        </button>
+          <option value="debt">学习中（练习欠账）</option>
+          <option value="card">知识卡片（到期复习）</option>
+        </select>
+        <ChevronDown size={14} strokeWidth={1.8} className="notes-select-caret" />
+        {tab === 'card' && dueCards.length > 0 && (
+          <span className="notes-select-count">{dueCards.length} 张待复习</span>
+        )}
       </div>
 
       {/* ===== Tab 1：练习欠账（现有逻辑） ===== */}
@@ -202,7 +216,7 @@ export function Notes() {
           )
       )}
 
-      {/* ===== Tab 2：知识卡片 ===== */}
+      {/* ===== Tab 2：知识卡片（复习前只显示标题；查看答案→摘要；查看详细答案→AI 完整回答） ===== */}
       {tab === 'card' && (
           dueCards.length === 0 ? (
               <div className="empty">
@@ -211,25 +225,64 @@ export function Notes() {
               </div>
           ) : (
               <div className="notes-waterfall">
-                {dueCards.map((c) => (
-                    <Card className="debt-card" key={c.id}>
-                      <div className="debt-card-top">
-                        <span className="debt-card-stem">{c.question}</span>
-                        {c.tags.length > 0 && c.tags.slice(0, 2).map((t) => (
-                            <Badge key={t}>{t}</Badge>
-                        ))}
-                      </div>
-                      {c.answer && <div className="debt-card-weak">{c.answer}</div>}
-                      <div className="debt-card-foot">
-                        <Button variant="danger" onClick={() => reviewCard(c.id, false)}>
-                          没掌握
-                        </Button>
-                        <Button variant="primary" onClick={() => reviewCard(c.id, true)}>
-                          掌握了
-                        </Button>
+                {dueCards.map((c) => {
+                  const view = reveal.get(c.id) ?? 'hidden';
+                  return (
+                    <Card className="review-card" key={c.id}>
+                      <div className="review-card-title">{c.question}</div>
+                      {view === 'summary' && c.answer && (
+                          <div className="review-card-body">
+                            <Markdown>{c.answer}</Markdown>
+                          </div>
+                      )}
+                      {view === 'detail' && (
+                          <>
+                            {c.answer && (
+                                <div className="review-card-body">
+                                  <Markdown>{c.answer}</Markdown>
+                                </div>
+                            )}
+                            {c.detail ? (
+                                <div className="review-card-body review-card-detail">
+                                  <span className="card-detail-label">AI 完整回答</span>
+                                  <Markdown>{c.detail}</Markdown>
+                                </div>
+                            ) : (
+                                <div className="review-card-body">（没有保存详细回答）</div>
+                            )}
+                          </>
+                      )}
+                      <div className="review-card-foot">
+                        <div className="review-card-actions">
+                          {view === 'hidden' ? (
+                              <Button variant="ghost" onClick={() => setCardView(c.id, 'summary')}>
+                                <Eye size={14} strokeWidth={1.8} /> 查看答案
+                              </Button>
+                          ) : (
+                              <>
+                                {view === 'summary' && c.detail && (
+                                    <Button variant="ghost" onClick={() => setCardView(c.id, 'detail')}>
+                                      <FileText size={14} strokeWidth={1.8} /> 查看详细答案
+                                    </Button>
+                                )}
+                                <Button variant="ghost" onClick={() => setCardView(c.id, 'hidden')}>
+                                  <EyeOff size={14} strokeWidth={1.8} /> 收起
+                                </Button>
+                              </>
+                          )}
+                        </div>
+                        <div className="review-card-actions">
+                          <Button variant="danger" onClick={() => reviewCard(c.id, false)}>
+                            没掌握
+                          </Button>
+                          <Button variant="primary" onClick={() => reviewCard(c.id, true)}>
+                            掌握了
+                          </Button>
+                        </div>
                       </div>
                     </Card>
-                ))}
+                  );
+                })}
               </div>
           )
       )}

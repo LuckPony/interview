@@ -19,7 +19,12 @@ import java.util.stream.Collectors;
 @Service
 public class ChatCaptureService {
 
-    private static final long FIRST_REVIEW_DAYS = 3;
+    /**
+     * 新卡首次复习：当天（创建即到期，晚上复盘就能看到）。
+     * 注意 minus 30 秒：Hibernate 写 timestamp 会丢毫秒且按 UTC 解释，若 due_at == now 同秒内
+     * `due_at < now` 不成立会晚一秒才可见，减 30 秒保证创建后立即出现在内化复盘。
+     */
+    private static final long FIRST_REVIEW_SECONDS = -30;
 
     private final KnowledgeCardRepository cardRepo;
     private final ConceptRepository conceptRepo;
@@ -88,6 +93,13 @@ public class ChatCaptureService {
         card.setUserId(userId);
         card.setQuestion(stripFieldPrefix(draft.question()));
         card.setAnswer(stripFieldPrefix(draft.answer()));
+        // 详细答案：对话里 AI 的完整回复（可能多轮，按序拼接），供「查看详细答案」展示
+        String detail = conversation.stream()
+                .filter(m -> "ai".equalsIgnoreCase(m.role()))
+                .map(Message::content)
+                .filter(s -> s != null && !s.isBlank())
+                .collect(Collectors.joining("\n\n"));
+        card.setDetail(detail.isBlank() ? null : detail);
         card.setTags(draft.tags() == null
                 ? ""
                 : draft.tags().stream()
@@ -96,7 +108,7 @@ public class ChatCaptureService {
                     .distinct()
                     .collect(Collectors.joining(",")));
         card.setConceptId(conceptId);
-        card.setDueAt(Instant.now().plus(FIRST_REVIEW_DAYS, ChronoUnit.DAYS));
+        card.setDueAt(Instant.now().plus(FIRST_REVIEW_SECONDS, ChronoUnit.SECONDS));
         return cardRepo.save(card);
     }
 

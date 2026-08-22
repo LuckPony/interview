@@ -52,7 +52,7 @@ public class KnowledgeController {
 
     public record AskRequest(String question, String provider) {}
     public record CaptureRequest(List<Msg> conversation) { public record Msg(String role, String content) {} }
-    public record UpdateRequest(String question, String answer, String tags, Long planId) {}
+    public record UpdateRequest(String question, String answer, String tags, Long planId, String detail) {}
     public record ReviewRequest(boolean mastered) {}
 
     // ==================== 卡片 CRUD ====================
@@ -76,7 +76,7 @@ public class KnowledgeController {
 
     @PutMapping("/cards/{id}")
     public Result<KnowledgeCard> update(@PathVariable Long id, @RequestBody UpdateRequest req) {
-        return Result.success(cardService.update(uid(), id, req.question(), req.answer(), req.tags(), req.planId()));
+        return Result.success(cardService.update(uid(), id, req.question(), req.answer(), req.tags(), req.planId(), req.detail()));
     }
 
     @PostMapping("/cards/{id}/review")

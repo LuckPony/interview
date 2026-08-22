@@ -375,3 +375,113 @@
   line-height: 1.6;
   white-space: pre-wrap;
 }
+
+/* —— 顶部：内化复盘类型下拉框 —— */
+.notes-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  position: relative;
+  width: fit-content;
+}
+.notes-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 8px 38px 8px var(--s-4);
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+.notes-select:hover {
+  border-color: var(--cinnabar);
+}
+.notes-select:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+  box-shadow: 0 0 0 3px var(--cinnabar-wash);
+}
+.notes-select-caret {
+  position: absolute;
+  right: var(--s-3);
+  pointer-events: none;
+  color: var(--ink-faint);
+}
+.notes-select-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
+  border-radius: 99px;
+  padding: 2px 10px;
+}
+
+/* —— 知识卡片（内化复盘）：复习卡样式，默认只显示标题 —— */
+.review-card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+  transition: transform 0.22s var(--ease-out), box-shadow 0.25s var(--ease-out),
+    border-color 0.22s var(--ease-out);
+}
+.review-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: 0 14px 30px -16px rgba(35, 43, 54, 0.28);
+}
+.review-card-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--ink);
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--cinnabar);
+}
+.review-card-body {
+  margin-top: var(--s-4);
+  padding: var(--s-4);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  animation: fade 0.25s var(--ease-out);
+}
+.review-card-body .md {
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+.review-card-detail {
+  background: var(--cinnabar-wash);
+  border-color: color-mix(in oklch, var(--cinnabar) 22%, transparent);
+}
+.review-card-detail .card-detail-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  color: var(--cinnabar-deep);
+  margin-bottom: var(--s-2);
+}
+.review-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px dashed var(--line);
+}
+.review-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
