@@ -320,12 +320,11 @@ export function PlansPage() {
                           <div className="layer-chips">
                             {concepts.map((c) => (
                               <button
-                                className={'concept-chip' + (c.masteryLevel > 0 ? ' mastered' : '')}
+                                className="concept-chip"
                                 key={c.id}
                                 onClick={() => navigate('/drill', { state: { conceptId: c.id }, replace: true })}
                               >
                                 <span className="chip-name">{c.name}</span>
-                                {c.masteryLevel > 0 && <span className="chip-check">✓</span>}
                                 <ChevronRight size={12} strokeWidth={1.6} className="chip-arrow" />
                               </button>
                             ))}

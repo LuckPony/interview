@@ -22,6 +22,10 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
     Optional<DrillRun> findByUserIdAndId(Long userId, Long id);
 
+    /** 用户已评分的「先教后考」run，用于按子知识点恢复独立完成状态。 */
+    List<DrillRun> findByUserIdAndStatusAndFocusSubPointIsNotNull(
+            Long userId, DrillRunStatus status);
+
     /**
      * 内化债务：已判分、分数没过线、却还没写笔记的作答。
      *

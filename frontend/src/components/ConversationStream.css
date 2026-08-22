@@ -40,7 +40,8 @@
 }
 
 .chat-bubble {
-  max-width: min(720px, 78%);
+  width: 100%;
+  max-width: none;
   padding: var(--s-3) var(--s-4);
   border-radius: 16px;
   line-height: 1.65;
@@ -329,11 +330,11 @@
   border-top: 1px solid var(--line);
 }
 
-/* 嵌入式面板（Drill 页内）：限制卡片最大宽度居中 */
+/* 嵌入式面板（Drill 页内）：跟随父容器，避免大屏时聊天内容被压成窄列 */
 .drill-conv .chat-stream {
-  max-width: 720px;
-  margin: 0 auto;
   width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 /* 弹窗模式（History）：沿用 */

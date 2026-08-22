@@ -1,3 +1,4 @@
+import { useEffect, useId, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -120,6 +121,34 @@ const LANG_LABEL: Record<string, string> = {
   r: 'R',
 };
 
+function MermaidDiagram({ source }: { source: string }) {
+  const reactId = useId();
+  const [svg, setSvg] = useState('');
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setSvg('');
+    setFailed(false);
+    import('mermaid').then(({ default: mermaid }) => {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' });
+      const id = `mermaid-${reactId.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
+      return mermaid.render(id, source);
+    }).then(({ svg: rendered }) => {
+      if (active) setSvg(rendered);
+    }).catch(() => {
+      if (active) setFailed(true);
+    });
+    return () => { active = false; };
+  }, [reactId, source]);
+
+  if (svg) {
+    return <div className="md-diagram" role="img" aria-label="AI 生成的示意图" dangerouslySetInnerHTML={{ __html: svg }} />;
+  }
+  if (!failed) return <div className="md-diagram-loading">正在绘制示意图…</div>;
+  return <pre className="md-diagram-fallback"><code>{source}</code></pre>;
+}
+
 const components: Components = {
   a: ({ node, ...props }) => (
     <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
@@ -135,7 +164,11 @@ const components: Components = {
     const match = /language-([\w+#-]+)/.exec(className ?? '');
 
     if (match) {
-      const lang = (LANG_ALIAS[match[1].toLowerCase()] ?? match[1]).toLowerCase();
+      const requestedLang = match[1].toLowerCase();
+      if (requestedLang === 'mermaid') {
+        return <MermaidDiagram source={text} />;
+      }
+      const lang = (LANG_ALIAS[requestedLang] ?? requestedLang).toLowerCase();
       const label = LANG_LABEL[lang];
       return (
         <div className="md-code-block">

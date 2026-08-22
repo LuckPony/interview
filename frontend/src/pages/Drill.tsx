@@ -383,7 +383,14 @@ export function Drill() {
     setTeach({ conceptId, name: '', topic: '', subPoints: [], curIdx: -1, done: [] });
     try {
       const o = await drill.outline(conceptId);
-      setTeach({ conceptId, name: o.name, topic: o.topic, subPoints: o.subPoints, curIdx: -1, done: [] });
+      setTeach({
+        conceptId,
+        name: o.name,
+        topic: o.topic,
+        subPoints: o.subPoints,
+        curIdx: -1,
+        done: o.completedSubPoints ?? [],
+      });
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : '拆解失败');
       // 拆解失败降级：直接出题（无讲解）

@@ -174,7 +174,6 @@ export function Plans({
                     <button className="concept-chip" key={c.id} onClick={() => onPick(c.id)}>
                       <span className="chip-name">{c.name}</span>
                       <Tag>L{c.layer}</Tag>
-                      {c.masteryLevel > 0 && <span className="chip-done">✓</span>}
                     </button>
                   ))
                 )}

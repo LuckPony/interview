@@ -21,6 +21,8 @@ export interface OutlineView {
   name: string;
   topic: string;
   subPoints: string[];
+  /** 已完成评分的子知识点；完成标记按子点展示，不代表整个大知识点完成。 */
+  completedSubPoints: string[];
   cached: boolean;
 }
 

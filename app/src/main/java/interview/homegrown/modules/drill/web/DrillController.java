@@ -256,7 +256,14 @@ public class DrillController {
                 conceptRepo.save(concept);
             }
         }
-        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, cached);
+        List<String> completedSubPoints = runRepo
+                .findByUserIdAndStatusAndFocusSubPointIsNotNull(uid, DrillRunStatus.GRADED).stream()
+                .filter(r -> questionContainsConcept(r.getQuestionId(), conceptId))
+                .map(DrillRun::getFocusSubPoint)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, completedSubPoints, cached);
     }
 
     /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。 */
@@ -407,7 +414,16 @@ public class DrillController {
     private QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
                                  Integer targetLayer, Long targetConceptId, String focus) {
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
-        if (resumed != null) return resumed;
+        if (resumed != null) {
+            if (focus == null || focus.isBlank()) return resumed;
+            DrillRun active = runRepo.findById(resumed.runId()).orElse(null);
+            if (active != null && focus.equals(active.getFocusSubPoint())) return resumed;
+            // 同一大知识点下切换到另一个子知识点时，不能恢复上一子点的题。
+            if (active != null) {
+                active.setStatus(DrillRunStatus.PARKED);
+                runRepo.save(active);
+            }
+        }
 
         // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
         String context = progressContext.contextFor(uid, task.conceptIds());
@@ -418,7 +434,7 @@ public class DrillController {
                     + "不要考这个概念下的其它子知识点。";
         }
         var q = questionService.generate(task, context);       // 出题（LLM 填空）
-        return openRunOnQuestion(uid, q.getId(), targetPlanId);
+        return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
     }
 
     /**
@@ -461,6 +477,10 @@ public class DrillController {
     }
 
     private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId) {
+        return openRunOnQuestion(uid, questionId, targetPlanId, null);
+    }
+
+    private QuestionView openRunOnQuestion(Long uid, Long questionId, Long targetPlanId, String focusSubPoint) {
         QuestionBank q = questionBankRepo.findById(questionId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, null, null);
@@ -471,6 +491,7 @@ public class DrillController {
         run.setQuestionId(q.getId());
         run.setMode(DrillMode.LEARN);
         run.setStatus(DrillRunStatus.READY);
+        run.setFocusSubPoint(focusSubPoint);
         try {
             run = runRepo.save(run);
         } catch (DataIntegrityViolationException e) {
@@ -1071,6 +1092,13 @@ public class DrillController {
         return progressContext.contextFor(uid, ids);
     }
 
+    private boolean questionContainsConcept(Long questionId, Long conceptId) {
+        QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
+        if (q == null || q.getConceptIds() == null) return false;
+        return java.util.Arrays.stream(q.getConceptIds())
+                .anyMatch(id -> id != null && id.longValue() == conceptId.longValue());
+    }
+
     /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */
     private void sseReasoning(java.io.OutputStream out, String reasoning) {
         try {
@@ -1091,7 +1119,8 @@ public class DrillController {
 
     public record StartRequest(Long conceptId, String subPoint) {}
 
-    public record OutlineView(Long conceptId, String name, String topic, List<String> subPoints, boolean cached) {}
+    public record OutlineView(Long conceptId, String name, String topic, List<String> subPoints,
+                              List<String> completedSubPoints, boolean cached) {}
 
     public record StartPlanRequest(Long planId, String mode, Integer layer) {}
 

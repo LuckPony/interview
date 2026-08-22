@@ -68,6 +68,13 @@ public class DrillRun {
      */
     private Long sourceRunId;
 
+    /**
+     * 「先教后考」本次作答聚焦的子知识点。只有该字段非空的已评分 run 才会让对应子点显示完成；
+     * 不再因为概念 mastery 被更新，就把整个大知识点直接显示为完成。
+     */
+    @Column(name = "focus_sub_point", length = 300)
+    private String focusSubPoint;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 
