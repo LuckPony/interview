@@ -25,6 +25,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: '首页', icon: LayoutDashboard, end: true },
+  { to: '/capture', label: '对话沉淀', icon: MessagesSquare },
   { to: '/plan', label: '学习计划', icon: Compass },
   { to: '/drill', label: '练习', icon: PenLine },
   { to: '/rehearsal', label: '模拟面试', icon: MessagesSquare },

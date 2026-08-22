@@ -418,6 +418,14 @@ export const drill = {
       body: conceptId != null ? JSON.stringify({ conceptId }) : undefined,
     }),
 
+
+  /** 从学习计划启动模拟面试 */
+  rehearsalStartFromPlan: (planId: number) =>
+      apiFetch<RehearsalView>('/drill/rehearsal/start-plan', {
+        method: 'POST',
+        body: JSON.stringify({ planId }),
+      }),
+
   // LEARN grade 卡"继续追问"：spawn 一条 mode=REHEARSAL 的追问场，复用 source questionId
   followup: (runId: number) =>
     apiFetch<RehearsalView>(`/drill/${runId}/followup`, { method: 'POST' }),

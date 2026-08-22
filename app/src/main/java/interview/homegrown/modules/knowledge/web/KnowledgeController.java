@@ -1,7 +1,7 @@
 package interview.homegrown.modules.knowledge.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.common.ai.LlmProviderRegistry;
+import interview.homegrown.common.ai.LlmRawClient;
 import interview.homegrown.common.result.Result;
 import interview.homegrown.modules.knowledge.domain.KnowledgeCard;
 import interview.homegrown.modules.knowledge.service.CardService;
@@ -26,14 +26,14 @@ public class KnowledgeController {
     private static final ObjectMapper mapper = new ObjectMapper();
     private final CardService cardService;
     private final ChatCaptureService chatCaptureService;
-    private final LlmProviderRegistry llmProviderRegistry;
+    private final LlmRawClient rawClient;
 
     public KnowledgeController(CardService cardService,
                                ChatCaptureService chatCaptureService,
-                               LlmProviderRegistry llmProviderRegistry) {
+                               LlmRawClient rawClient) {
         this.cardService = cardService;
         this.chatCaptureService = chatCaptureService;
-        this.llmProviderRegistry = llmProviderRegistry;
+        this.rawClient = rawClient;
     }
 
     private Long uid() {
@@ -102,14 +102,14 @@ public class KnowledgeController {
                 不要为了生成卡片而强行提炼，没有价值就明确返回空。""";
 
         StreamingResponseBody body = out -> {
+            // 注意：这里不能走 LlmProviderRegistry 的静态 ChatClient —— 它由启动配置（application.yml）
+            // 构建，而项目已明确「不配服务器级/共享 key」（providers 的 api-key 全空），注册中心为空会直接
+            // 抛“没有可用的 AI Provider”，导致自由问答永远失败。必须走 LlmRawClient 原生直连：
+            // 按请求解析 key（请求头 X-LLM-Key > 当前用户设置 > 启动配置），与讲解/出题/判分等其它流式端点一致。
+            final String[] streamError = {null};
             try {
-                var client = llmProviderRegistry.getChatClientOrDefault(req.provider());
-                client.prompt()
-                        .system(systemPrompt)
-                        .user(req.question())
-                        .stream()
-                        .content()
-                        .doOnNext(token -> {
+                rawClient.stream(systemPrompt, req.question(),
+                        token -> {
                             try {
                                 String frame = "data: {\"text\":" + jsonEscape(token) + "}\n\n";
                                 out.write(frame.getBytes(StandardCharsets.UTF_8));
@@ -117,11 +117,19 @@ public class KnowledgeController {
                             } catch (Exception e) {
                                 log.debug("ask token 推送异常（已吞）: {}", e.getMessage());
                             }
-                        })
-                        .blockLast();
+                        },
+                        err -> streamError[0] = err == null ? "LLM 调用失败" : err.getMessage(),
+                        /* fallbackToReasoning */ true,
+                        /* onReasoning */ null);
 
-                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
+                if (streamError[0] == null) {
+                    out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } else {
+                    out.write(("event: error\ndata: {\"message\":" + jsonEscape(streamError[0]) + "}\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                }
             } catch (Exception e) {
                 log.warn("ask SSE 异常", e);
                 try {

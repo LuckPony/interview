@@ -1,0 +1,152 @@
+/* ============================================================
+   对话沉淀（CAPTURE）：随手问答 → 一键存卡
+   风格对齐 ConversationStream 气泡 + 设计令牌（tokens.css）
+   ============================================================ */
+
+/* —— 自动成卡开关 —— */
+.capture-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.capture-auto input {
+  accent-color: var(--cinnabar);
+  width: 15px;
+  height: 15px;
+}
+
+/* —— 对话区（气泡容器） —— */
+.capture-chat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  min-height: 240px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: var(--s-4);
+}
+
+.msg {
+  max-width: min(720px, 80%);
+  padding: var(--s-3) var(--s-4);
+  border-radius: 16px;
+  line-height: 1.65;
+  word-break: break-word;
+  white-space: pre-wrap;
+  font-size: calc(var(--fs-base) * var(--scale-body, 1));
+}
+.msg.user {
+  align-self: flex-end;
+  background: var(--cinnabar-deep);
+  color: var(--on-accent);
+  border-bottom-right-radius: 4px;
+}
+.msg.ai {
+  align-self: flex-start;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-bottom-left-radius: 4px;
+}
+.msg.ai .md {
+  width: 100%;
+}
+.msg.ai .md > p:first-child {
+  margin-top: 0;
+}
+.msg.ai .md > p:last-child {
+  margin-bottom: 0;
+}
+
+/* 流式光标：停在最后一个 token 后闪烁 */
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* —— 输入行 —— */
+.capture-input {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+}
+.capture-input input {
+  flex: 1;
+  height: 42px;
+  padding: 0 var(--s-4);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  outline: none;
+  transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+.capture-input input:focus {
+  border-color: var(--cinnabar);
+  box-shadow: 0 0 0 3px var(--cinnabar-wash);
+}
+.capture-input input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* —— 已沉淀的卡片列表 —— */
+.capture-cards {
+  margin-top: var(--s-7);
+}
+.capture-cards h2 {
+  font-size: var(--fs-lg);
+  margin-bottom: var(--s-4);
+}
+
+.card-item {
+  position: relative;
+  margin-bottom: var(--s-3);
+  padding-right: 72px; /* 给删除按钮留位，避免压住内容 */
+}
+.card-q {
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.card-a {
+  margin-top: var(--s-2);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.card-del {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-4);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 2px var(--s-2);
+  cursor: pointer;
+  transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+.card-del:hover {
+  color: var(--bad);
+  border-color: var(--bad);
+}

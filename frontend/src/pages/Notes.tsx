@@ -5,8 +5,9 @@ import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
-import type { DebtView, PlanView } from '../api/types';
+import type {DebtView, KnowledgeCard, PlanView} from '../api/types';
 import './Notes.css';
+import {knowledgeApi} from "../api/knowledge.ts";
 
 function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '操作失败';
@@ -42,6 +43,22 @@ export function Notes() {
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [err, setErr] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const [tab, setTab] = useState<'debt' | 'card'>('debt');
+  const [dueCards, setDueCards] = useState<KnowledgeCard[]>([]);
+
+  // 卡片：首次进入或切到卡片 tab 时拉取到期待复习卡片
+  const loadDue = () => knowledgeApi.due().then(setDueCards).catch(() => {});
+  useEffect(() => {
+    if (tab === 'card') loadDue();
+  }, [tab]);
+
+  // 卡片操作
+  // 卡片操作：复习反馈后刷新列表
+  const reviewCard = async (id: number, mastered: boolean) => {
+    await knowledgeApi.review(id, mastered);
+    loadDue();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -105,65 +122,119 @@ export function Notes() {
 
       {err && <div className="banner info">{err}</div>}
 
-      {debt === null ? (
-        <Loading label="读取欠账…" />
-      ) : debtActive.length === 0 ? (
-        <div className="empty">
-          <h3>这个方向没有待复盘</h3>
-          <p>所有低于 {PASS_LINE} 分达标线的题都已复盘，这一关你守住了。</p>
-        </div>
-      ) : (
-        <div className="notes-waterfall">
-          {groups.map((g) => (
-            <section className="notes-group" key={g.planId ?? 'global'}>
-              <div className="notes-group-head">
-                <BookOpen size={14} strokeWidth={1.6} />
-                <span className="notes-group-title">{g.title}</span>
-                <span className="notes-group-count">{g.items.length} 条</span>
+      {/* ===== Tab 切换：练习欠账 / 知识卡片 ===== */}
+      <div className="notes-tabs">
+        <button
+            className={'notes-tab' + (tab === 'debt' ? ' active' : '')}
+            onClick={() => setTab('debt')}
+        >
+          练习欠账
+        </button>
+        <button
+            className={'notes-tab' + (tab === 'card' ? ' active' : '')}
+            onClick={() => setTab('card')}
+        >
+          知识卡片
+          {dueCards.length > 0 && <span className="notes-tab-badge">{dueCards.length}</span>}
+        </button>
+      </div>
+
+      {/* ===== Tab 1：练习欠账（现有逻辑） ===== */}
+      {tab === 'debt' && (
+          debt === null ? (
+              <Loading label="读取欠账…" />
+          ) : debtActive.length === 0 ? (
+              <div className="empty">
+                <h3>这个方向没有待复盘</h3>
+                <p>所有低于 {PASS_LINE} 分达标线的题都已复盘，这一关你守住了。</p>
               </div>
-              <div className="notes-masonry">
-                {g.items.map((d) => (
-                  <Card className="debt-card" key={d.runId}>
-                    <div className="debt-card-top">
-                      <span className="debt-card-stem">{d.stem}</span>
-                      <Badge kind="bad">{Math.round(d.rawScore)} 分</Badge>
-                    </div>
-                    {(d.weakPoints?.length ?? 0) > 0 && (
-                      <div className="debt-card-weak" title={d.weakPoints.join('；')}>
-                        <AlertTriangle size={12} strokeWidth={1.8} />
-                        {(d.weakPoints ?? []).slice(0, 2).join('、')}
-                        {(d.weakPoints?.length ?? 0) > 2 && ` 等 ${d.weakPoints.length} 处`}
+          ) : (
+              <div className="notes-waterfall">
+                {groups.map((g) => (
+                    <section className="notes-group" key={g.planId ?? 'global'}>
+                      <div className="notes-group-head">
+                        <BookOpen size={14} strokeWidth={1.6} />
+                        <span className="notes-group-title">{g.title}</span>
+                        <span className="notes-group-count">{g.items.length} 条</span>
                       </div>
-                    )}
-                    <div className="debt-card-foot">
-                      <Button
-                        variant="danger"
-                        className="debt-card-del"
-                        onClick={() => del(d)}
-                        disabled={deletingId === d.runId}
-                        title="删除这条欠账记录（含作答/判分/复盘数据）"
-                      >
-                        <Trash2 size={14} strokeWidth={1.8} /> 删除
-                      </Button>
-                      <Button variant="ghost" onClick={() => review(d)}>
-                        <PenLine size={14} strokeWidth={1.8} /> 复盘
-                      </Button>
-                      <Button
-                        variant="primary"
-                        onClick={() => selfTest(d)}
-                        disabled={d.conceptId == null}
-                        title={d.conceptId == null ? '该题没有关联概念，无法自测' : '对该概念出一道新题再练'}
-                      >
-                        <Target size={14} strokeWidth={1.8} /> 判断自测
-                      </Button>
-                    </div>
-                  </Card>
+                      <div className="notes-masonry">
+                        {g.items.map((d) => (
+                            <Card className="debt-card" key={d.runId}>
+                              <div className="debt-card-top">
+                                <span className="debt-card-stem">{d.stem}</span>
+                                <Badge kind="bad">{Math.round(d.rawScore)} 分</Badge>
+                              </div>
+                              {(d.weakPoints?.length ?? 0) > 0 && (
+                                  <div className="debt-card-weak" title={d.weakPoints.join('；')}>
+                                    <AlertTriangle size={12} strokeWidth={1.8} />
+                                    {(d.weakPoints ?? []).slice(0, 2).join('、')}
+                                    {(d.weakPoints?.length ?? 0) > 2 && ` 等 ${d.weakPoints.length} 处`}
+                                  </div>
+                              )}
+                              <div className="debt-card-foot">
+                                <Button
+                                    variant="danger"
+                                    className="debt-card-del"
+                                    onClick={() => del(d)}
+                                    disabled={deletingId === d.runId}
+                                    title="删除这条欠账记录（含作答/判分/复盘数据）"
+                                >
+                                  <Trash2 size={14} strokeWidth={1.8} /> 删除
+                                </Button>
+                                <Button variant="ghost" onClick={() => review(d)}>
+                                  <PenLine size={14} strokeWidth={1.8} /> 复盘
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    onClick={() => selfTest(d)}
+                                    disabled={d.conceptId == null}
+                                    title={d.conceptId == null ? '该题没有关联概念，无法自测' : '对该概念出一道新题再练'}
+                                >
+                                  <Target size={14} strokeWidth={1.8} /> 判断自测
+                                </Button>
+                              </div>
+                            </Card>
+                        ))}
+                      </div>
+                    </section>
                 ))}
               </div>
-            </section>
-          ))}
-        </div>
+          )
+      )}
+
+      {/* ===== Tab 2：知识卡片 ===== */}
+      {tab === 'card' && (
+          dueCards.length === 0 ? (
+              <div className="empty">
+                <h3>没有到期待复习的卡片</h3>
+                <p>去「对话沉淀」随手提问并存成卡片，到期后会出现在这里。</p>
+              </div>
+          ) : (
+              <div className="notes-waterfall">
+                {dueCards.map((c) => (
+                    <Card className="debt-card" key={c.id}>
+                      <div className="debt-card-top">
+                        <span className="debt-card-stem">{c.question}</span>
+                        {c.tags.length > 0 && c.tags.slice(0, 2).map((t) => (
+                            <Badge key={t}>{t}</Badge>
+                        ))}
+                      </div>
+                      {c.answer && <div className="debt-card-weak">{c.answer}</div>}
+                      <div className="debt-card-foot">
+                        <Button variant="danger" onClick={() => reviewCard(c.id, false)}>
+                          没掌握
+                        </Button>
+                        <Button variant="primary" onClick={() => reviewCard(c.id, true)}>
+                          掌握了
+                        </Button>
+                      </div>
+                    </Card>
+                ))}
+              </div>
+          )
       )}
     </div>
   );
+
+
 }
