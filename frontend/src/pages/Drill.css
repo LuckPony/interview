@@ -598,72 +598,127 @@
   color: var(--good);
   background: var(--good-wash);
 }
-.today-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
+.today-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
 }
-.today-item {
+.today-group {
+  min-width: 0;
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+}
+.today-group-head {
   display: flex;
   align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  color: var(--ink);
+}
+.today-group-head span {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+.today-task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
   gap: var(--s-3);
-  width: 100%;
+}
+.today-task-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2);
+  padding: var(--s-4);
   text-align: left;
-  padding: var(--s-2) var(--s-3);
-  background: var(--paper-2);
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+  transition: transform var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
-.today-item:hover {
+.today-task-card:hover {
+  transform: translateY(-2px);
   border-color: var(--cinnabar);
-  background: var(--paper);
+  box-shadow: var(--shadow-sm);
 }
-/* 今日任务·已完成：置灰展示，不可重复点开 */
-.today-done {
-  cursor: default;
-  opacity: 0.6;
+.today-task-card.is-review { border-top: 3px solid var(--warn); }
+.today-task-card.is-learn { border-top: 3px solid var(--good); }
+.today-task-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
 }
-.today-done:hover {
-  border-color: var(--line);
-  background: var(--paper-2);
-}
-.today-done-icon {
-  color: var(--sage);
-  flex-shrink: 0;
-}
-.today-concept {
-  font-size: var(--fs-sm);
-  color: var(--ink);
-  flex-shrink: 0;
-  font-weight: 500;
-}
-.today-concept em {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--ink-faint);
-  margin-left: 4px;
-}
-.today-stem {
-  flex: 1;
+.today-task-plan {
   min-width: 0;
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
+  flex: 1;
   overflow: hidden;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.today-pending {
-  flex: 1;
-  font-size: var(--fs-sm);
-  color: var(--ink-faint);
-  font-style: italic;
+.today-task-concept {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--fs-md);
 }
-.today-arrow {
+.today-task-concept em {
+  font: normal var(--fs-xs) var(--font-mono);
   color: var(--ink-faint);
-  flex-shrink: 0;
+}
+.today-task-target {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.today-task-target svg { flex: 0 0 auto; margin-top: 3px; }
+.today-subpoints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.today-subpoints > span {
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.today-subpoints > span.is-passed {
+  color: var(--good);
+  background: var(--good-wash);
+}
+.today-task-hint {
+  padding-top: var(--s-2);
+  border-top: 1px dashed var(--line);
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+.today-completed-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--s-3) 0 0;
+  color: var(--good);
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 900px) {
+  .today-groups { grid-template-columns: 1fr; }
 }
 
 /* —— 聊天页（LEARN）：占满整个屏幕，输入框常驻底部，滚动只在聊天线程 —— */

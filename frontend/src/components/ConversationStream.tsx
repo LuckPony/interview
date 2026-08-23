@@ -150,7 +150,7 @@ export function VerdictPanel({ run, turn }: { run: ConversationRun; turn: Conver
   const data = parseByConcept(turn.byConceptJson);
   // 未考察（NA）的评分点 = 没被实际问到的追问内容：不计分，也不列入评分细则展示
   const visible = data
-    .map((c) => ({ ...c, pointResults: c.pointResults.filter((p) => p.verdict !== 'NA') }))
+    .map((c) => ({ ...c, pointResults: c.pointResults.filter((p) => p.verdict?.toUpperCase() !== 'NA') }))
     .filter((c) => c.pointResults.length > 0);
   const pointCount = visible.reduce((n, c) => n + c.pointResults.length, 0);
   return (

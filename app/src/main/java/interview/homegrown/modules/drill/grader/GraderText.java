@@ -112,7 +112,11 @@ public class GraderText implements Grader {
             int idx = clampIndex(cg.conceptIndex, conceptIds.length);
             Long cid = conceptIdAt(conceptIds, idx);
             ConceptRole role = idx == 0 ? ConceptRole.PRIMARY : ConceptRole.ANCHOR;
-            List<PointVerdict> verdicts = cg.pointResults == null ? List.of() : cg.pointResults;
+            // 只展示真正参与本次计分的评分点；同时防御模型输出 "na" / " NA " 等格式差异。
+            // 老题可能把 followup 扩展内容错误塞进 points，判分器会将其标为 NA，因此前端隐藏。
+            List<PointVerdict> verdicts = cg.pointResults == null ? List.of() : cg.pointResults.stream()
+                    .filter(v -> v.verdict() == null || !"NA".equalsIgnoreCase(v.verdict().trim()))
+                    .toList();
 
             byConcepts.add(new ByConcept(cid, role.name(), verdicts,
                     nullToEmpty(cg.extraCorrect), nullToEmpty(cg.factualErrors)));

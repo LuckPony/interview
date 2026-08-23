@@ -610,31 +610,53 @@ function createWindow() {
 // —— 学习提醒：窗口隐藏到托盘后主进程仍存活，到点发送系统通知。——
 const REMINDER_FILE = () => path.join(app.getPath('userData'), 'learning-reminder.json');
 function readReminder() {
+  const defaults = { enabled: true, time: '20:00', frequency: 'DAILY', weekdays: [1, 2, 3, 4, 5] };
   try {
-    return { enabled: true, time: '20:00', ...JSON.parse(fs.readFileSync(REMINDER_FILE(), 'utf8')) };
+    const stored = JSON.parse(fs.readFileSync(REMINDER_FILE(), 'utf8'));
+    return normalizeReminder({ ...defaults, ...stored });
   } catch {
-    return { enabled: true, time: '20:00' };
+    return defaults;
   }
 }
-function writeReminder(value) {
-  const safe = {
+function normalizeReminder(value) {
+  const weekdays = Array.isArray(value?.weekdays)
+    ? [...new Set(value.weekdays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))]
+    : [];
+  return {
     enabled: value?.enabled !== false,
-    time: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(value?.time || '') ? value.time : '20:00',
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(value?.time || '') ? value.time : '20:00',
+    frequency: value?.frequency === 'WEEKLY' ? 'WEEKLY' : 'DAILY',
+    weekdays: weekdays.length ? weekdays : [1, 2, 3, 4, 5],
   };
+}
+function writeReminder(value) {
+  const safe = normalizeReminder(value);
   fs.writeFileSync(REMINDER_FILE(), JSON.stringify(safe));
   scheduleLearningReminder();
   return safe;
+}
+function nextReminderAt(cfg, now = new Date()) {
+  const [hour, minute] = cfg.time.split(':').map(Number);
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidate = new Date(now);
+    candidate.setDate(now.getDate() + offset);
+    candidate.setHours(hour, minute, 0, 0);
+    if (candidate <= now) continue;
+    if (cfg.frequency === 'WEEKLY' && !cfg.weekdays.includes(candidate.getDay())) continue;
+    return candidate;
+  }
+  const fallback = new Date(now);
+  fallback.setDate(now.getDate() + 1);
+  fallback.setHours(hour, minute, 0, 0);
+  return fallback;
 }
 function scheduleLearningReminder() {
   if (reminderTimer) clearTimeout(reminderTimer);
   reminderTimer = null;
   const cfg = readReminder();
   if (!cfg.enabled) return;
-  const [hour, minute] = cfg.time.split(':').map(Number);
   const now = new Date();
-  const next = new Date(now);
-  next.setHours(hour, minute, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
+  const next = nextReminderAt(cfg, now);
   reminderTimer = setTimeout(() => {
     const total = reminderTaskCounts.learn + reminderTaskCounts.review;
     if (total > 0 && Notification.isSupported()) {

@@ -130,13 +130,12 @@ public class GradingService {
      * 与 {@link #grade} 的区别：turns 已由 /chat 端点逐轮创建，这里不新建 turn，
      * 而是把所有用户回答拼接成 combined answer 交给 grader，然后把判分结果写回 round=0 的 turn。
      *
-     * <p><b>评分基准只取「得到答案之前」的回答</b>：run.answerRevealedRound 记录首次
-     * 索要答案/提示的轮次（V14 迁移 + chat 端点写入），该轮之后的回答可能是照着答案复述，
-     * 不计入量化评分；从未索要则拼接全部用户回答。若用户一上来就索要答案（没有揭示前的作答），
-     * 回退到整轮对话判分，让判分如实给出低分，而非报错。
+     * <p><b>评分基准只取「显式点击看答案之前」的回答</b>：答案揭示属于不可逆操作，不能依赖关键词猜测用户意图。
+     * 诸如“怎么实现”“直接把列表转为集合就行”既可能出现在索要答案中，也可能只是正常作答。
+     * 服务端因此只信任前端「看答案」按钮发送的显式 {@code reveal=true}，普通聊天文本永远不会改变揭示边界。
      *
      * @param userId 当前用户
-     * @param runId  作答 ID
+     * @param runId 作答 ID
      * @return 判分结果
      */
     @Transactional

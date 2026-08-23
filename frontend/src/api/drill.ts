@@ -302,7 +302,6 @@ export function chatStream(
   onDone: () => void,
   onError: (status?: number, message?: string) => void,
   onReveal?: () => void,
-  onGrade?: (grade: GradeView) => void,
 ): TutorStream {
   const token = getToken();
   const url = `${API_BASE_SSE}/api/drill/${runId}/chat`;
@@ -313,7 +312,7 @@ export function chatStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ rawAnswer, reveal }),
-  }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal, onGrade });
+  }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal });
 }
 
 /**
