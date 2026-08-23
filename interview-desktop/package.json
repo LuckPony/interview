@@ -20,7 +20,7 @@
     "postinstall": "node -e \"if (process.platform !== 'darwin') process.exit(0)\" && codesign --force --deep --sign - node_modules/electron/dist/Electron.app || true"
   },
   "devDependencies": {
-    "electron": "^31.3.1",
+    "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
   },
   "allowScripts": {
