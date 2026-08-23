@@ -1,5 +1,7 @@
 # 构建产物 / 缓存
 **/build
+**/node_modules
+**/dist
 .gradle
 # 本地 / 无关目录
 .git
@@ -10,6 +12,11 @@
 *.log
 .env
 .env.*
-frontend
+!frontend/.env.production
+!frontend/.env.web
+!*.example
 interview-desktop
 docs
+data
+*.mv.db
+*.trace.db

@@ -44,7 +44,7 @@ spring:
       max-request-size: 50MB
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration/common,classpath:db/migration/{vendor}
     # 开发环境容错：库里的 flyway_schema_history 与脚本历史可能存在漂移
     # （迁移脚本 V2~V12 曾未提交 git、V2 又被改动过），默认 validate 会在启动时直接崩。
     # 这里关闭启动校验：不再比对已应用迁移的 checksum / 缺失状态，

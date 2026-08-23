@@ -1,69 +1,123 @@
-# ===== 面霸 · 生产部署 =====
-# 核心学习功能只需 Postgres；Redis 供简历/面试会话等模块，MinIO 供简历文件存储（可选）。
-#
-# 用法：
-#   cp .env.example .env    # 然后按需填 API_KEY / APP_JWT_SECRET / MAIL_* 等
-#   docker compose -f docker-compose.prod.yml up -d --build
-#
-# 上线前务必改：POSTGRES_PASSWORD、APP_JWT_SECRET。
+# 面霸生产环境：PostgreSQL、Redis、MinIO、Spring Boot 后端和 Web 前端。
+# PostgreSQL/Redis/MinIO 如需公网访问，请务必在云平台设置来源 IP 白名单。
+version: "3.8"
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mianba}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
       POSTGRES_DB: ${POSTGRES_DB:-interview}
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-0.0.0.0}:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mianba} -d ${POSTGRES_DB:-interview}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-interview}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_BIND_ADDRESS:-0.0.0.0}:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_BIND_ADDRESS:-0.0.0.0}:${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_BIND_ADDRESS:-0.0.0.0}:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${APP_STORAGE_BUCKET:-interview}
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "23333:23333"
+      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_HOST_PORT:-23333}:23333"
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER:-mianba}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-interview}
+      APP_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-interview}
+      APP_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      APP_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+      APP_DATASOURCE_DRIVER: org.postgresql.Driver
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      # —— LLM（可选；留空则服务器不带共享 key，每个用户用自己的 key，见 README「取消默认 key」）——
-      API_KEY: ${API_KEY:-}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      APP_STORAGE_ENDPOINT: http://minio:9000
+      APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
+      APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}
       APP_SWAGGER_ENABLED: ${APP_SWAGGER_ENABLED:-false}
       MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-      PROVIDER_KIMI_API_KEY: ${PROVIDER_KIMI_API_KEY:-}
-      # —— 鉴权 ——
-      APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}
-      # —— 邮箱验证（可选）——
       MAIL_HOST: ${MAIL_HOST:-}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
-      # —— 对象存储 MinIO（可选，简历上传用；不配则上传功能不可用，核心功能不受影响）——
-      APP_STORAGE_ENDPOINT: ${APP_STORAGE_ENDPOINT:-}
-      APP_STORAGE_ACCESS_KEY: ${APP_STORAGE_ACCESS_KEY:-}
-      APP_STORAGE_SECRET_KEY: ${APP_STORAGE_SECRET_KEY:-}
-      APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_BASE: ""
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-18080}:80"
+    depends_on:
+      - backend
 
 volumes:
   pg_data:
   redis_data:
+  minio_data:
