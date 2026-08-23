@@ -1,7 +1,7 @@
 {
   "name": "yan-drill-web",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.3.8",
   "type": "module",
   "description": "面霸 · AI 学习/面试备考前端（桌面级静态 SPA）",
   "scripts": {
