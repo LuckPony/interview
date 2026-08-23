@@ -49,6 +49,14 @@ public class InterviewSessionEntity {
     @Column(name = "llm_provider", length = 50)
     private String llmProvider;
 
+    /** 面试方式：TEXT 文字 / VOICE 语音 */
+    @Column(name = "mode", length = 10)
+    private String mode = "TEXT";
+
+    /** 关联学习方向 ID（逗号分隔，可多选/可空） */
+    @Column(name = "plan_ids", length = 255)
+    private String planIds;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

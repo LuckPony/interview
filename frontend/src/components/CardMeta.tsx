@@ -1,13 +1,19 @@
 import type { KnowledgeCard } from '../api/types';
 
-/** 下次复习时间的统一展示：今天(红) / 明天 / N天后(绿) */
-export function formatDue(dueAt: string | null): { text: string; urgent: boolean } | null {
-    if (!dueAt) return null;
+/** 距下次复习的自然日差（今天=0，明天=1，N 天后=N） */
+export function daysUntilDue(dueAt: string | null): number {
+    if (!dueAt) return 0;
     const now = new Date();
     const due = new Date(dueAt);
     const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const startDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-    const days = Math.round((startDue - startToday) / 86400000);
+    return Math.round((startDue - startToday) / 86400000);
+}
+
+/** 下次复习时间的统一展示：今天(红) / 明天 / N天后(绿) */
+export function formatDue(dueAt: string | null): { text: string; urgent: boolean } | null {
+    if (!dueAt) return null;
+    const days = daysUntilDue(dueAt);
     if (days <= 0) return { text: '今天', urgent: true }; // 已到期 / 今天就该复习
     if (days === 1) return { text: '明天', urgent: false };
     return { text: `${days}天后`, urgent: false };

@@ -5,7 +5,9 @@ import { AppShell } from './components/AppShell';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Drill } from './pages/Drill';
-import { Rehearsal } from './pages/Rehearsal';
+import { Interview } from './pages/Interview';
+import { InterviewHistory } from './pages/InterviewHistory';
+import { InterviewDetail } from './pages/InterviewDetail';
 import { Profile } from './pages/Profile';
 import { Notes } from './pages/Notes';
 import { ReviewPage } from './pages/Review';
@@ -63,7 +65,27 @@ export function App() {
         element={
           <RequireAuth>
             <AppShell>
-              <Rehearsal />
+              <Interview />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/rehearsal/history"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <InterviewHistory />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/rehearsal/history/:id"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <InterviewDetail />
             </AppShell>
           </RequireAuth>
         }

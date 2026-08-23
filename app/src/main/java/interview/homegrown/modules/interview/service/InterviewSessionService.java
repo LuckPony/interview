@@ -12,6 +12,7 @@ import interview.homegrown.modules.interview.repository.InterviewAnswerRepositor
 import interview.homegrown.modules.interview.repository.InterviewSessionRepository;
 import interview.homegrown.modules.resume.model.ResumeEntity;
 import interview.homegrown.modules.resume.repository.ResumeRepository;
+import interview.homegrown.modules.drill.repository.ConceptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ public class InterviewSessionService {
     private final InterviewSkillService skillService;
     private final InterviewSessionRepository sessionRepository;
     private final InterviewAnswerRepository answerRepository;
+    private final ConceptRepository conceptRepo;
     private final ObjectMapper objectMapper;
     private final RedisService redisService;
 
@@ -57,6 +59,7 @@ public class InterviewSessionService {
                                    InterviewSkillService skillService,InterviewSessionRepository sessionRepository,
                                    InterviewPersistenceService persistenceService,InterviewQuestionService questionService,
                                    InterviewEvaluateService evaluateService,InterviewAnswerRepository answerRepository,
+                                   ConceptRepository conceptRepo,
                                    ObjectMapper objectMapper,RedisService redisService) {
 
         this.resumeRepository = resumeRepository;
@@ -66,6 +69,7 @@ public class InterviewSessionService {
         this.skillService = skillService;
         this.sessionRepository = sessionRepository;
         this.answerRepository = answerRepository;
+        this.conceptRepo = conceptRepo;
         this.objectMapper = objectMapper;
         this.redisService = redisService;
     }
@@ -74,24 +78,47 @@ public class InterviewSessionService {
 
     public InterviewSessionDTO createSession(CreateSessionRequest request){
 
-        //校验skill
-        InterviewSkillProperties.SkillConfig skill = skillService.getSkill(request.skillId());
+        // 面试依据校验：简历 与 学习方向 必须二选一（可都选）
+        boolean hasResume = request.resumeId() != null;
+        boolean hasPlans = request.planIds() != null && !request.planIds().isEmpty();
+        if (!hasResume && !hasPlans) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请上传简历或选择至少一个学习方向，才能开始面试");
+        }
 
-        //确定题目数量
-        int questionCount = request.questionCount() !=null ? request.questionCount() : skill.getDefaultQuestionCount();
+        //确定题目数量（默认 5 题，约 30-40 分钟）
+        int questionCount = request.questionCount() != null ? request.questionCount() : 5;
 
         //确定难度
-        InterviewDifficulty difficulty = request.difficulty() !=null ? request.difficulty() : InterviewDifficulty.MIDDLE;
+        InterviewDifficulty difficulty = request.difficulty() != null ? request.difficulty() : InterviewDifficulty.MIDDLE;
 
-        //关联简历文本
+        //关联简历文本（可选）
         Long resumeId = request.resumeId();
-        String resumeText = resumeRepository.findById(resumeId)
-                .map(ResumeEntity::getResumeText)
-                .orElse("");
+        String resumeText = resumeId != null
+                ? resumeRepository.findById(resumeId)
+                        .map(ResumeEntity::getResumeText)
+                        .orElse("")
+                : "";
 
-        //LLM出题
-        InterviewQuestionResult questionResult = questionService.generateQueations(request.skillId(),difficulty,questionCount,
-                                                                                     resumeText,request.llmProvider()   );
+        //学习方向知识点（可选，多选合并去重）
+        List<String> planConcepts = (request.planIds() == null || request.planIds().isEmpty())
+                ? List.of()
+                : request.planIds().stream()
+                        .distinct()
+                        .flatMap(pid -> conceptRepo.findByStudyPlanId(pid).stream())
+                        .map(c -> c.getTopic() + "/" + c.getName())
+                        .distinct()
+                        .limit(200)
+                        .toList();
+
+        //skill 名称（可选：方向由学习方向/简历决定时可空）
+        String skillName = (request.skillId() != null && !request.skillId().isBlank())
+                ? skillService.getSkill(request.skillId()).getName()
+                : "";
+
+        //LLM出题：简历 70% + 学习方向 30%
+        InterviewQuestionResult questionResult = questionService.generateQuestions(
+                skillName, difficulty, questionCount, resumeText, planConcepts,
+                hasResume && hasPlans, request.llmProvider());
 
         //创建会话实体并落库
         InterviewSessionEntity session = new InterviewSessionEntity();
@@ -103,13 +130,17 @@ public class InterviewSessionService {
         session.setTotalQuestions(questionResult.questions().size());//这里之所以不用questionCount是因为不能百分百相信Ai，以实际为主
         session.setCurrentQuestionIndex(0);
         session.setLlmProvider(request.llmProvider());
+        session.setMode(request.mode() != null && !request.mode().isBlank() ? request.mode().toUpperCase() : "TEXT");
+        session.setPlanIds(hasPlans
+                ? request.planIds().stream().map(String::valueOf).distinct().collect(Collectors.joining(","))
+                : null);
         persistenceService.save(session);
 
         //题目列表缓存到Redis
         cacheQuestions(session.getId(),questionResult);
 
-        log.info("面试会话创建成功: sessionId={}, skillId={}, 题目数={}",
-                session.getId(), request.skillId(), questionResult.questions().size());
+        log.info("面试会话创建成功: sessionId={}, 题目数={}, mode={}, resume={}, plans={}",
+                session.getId(), questionResult.questions().size(), session.getMode(), hasResume, hasPlans);
         return toDetailDTO(session);
     }
 
@@ -256,13 +287,14 @@ public class InterviewSessionService {
                     return new InterviewListItemDTO(
                             s.getId(),
                             s.getSkillId(),
-                            skillService.getSkill(s.getSkillId()).getName(),
+                            skillNameOf(s),
                             s.getDifficulty(),
                             s.getStatus(),
                             s.getTotalQuestions(),
                             answered,
                             s.getTotalScore(),
-                            s.getCreatedAt()
+                            s.getCreatedAt(),
+                            s.getMode() != null ? s.getMode() : "TEXT"
                     );
                 })
                 .toList();
@@ -291,7 +323,7 @@ public class InterviewSessionService {
         return new InterviewSessionDTO(
                 s.getId(),
                 s.getSkillId(),
-                skillService.getSkill(s.getSkillId()).getName(),
+                skillNameOf(s),
                 s.getDifficulty(),
                 s.getStatus(),
                 s.getTotalQuestions(),
@@ -299,8 +331,34 @@ public class InterviewSessionService {
                 s.getTotalScore(),
                 s.getLlmProvider(),
                 s.getCreatedAt(),
-                answers
+                answers,
+                s.getMode() != null ? s.getMode() : "TEXT",
+                s.getPlanIds(),
+                parseEvaluation(s.getEvaluationJson())
         );
+    }
+
+    /** 解析评估 JSON（容错：未评估/损坏时返回 null） */
+    private InterviewEvaluationResult parseEvaluation(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, InterviewEvaluationResult.class);
+        } catch (Exception e) {
+            log.warn("评估 JSON 解析失败（忽略）: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** skillId 可能为空（方向由简历/学习方向决定），容错返回可读名称 */
+    private String skillNameOf(InterviewSessionEntity s) {
+        if (s.getSkillId() != null && !s.getSkillId().isBlank()) {
+            try {
+                return skillService.getSkill(s.getSkillId()).getName();
+            } catch (Exception ignored) {
+                // skill 配置可能已变更，回退
+            }
+        }
+        return "综合面试";
     }
 
     private InterviewQuestionResult readCachedQuestion(String sessionId){
