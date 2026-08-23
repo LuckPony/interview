@@ -46,6 +46,7 @@ out/
 runtime/
 runtime-win/
 app/data/
+data/
 
 ### macOS ###
 .DS_Store

@@ -14,7 +14,7 @@ import java.util.Map;
 
 /*
   演示用 Controller —— 验证数据库连通性
-  （Redis / MinIO 已移除，单机自包含只依赖嵌入式 H2）
+  （核心运行时数据库为 PostgreSQL）
  */
 @RestController
 @RequestMapping("/api/demo")

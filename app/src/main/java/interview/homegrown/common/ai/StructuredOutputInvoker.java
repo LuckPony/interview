@@ -6,7 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 结构化输出调用器
@@ -64,7 +66,7 @@ public class StructuredOutputInvoker {
 
         // 两条通道都不可用（用户也未配置 key）时提前给明确报错，避免走到「LLM 返回为空」误导排查。
         if (client == null && (rawClient == null || !rawClient.availableForCurrentRequest())) {
-            throw new IllegalStateException("尚未配置 API Key，请到「设置」页填写后重试");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "尚未配置 API Key，请到「设置」页填写后重试");
         }
 
         int maxAttempts = config.getStructured().getMaxAttempts();

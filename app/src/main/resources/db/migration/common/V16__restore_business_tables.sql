@@ -98,6 +98,6 @@ CREATE TABLE IF NOT EXISTS knowledge_base_document (
 
 -- ---------- 说明：pgvector 向量存储与触发器已移除 ----------
 -- 原 vector_store 表（Spring AI pgvector 标准结构 + HNSW 索引）依赖 pgvector 扩展，
--- 嵌入式 H2 不支持且当前业务未使用（反重复走 trigram，见 NgramSimilarityGuard），已整体删除。
+-- 当前业务未使用（反重复走 trigram，见 NgramSimilarityGuard），已整体删除。
 -- updated_at 触发器（plpgsql）同样移除：resume / interview_session 已在实体侧用 @PreUpdate 维护，
 -- 其余无实体的业务表（knowledge_base / interview_schedule）updated_at 由默认值维护即可。

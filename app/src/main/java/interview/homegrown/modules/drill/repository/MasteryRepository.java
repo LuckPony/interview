@@ -20,9 +20,7 @@ public interface MasteryRepository extends JpaRepository<Mastery, Long> {
 
     /**
      * upsert：首次插入，重复则覆盖（深度画像与排程都靠它）。
-     * 纯 JPA 实现（先查后 save），不再依赖 H2 方言的 MERGE ... KEY() 原生 SQL ——
-     * 该语法在 PostgreSQL 下直接语法错误，会导致卡片复习 / 练习判分的掌握度同步静默 500。
-     * 先查后 save 在 H2 与 PostgreSQL 下均可用。
+     * 纯 JPA 实现（先查后 save），避免依赖数据库方言专有的 upsert 语法。
      */
     @Transactional
     default void upsert(Long userId, Long conceptId, int level, String grade, Instant dueAt) {

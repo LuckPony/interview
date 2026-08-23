@@ -155,7 +155,7 @@ function spawnBackend() {
 
   if (app.isPackaged) {
     // 打包版：拉起内嵌精简 JRE + fat jar（electron-builder extraResources 塞进 Resources/runtime）
-    // cwd 指向 userData：H2 数据库（./data/interview）与本地文件（./data/files）都落用户数据目录
+    // cwd 指向 userData：本地文件（./data/files）落用户数据目录；数据库使用外部 PostgreSQL。
     // —— .app 包内只读，绝不能往里写。
     const javaBin = path.join(
       process.resourcesPath,

@@ -50,10 +50,7 @@ CREATE TABLE IF NOT EXISTS drill_run (
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 先创建跨数据库兼容的普通列；V28 按数据库类型升级为物理约束：
--- H2 使用生成列 + 唯一索引，PostgreSQL 使用部分唯一索引。
-ALTER TABLE drill_run ADD COLUMN active_marker BIGINT;
-CREATE UNIQUE INDEX IF NOT EXISTS uni_drill_run_active ON drill_run (active_marker);
+-- PostgreSQL 下的“每个用户最多一个 READY/ANSWERING run”物理闸门由 V28 的部分唯一索引创建。
 
 -- ============ 4. 判分结果：grade_result ============
 -- by_concept 统一格式：[{conceptId, role, pointResults[], extraCorrect[], factualErrors[]}]
@@ -84,8 +81,7 @@ CREATE TABLE IF NOT EXISTS mastery (
 );
 
 -- ============ updated_at 维护 ============
--- 原为 PostgreSQL plpgsql 触发器；嵌入式 H2 无 plpgsql，已改为实体侧 @UpdateTimestamp
--- （domain 各实体 updatedAt 字段）。此处不再创建函数与触发器。
+-- updated_at 由 domain 各实体的 updatedAt 字段维护，此处不再创建函数与触发器。
 
 -- ============ 种子概念（让 demo 可端到端跑通） ============
 -- 一个主题 × 五层，足以演示"信息茧房破除（逼出 L3-L5）"与"深度画像"

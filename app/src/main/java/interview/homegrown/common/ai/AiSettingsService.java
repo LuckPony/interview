@@ -70,8 +70,11 @@ public class AiSettingsService {
         AiConfig merged = new AiConfig(cfg.provider(), cfg.baseUrl(), finalKey, cfg.model(), cfg.temperature());
         try {
             jdbc.update("""
-                    MERGE INTO user_ai_setting (user_id, settings_json, updated_at)
-                    KEY(user_id) VALUES (?, ?, now())
+                    INSERT INTO user_ai_setting (user_id, settings_json, updated_at)
+                    VALUES (?, ?, now())
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET settings_json = EXCLUDED.settings_json,
+                        updated_at = now()
                     """, userId, objectMapper.writeValueAsString(merged));
         } catch (Exception e) {
             log.warn("保存 AI 设置失败: {}", e.getMessage());
