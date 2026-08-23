@@ -4,6 +4,9 @@ import type { KnowledgeCard } from './types';
 export interface ChatMsg { role: 'user' | 'ai'; content: string }
 export interface AskStream { cancel: () => void }
 
+/** 桌面端构建时 VITE_API_BASE 烘焙为后端地址；网页态为空走 dev 代理（相对 /api）。 */
+const API_BASE_SSE: string = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+
 /**
  * Knowledge 模块后端统一返回 Result<{code, message, data}> 包装
  * （与 Drill 模块直接返回原始数据不同），且业务失败时 HTTP 仍是 200、只把 code 置为非 200。
@@ -55,7 +58,7 @@ export function askStream(
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 ...(llmKey ? { 'X-LLM-Key': llmKey } : {}),
             };
-            const res = await fetch('/api/knowledge/ask', {
+            const res = await fetch(`${API_BASE_SSE}/api/knowledge/ask`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ question }),

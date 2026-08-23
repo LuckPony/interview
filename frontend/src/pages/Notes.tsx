@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
-import { CardMeta } from '../components/CardMeta';
+import { CardMeta, daysUntilDue } from '../components/CardMeta';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
 import type {DebtView, KnowledgeCard, PlanView} from '../api/types';
@@ -48,6 +48,9 @@ export function Notes() {
 
   const [tab, setTab] = useState<'debt' | 'card'>('debt');
   const [dueCards, setDueCards] = useState<KnowledgeCard[]>([]);
+  // 复习反馈后自动消失的轻提示（无需确认）
+  const [toast, setToast] = useState<{ kind: 'good' | 'bad'; text: string } | null>(null);
+  const toastTimer = useRef<number>();
   // 复习前默认只显示标题；查看状态：hidden → summary(摘要) → detail(AI 完整回答)
   const [reveal, setReveal] = useState<Map<number, 'summary' | 'detail'>>(new Map());
 
@@ -68,12 +71,23 @@ export function Notes() {
     });
   };
 
-  // 卡片操作：复习反馈后本地立即更新该卡片（次数 +1、下次复习时间按规则变化），不整表重拉
+  const showToast = (kind: 'good' | 'bad', text: string) => {
+    setToast({ kind, text });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1500);
+  };
+
+  // 卡片操作：复习后立即从待复习列表移除（卡片不再占用待复习），并弹出「下次复习时间」轻提示
   const reviewCard = async (id: number, mastered: boolean) => {
     setErr('');
     try {
       const updated = await knowledgeApi.review(id, mastered);
-      setDueCards(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+      setDueCards(prev => prev.filter(c => c.id !== id));
+      const days = daysUntilDue(updated.dueAt);
+      showToast(
+        mastered ? 'good' : 'bad',
+        mastered ? `已掌握，${days} 天后再复习` : '没掌握，明天继续复习',
+      );
     } catch (e) {
       setErr(msg(e));
     }
@@ -159,6 +173,16 @@ export function Notes() {
           {dueCards.length > 0 && <span className="notes-tab-badge">{dueCards.length}</span>}
         </button>
       </nav>
+
+      {/* 复习反馈轻提示：无确认、自动消失 */}
+      {toast && (
+        <div className={'notes-toast notes-toast-' + toast.kind}>
+          {toast.kind === 'good'
+            ? <Check size={15} strokeWidth={2} />
+            : <RefreshCw size={15} strokeWidth={2} />}
+          {toast.text}
+        </div>
+      )}
 
       {/* ===== Tab 1：练习欠账（现有逻辑） ===== */}
       {tab === 'debt' && (

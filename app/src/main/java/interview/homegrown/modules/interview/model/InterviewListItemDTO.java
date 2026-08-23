@@ -12,6 +12,8 @@ public record InterviewListItemDTO(
         int totalQuestions,
         int answeredCount,
         Integer totalScore,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        //面试方式：TEXT 文字 / VOICE 语音
+        String mode
 ) {
 }

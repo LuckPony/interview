@@ -16,6 +16,12 @@ public record InterviewSessionDTO(
         Integer totalScore,
         String llmProviders,
         LocalDateTime createdAt,
-        List<InterviewAnswerEntity> answers
+        List<InterviewAnswerEntity> answers,
+        //面试方式：TEXT 文字 / VOICE 语音
+        String mode,
+        //关联学习方向 ID（逗号分隔，可空）
+        String planIds,
+        //评估结果（解析自 evaluation_json，未评估时为 null）
+        InterviewEvaluationResult evaluation
 ) {
 }

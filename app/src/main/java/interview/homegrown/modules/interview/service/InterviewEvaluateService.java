@@ -54,18 +54,19 @@ public class InterviewEvaluateService {
         }
 
         String userPrompt = """
-                面试方向：%s
+                面试方向：__SKILL__
                 
                 以下是面试问答记录：
 
-                %s
-
+                __QA__
                 评估要求：
                 1. totalScore 为 0-100 的整数，代表整体面试表现
                 2. questionEvaluations 与题目一一对应，每个包含 score(0-100) 和 feedback
                 3. strengths 给出 2-3 条候选人的优势
                 4. improvements 给出 2-3 条具体的改进建议
-                """.formatted(skillName,qaText);
+                """
+                .replace("__SKILL__", skillName == null ? "" : skillName)
+                .replace("__QA__", qaText.toString());
 
         InterviewEvaluationResult result = invoker.invoke(
                 SYSTEM_PROMPT,
