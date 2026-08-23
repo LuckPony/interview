@@ -279,3 +279,30 @@ dialog::backdrop {
   font-weight: 500;
 }
 .ps-check { color: var(--cinnabar); }
+
+/* —— 知识卡片复习元信息（CardMeta，对话沉淀 / 内化复盘通用） —— */
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-meta-due {
+  font-weight: 500;
+}
+/* 今天就该复习 → 红色警示；其余（明天 / N天后）→ 绿色 */
+.card-meta-due.urgent {
+  color: var(--bad);
+  font-weight: 600;
+}
+.card-meta-due:not(.urgent) {
+  color: var(--good);
+}

@@ -376,51 +376,45 @@
   white-space: pre-wrap;
 }
 
-/* —— 顶部：内化复盘类型下拉框 —— */
-.notes-select-wrap {
+/* —— 顶部：内化复盘类型切换（下划线 tab，与学习计划页同款） —— */
+.notes-tabs {
   display: flex;
-  align-items: center;
-  gap: var(--s-3);
+  gap: 0;
+  border-bottom: 1px solid var(--line-strong);
   margin-bottom: var(--s-5);
-  position: relative;
-  width: fit-content;
+  overflow-x: auto;
 }
-.notes-select {
-  appearance: none;
-  -webkit-appearance: none;
-  font-family: var(--font-sans);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--paper-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  padding: 8px 38px 8px var(--s-4);
+.notes-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+  white-space: nowrap;
+  transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
 }
-.notes-select:hover {
-  border-color: var(--cinnabar);
+.notes-tab:hover {
+  color: var(--ink);
 }
-.notes-select:focus {
-  outline: none;
-  border-color: var(--cinnabar);
-  box-shadow: 0 0 0 3px var(--cinnabar-wash);
+.notes-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--cinnabar);
+  font-weight: 600;
 }
-.notes-select-caret {
-  position: absolute;
-  right: var(--s-3);
-  pointer-events: none;
-  color: var(--ink-faint);
-}
-.notes-select-count {
+.notes-tab-badge {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--cinnabar-deep);
   background: var(--cinnabar-wash);
   border: 1px solid color-mix(in oklch, var(--cinnabar) 35%, transparent);
   border-radius: 99px;
-  padding: 2px 10px;
+  padding: 1px 7px;
 }
 
 /* —— 知识卡片（内化复盘）：复习卡样式，默认只显示标题 —— */
@@ -484,4 +478,48 @@
   align-items: center;
   gap: var(--s-2);
   flex-wrap: wrap;
+}
+
+/* —— 复习反馈按钮美化（没掌握 / 掌握了） —— */
+.review-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  border-radius: 99px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease-out), box-shadow 0.2s var(--ease-out),
+    background 0.18s var(--ease-out), border-color 0.18s var(--ease-out),
+    color 0.18s var(--ease-out);
+}
+.review-btn:hover {
+  transform: translateY(-1px);
+}
+.review-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+.review-btn-no {
+  color: var(--bad);
+  background: var(--paper-2);
+  border: 1px solid color-mix(in oklch, var(--bad) 38%, transparent);
+}
+.review-btn-no:hover {
+  color: var(--on-accent);
+  background: var(--bad);
+  border-color: var(--bad);
+  box-shadow: 0 6px 14px -8px color-mix(in oklch, var(--bad) 55%, transparent);
+}
+.review-btn-yes {
+  color: var(--on-accent);
+  background: var(--cinnabar);
+  border: 1px solid var(--cinnabar);
+  box-shadow: 0 6px 14px -8px color-mix(in oklch, var(--cinnabar) 55%, transparent);
+}
+.review-btn-yes:hover {
+  background: var(--cinnabar-deep);
+  border-color: var(--cinnabar-deep);
+  box-shadow: 0 8px 18px -8px color-mix(in oklch, var(--cinnabar) 60%, transparent);
 }

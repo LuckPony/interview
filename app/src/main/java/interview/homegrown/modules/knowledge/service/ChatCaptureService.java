@@ -83,6 +83,14 @@ public class ChatCaptureService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "这段对话没有值得沉淀的内容，未生成卡片");
         }
 
+        // 卡片问题 = 会话的第一个问题（用户首条消息），保证卡片标题就是这段对话的起点
+        String firstQuestion = conversation.stream()
+                .filter(m -> "user".equalsIgnoreCase(m.role()))
+                .map(Message::content)
+                .filter(s -> s != null && !s.isBlank())
+                .findFirst()
+                .orElse(null);
+
         //尝试关联概念（不相关返回NULL,不影响画像）
         Long conceptId = (draft.tags() == null || draft.tags().isEmpty())
                 ? null
@@ -91,15 +99,23 @@ public class ChatCaptureService {
         //落库
         KnowledgeCard card = new KnowledgeCard();
         card.setUserId(userId);
-        card.setQuestion(stripFieldPrefix(draft.question()));
+        card.setQuestion(firstQuestion != null && !firstQuestion.isBlank()
+                ? firstQuestion.trim()
+                : stripFieldPrefix(draft.question()));
         card.setAnswer(stripFieldPrefix(draft.answer()));
-        // 详细答案：对话里 AI 的完整回复（可能多轮，按序拼接），供「查看详细答案」展示
-        String detail = conversation.stream()
-                .filter(m -> "ai".equalsIgnoreCase(m.role()))
-                .map(Message::content)
-                .filter(s -> s != null && !s.isBlank())
-                .collect(Collectors.joining("\n\n"));
-        card.setDetail(detail.isBlank() ? null : detail);
+        // 详细答案：完整对话线 —— 问题用「加粗放大带序号的标题」、回答直接跟在后面（不带角色前缀）
+        StringBuilder detail = new StringBuilder();
+        int turn = 0;
+        for (Message m : conversation) {
+            if (m.content() == null || m.content().isBlank()) continue;
+            if ("user".equalsIgnoreCase(m.role())) {
+                turn++;
+                detail.append("\n\n### ").append(turn).append(". ").append(m.content().trim()).append("\n\n");
+            } else {
+                detail.append(m.content().trim());
+            }
+        }
+        card.setDetail(detail.toString().isBlank() ? null : detail.toString().trim());
         card.setTags(draft.tags() == null
                 ? ""
                 : draft.tags().stream()

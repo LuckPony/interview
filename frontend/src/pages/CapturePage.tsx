@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Send, Sparkles, X, PencilLine, Search, ChevronDown, ChevronUp, EyeOff, FileText } from 'lucide-react';
+import { Send, Sparkles, X, PencilLine, Search, ChevronDown, ChevronUp, EyeOff, FileText, RotateCcw } from 'lucide-react';
 import { knowledgeApi, askStream, type ChatMsg } from '../api/knowledge';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { CardMeta } from '../components/CardMeta';
 import type { KnowledgeCard } from '../api/types';
 import { ApiError } from '../api/client';
 import './CapturePage.css';
@@ -15,6 +16,27 @@ function msg(e: unknown): string {
 
 /** 卡片每页条数 */
 const PAGE_SIZE = 8;
+
+/** 会话级持久化：切换路由再返回时恢复对话与卡片（同一标签页内有效） */
+const SESSION_MSGS = 'yan.capture.msgs';
+const SESSION_CARDS = 'yan.capture.cards';
+
+/** 模块级工具：从会话存储读取；实际读取在 useState 惰性初始化里（每次组件挂载都执行，SPA 路由回来也能拿到最新值） */
+function loadSession<T>(key: string): T | null {
+    try {
+        const raw = sessionStorage.getItem(key);
+        return raw ? JSON.parse(raw) as T : null;
+    } catch { return null; }
+}
+
+function initialMsgs(): ChatMsg[] {
+    const m = loadSession<ChatMsg[]>(SESSION_MSGS);
+    if (!m) return [];
+    let list = m;
+    // 去掉尾部未完成的空 AI 消息（流中断残留，避免恢复后卡在「思考中」）
+    while (list.length > 0 && list[list.length - 1].role === 'ai' && !list[list.length - 1].content.trim()) list = list.slice(0, -1);
+    return list;
+}
 
 /** 空状态示例问题（兜底：没有卡片/标签时用）；有标签时按标签频次动态推荐 */
 const DEFAULT_SUGGESTIONS = [
@@ -75,8 +97,8 @@ function CardTags({ tags }: { tags: string[] }) {
 interface EditForm { question: string; answer: string; tags: string; detail: string }
 
 export function CapturePage() {
-    const [msgs, setMsgs] = useState<ChatMsg[]>([]);
-    const [cards, setCards] = useState<KnowledgeCard[]>([]);
+    const [msgs, setMsgs] = useState<ChatMsg[]>(initialMsgs);
+    const [cards, setCards] = useState<KnowledgeCard[]>(() => loadSession<KnowledgeCard[]>(SESSION_CARDS) ?? []);
     const [input, setInput] = useState('');
     const [streaming, setStreaming] = useState(false);
     const [auto, setAuto] = useState(false);
@@ -98,10 +120,20 @@ export function CapturePage() {
     const streamRef = useRef<{ cancel: () => void } | null>(null);
     const composingRef = useRef(false);
 
+    const hadSessionCards = useRef(cards.length > 0);
     useEffect(() => {
-        knowledgeApi.list().then(setCards).catch(() => {});
+        // 每次进入都从后端刷新卡片（复习次数/下次复习时间等以服务端为准；快照仅用于首帧渲染）
+        if (hadSessionCards.current) {
+            knowledgeApi.list().then(cs => { if (cs.length) setCards(cs); }).catch(() => {});
+        } else {
+            knowledgeApi.list().then(setCards).catch(() => {});
+        }
         return () => streamRef.current?.cancel();
     }, []);
+
+    // 变更即写回会话存储（msgs 为空等常态也写，保证与真实状态一致）
+    useEffect(() => { sessionStorage.setItem(SESSION_MSGS, JSON.stringify(msgs)); }, [msgs]);
+    useEffect(() => { sessionStorage.setItem(SESSION_CARDS, JSON.stringify(cards)); }, [cards]);
 
     // ===== 卡片筛选 + 分页（本地计算，翻页/筛选零延迟） =====
     const allTags = useMemo(() => {
@@ -195,6 +227,15 @@ export function CapturePage() {
             // 无价值对话 / 未配置 key / LLM 失败都会走到这里：明确提示，不清空对话，方便用户重试
             setErr(msg(e));
         }
+    };
+
+    /** 不存卡、直接开新对话：清空当前对话（持久化随之写回空） */
+    const newChat = () => {
+        if (msgs.length === 0 || streaming) return;
+        if (!window.confirm('当前对话还没有保存成卡片，确定开始新对话吗？')) return;
+        streamRef.current?.cancel();
+        setMsgs([]);
+        setErr('');
     };
 
     useEffect(() => {
@@ -314,6 +355,9 @@ export function CapturePage() {
                                 : '有价值的对话可一键存成知识卡片'}
                     </span>
                     <div className="capture-composer-actions">
+                        <Button variant="ghost" onClick={newChat} disabled={msgs.length === 0 || streaming}>
+                            <RotateCcw size={15} strokeWidth={1.6} /> 新对话
+                        </Button>
                         <Button onClick={() => ask(input)} disabled={streaming || !input.trim()}>
                             <Send size={16} strokeWidth={1.6} /> 提问
                         </Button>
@@ -395,6 +439,7 @@ export function CapturePage() {
                                             )
                                         )}
                                         {c.tags.length > 0 && <CardTags tags={c.tags} />}
+                                        <CardMeta card={c} />
                                         <div className="card-ops">
                                             {c.detail && (
                                                 <button className="card-view" onClick={() => toggleDetail(c.id)}>
