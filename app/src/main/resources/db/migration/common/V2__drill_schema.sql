@@ -50,12 +50,9 @@ CREATE TABLE IF NOT EXISTS drill_run (
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 物理闸门：同一用户同时只允许一个未闭环的作答（READY/ANSWERING）。
--- H2 不支持部分唯一索引（WHERE 条件），改用生成列 + 普通唯一索引实现等价语义：
--- active_marker 仅在 status IN ('READY','ANSWERING') 时等于 user_id，否则为 NULL；
--- 唯一索引对 NULL 不冲突，因此只有「活跃」行才受 user_id 唯一约束。
-ALTER TABLE drill_run ADD COLUMN active_marker BIGINT
-    GENERATED ALWAYS AS (CASE WHEN status IN ('READY','ANSWERING') THEN user_id ELSE NULL END);
+-- 先创建跨数据库兼容的普通列；V28 按数据库类型升级为物理约束：
+-- H2 使用生成列 + 唯一索引，PostgreSQL 使用部分唯一索引。
+ALTER TABLE drill_run ADD COLUMN active_marker BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS uni_drill_run_active ON drill_run (active_marker);
 
 -- ============ 4. 判分结果：grade_result ============
