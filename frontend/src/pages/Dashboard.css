@@ -87,9 +87,14 @@
 
 .dash-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--s-4);
   margin-bottom: var(--s-7);
+}
+@media (max-width: 900px) {
+  .dash-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .stat {
   display: flex;
@@ -106,6 +111,10 @@
 .stat-label {
   font-size: var(--fs-sm);
   color: var(--ink-soft);
+}
+.stat-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
 }
 .stat .dot {
   position: absolute;

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, ChevronDown, FileText } from 'lucide-react';
+import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { CardMeta } from '../components/CardMeta';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
 import type {DebtView, KnowledgeCard, PlanView} from '../api/types';
@@ -67,11 +68,15 @@ export function Notes() {
     });
   };
 
-  // 卡片操作
-  // 卡片操作：复习反馈后刷新列表
+  // 卡片操作：复习反馈后本地立即更新该卡片（次数 +1、下次复习时间按规则变化），不整表重拉
   const reviewCard = async (id: number, mastered: boolean) => {
-    await knowledgeApi.review(id, mastered);
-    loadDue();
+    setErr('');
+    try {
+      const updated = await knowledgeApi.review(id, mastered);
+      setDueCards(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+    } catch (e) {
+      setErr(msg(e));
+    }
   };
 
   useEffect(() => {
@@ -136,22 +141,24 @@ export function Notes() {
 
       {err && <div className="banner info">{err}</div>}
 
-      {/* ===== 顶部：下拉框选择「学习中 / 知识卡片」 ===== */}
-      <div className="notes-select-wrap">
-        <select
-          className="notes-select"
-          value={tab}
-          onChange={(e) => setTab(e.target.value as 'debt' | 'card')}
-          aria-label="选择内化复盘类型"
+      {/* ===== 顶部：tab 切换「学习中 / 知识卡片」（与学习计划页同款下划线式） ===== */}
+      <nav className="notes-tabs">
+        <button
+          className={'notes-tab' + (tab === 'debt' ? ' active' : '')}
+          onClick={() => setTab('debt')}
         >
-          <option value="debt">学习中（练习欠账）</option>
-          <option value="card">知识卡片（到期复习）</option>
-        </select>
-        <ChevronDown size={14} strokeWidth={1.8} className="notes-select-caret" />
-        {tab === 'card' && dueCards.length > 0 && (
-          <span className="notes-select-count">{dueCards.length} 张待复习</span>
-        )}
-      </div>
+          <BookOpen size={14} strokeWidth={1.6} />
+          学习中
+        </button>
+        <button
+          className={'notes-tab' + (tab === 'card' ? ' active' : '')}
+          onClick={() => setTab('card')}
+        >
+          <Layers size={14} strokeWidth={1.6} />
+          知识卡片
+          {dueCards.length > 0 && <span className="notes-tab-badge">{dueCards.length}</span>}
+        </button>
+      </nav>
 
       {/* ===== Tab 1：练习欠账（现有逻辑） ===== */}
       {tab === 'debt' && (
@@ -230,6 +237,7 @@ export function Notes() {
                   return (
                     <Card className="review-card" key={c.id}>
                       <div className="review-card-title">{c.question}</div>
+                      <CardMeta card={c} />
                       {view === 'summary' && c.answer && (
                           <div className="review-card-body">
                             <Markdown>{c.answer}</Markdown>
@@ -272,12 +280,12 @@ export function Notes() {
                           )}
                         </div>
                         <div className="review-card-actions">
-                          <Button variant="danger" onClick={() => reviewCard(c.id, false)}>
-                            没掌握
-                          </Button>
-                          <Button variant="primary" onClick={() => reviewCard(c.id, true)}>
-                            掌握了
-                          </Button>
+                          <button className="review-btn review-btn-no" onClick={() => reviewCard(c.id, false)}>
+                            <RefreshCw size={14} strokeWidth={1.8} /> 没掌握
+                          </button>
+                          <button className="review-btn review-btn-yes" onClick={() => reviewCard(c.id, true)}>
+                            <Check size={14} strokeWidth={1.8} /> 掌握了
+                          </button>
                         </div>
                       </div>
                     </Card>

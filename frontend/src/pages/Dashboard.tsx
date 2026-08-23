@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PenLine, MessagesSquare, Network, ArrowUpRight, NotebookPen } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { drill, studyPlan } from '../api/drill';
+import { knowledgeApi } from '../api/knowledge';
 import { Card, Badge, Loading } from '../components/ui';
 import { PlanSwitcher } from '../components/PlanSwitcher';
 import { useActivePlan } from '../lib/useActivePlan';
@@ -20,12 +21,17 @@ export function Dashboard() {
   const [debt, setDebt] = useState<DebtView[] | null>(null);
   const [profile, setProfile] = useState<TopicProfile[] | null>(null);
   const [plans, setPlans] = useState<PlanView[]>([]);
+  const [cardTotal, setCardTotal] = useState<number | null>(null);
+  const [cardDue, setCardDue] = useState<number | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     drill.debt().then(setDebt).catch((e) => setErr(msg(e)));
     drill.profile().then(setProfile).catch(() => undefined);
     studyPlan.list().then(setPlans).catch(() => undefined);
+    // 知识卡片统计：总数 + 到期待复习
+    knowledgeApi.list().then(cs => setCardTotal(cs.length)).catch(() => undefined);
+    knowledgeApi.due().then(cs => setCardDue(cs.length)).catch(() => undefined);
   }, []);
 
   // 当前学习方向：只在首页切换，其他页面（问答记录/复盘/练习）都按它过滤
@@ -85,6 +91,8 @@ export function Dashboard() {
         <Stat label="知识主题" value={topics} tone="soft" />
         <Stat label="已精熟主题" value={mastered} tone="good" />
         <Stat label="待复盘" value={debtCount} tone={debtCount > 0 ? 'bad' : 'soft'} />
+        <Stat label="知识卡片" value={cardTotal ?? 0} tone="soft" hint={cardTotal === null ? '加载中…' : undefined} />
+        <Stat label="待复习卡片" value={cardDue ?? 0} tone={(cardDue ?? 0) > 0 ? 'bad' : 'soft'} hint={cardDue === null ? '加载中…' : undefined} />
       </section>
 
       <section className="dash-debt">
@@ -117,12 +125,13 @@ export function Dashboard() {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: 'soft' | 'good' | 'bad' }) {
+function Stat({ label, value, tone, hint }: { label: string; value: number; tone: 'soft' | 'good' | 'bad'; hint?: string }) {
   return (
     <Card className="stat">
       <span className="stat-value">{value}</span>
       <span className="stat-label">{label}</span>
       {tone !== 'soft' && <span className={`dot is-${tone}`} />}
+      {hint && <span className="stat-hint">{hint}</span>}
     </Card>
   );
 }

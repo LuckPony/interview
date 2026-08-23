@@ -1,10 +1,9 @@
 package interview.homegrown.modules.drill.repository;
 
+import interview.homegrown.modules.drill.domain.Grade;
 import interview.homegrown.modules.drill.domain.Mastery;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,16 +18,26 @@ public interface MasteryRepository extends JpaRepository<Mastery, Long> {
     // 删除知识点时连带清掉它的掌握度记录（mastery.concept_id 有 FK 到 concept）
     void deleteByConceptId(Long conceptId);
 
-    // upsert：首次插入，重复则覆盖（深度画像与排程都靠它）
-    @Modifying
-    @Query(value = """
-            MERGE INTO mastery (user_id, concept_id, mastery_level, last_grade, due_at, updated_at)
-            KEY(user_id, concept_id)
-            VALUES (:uid, :cid, :lvl, :grade, :due, now())
-            """, nativeQuery = true)
-    void upsert(@Param("uid") Long userId,
-                @Param("cid") Long conceptId,
-                @Param("lvl") int level,
-                @Param("grade") String grade,
-                @Param("due") Instant dueAt);
+    /**
+     * upsert：首次插入，重复则覆盖（深度画像与排程都靠它）。
+     * 纯 JPA 实现（先查后 save），不再依赖 H2 方言的 MERGE ... KEY() 原生 SQL ——
+     * 该语法在 PostgreSQL 下直接语法错误，会导致卡片复习 / 练习判分的掌握度同步静默 500。
+     * 先查后 save 在 H2 与 PostgreSQL 下均可用。
+     */
+    @Transactional
+    default void upsert(Long userId, Long conceptId, int level, String grade, Instant dueAt) {
+        Mastery m = findByUserIdAndConceptId(userId, conceptId).orElseGet(Mastery::new);
+        if (m.getId() == null) {
+            m.setUserId(userId);
+            m.setConceptId(conceptId);
+        }
+        m.setMasteryLevel(level);
+        try {
+            m.setLastGrade(grade == null || grade.isBlank() ? null : Grade.valueOf(grade));
+        } catch (IllegalArgumentException e) {
+            m.setLastGrade(null);
+        }
+        m.setDueAt(dueAt);
+        save(m);
+    }
 }

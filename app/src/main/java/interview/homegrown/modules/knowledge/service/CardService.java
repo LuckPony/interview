@@ -72,21 +72,22 @@ public class CardService {
         cardRepo.delete(card);
     }
 
-    //复习反馈：掌握 → 按档位推后；没掌握 → 明天重来。
+    //复习反馈：无论掌握与否都记一次复习（reviewCount +1）；
+    //掌握 → 按档位排下一个复习时间（1/3/7/15/30 天递增）；没掌握 → 明天重来。
     //同时同步到关联概念（knowledge_card.concept_id）的掌握度：掌握 +1（封顶 L2）、没掌握 -1（不封底 0），
     //让日常沉淀的卡片能反映到掌握画像，而不是与知识点完全脱钩。
     public KnowledgeCard review(Long userId, Long cardId, boolean mastered){
         KnowledgeCard card = requireOwned(userId, cardId);
         Instant now = Instant.now();
         card.setLastReviewedAt(now);
+        card.setReviewCount(card.getReviewCount() + 1);
 
         if(mastered){
-            int idx = Math.min(card.getReviewCount(),INTERVALS.length-1);
+            // 用复习后的次数取档位：第 1 次掌握 → 1 天，第 2 次 → 3 天，第 3 次 → 7 天……封顶 30 天
+            int idx = Math.min(card.getReviewCount() - 1, INTERVALS.length - 1);
             card.setDueAt(now.plus(INTERVALS[idx], ChronoUnit.DAYS));
-            card.setReviewCount(card.getReviewCount()+1);
         }else{
             card.setDueAt(now.plus(1,ChronoUnit.DAYS));
-            card.setReviewCount(0);
         }
 
         if (card.getConceptId() != null) {
