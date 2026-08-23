@@ -35,22 +35,26 @@ public class GradeGenerator {
 
     /**
      * @param conversation 对话实录（老师实际问过的问题 + 学生回答），可为 null。
-     * @param followups    出题时预生成的追问小问清单（用于判断评分点是否对应未问到的追问），可为空。
-     *                     提供对话实录后，未被问过的问题对应的评分点应判 NA（不计分），
-     *                     避免把「根本没考到的点」误判为 MISS 拉低分数。
+     * @param followups    出题时预生成的教学追问清单，可为空。followups 不属于评分范围，
+     *                     只能用于确认某个评分点是否真的由主问直接要求；不能因追问被问过就扩大评分范围。
+     *                     任何无法从 stem 直接推出的评分点都应判 NA（不计分）。
      */
     public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
                              String context, String conversation, List<String> followups) {
         String system = """
-                你是评分器。判分分两步：
-                第一步，通读「对话实录」，确定老师实际问过哪些问题：主问(stem)一定被问过；
-                追问小问对照「追问小问清单」与实录，只把老师消息里确实出现过的追问算作被问到。
-                第二步，只针对「被问过的问题」判分，按 conceptIndex 分组输出 pointResults。
+                你是评分器。先确定合法评分范围，再逐点判定：
+                1. 合法评分范围只来自主问(stem)明确要求学生回答的内容。判断标准是：学生只看 stem，
+                   是否能合理知道自己需要回答该评分点。
+                2. 对话中的追问和「追问小问清单」是教学过程，不得扩大本题量化评分范围。
+                   评分点若只对应 followup，或 stem 从未要求该方法/API/边界/场景，必须判 NA，不计分，
+                   即使老师后来追问过也一样。
+                3. 对合法范围内的评分点，再结合用户答案与对话实录判 HIT/PARTIAL/MISS。
 
-                判分基准（只评被问到的内容）：
-                - 主问(stem)一定被问过：与主问直接相关的评分点必须全部列出并判 HIT/PARTIAL/MISS，严禁判 NA。
-                - 只属于「没被问到的追问小问」的评分点 → 判 NA（未考察，不计分）。
-                - 严禁把「没被问到」的内容当作 MISS 扣分；也严禁把「被问到但答错/没答」的内容判 NA。
+                判分基准：
+                - 与主问直接相关且由 stem 明确要求的评分点，必须判 HIT/PARTIAL/MISS。
+                - stem 没有明确要求的评分点，包括尚未提出或后来提出的追问扩展内容，一律判 NA。
+                - 严禁把“同一知识点通常还应该会什么”作为扣分依据，严禁用完整知识清单代替题面要求。
+                - 严禁把未要求内容当作 MISS 扣分，也严禁把已明确要求但答错或没答的内容判 NA。
 
                 理解型判分（看意思，不看措辞）：
                 - HIT：用户回答的意思与评分点一致且正确。允许换说法、用自己的例子、改变表达结构；
@@ -81,17 +85,17 @@ public class GradeGenerator {
         if (conversation == null || conversation.isBlank()) {
             conversationBlock = "\n\n说明：本题无对话实录，所有评分点均视为已被考到，只判 HIT/PARTIAL/MISS，不得判 NA。";
         } else {
-            conversationBlock = "\n\n对话实录（老师实际问过的问题 + 学生回答）。"
-                    + "判分前必须先据此确定被问过的问题：主问恒在；追问以实录中老师消息为准；"
-                    + "没被问到的追问对应的评分点判 NA：\n" + conversation;
+            conversationBlock = "\n\n对话实录（用于核验学生对主问的回答，可帮助理解上下文）。"
+                    + "注意：老师的追问不会扩大量化评分范围；任何无法从 stem 直接推出的评分点仍必须判 NA：\n"
+                    + conversation;
         }
 
         String followupBlock;
         if (followups == null || followups.isEmpty()) {
             followupBlock = "";
         } else {
-            followupBlock = "\n\n出题时预生成的追问小问清单（判分时对照对话实录判断哪几条被实际问到；"
-                    + "没被问到的追问对应的评分点判 NA，不判 MISS）：\n"
+            followupBlock = "\n\n教学追问清单（这些问题不属于量化评分范围，仅供识别越界评分点；"
+                    + "如果某评分点只能由以下追问推出而不能由 stem 直接推出，必须判 NA）：\n"
                     + IntStream.range(0, followups.size())
                     .mapToObj(i -> (i + 1) + ". " + followups.get(i))
                     .reduce((a, b) -> a + "\n" + b)

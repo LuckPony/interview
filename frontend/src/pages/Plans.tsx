@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Play, RefreshCw, Shuffle, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { Play, RefreshCw, Shuffle, CalendarClock, CheckCircle2, BookOpen, RotateCcw } from 'lucide-react';
 import { drill } from '../api/drill';
 import { Button, Card, Tag, Badge } from '../components/ui';
 import { useActivePlan } from '../lib/useActivePlan';
@@ -27,7 +27,7 @@ export function Plans({
   teachFirst: boolean;
   onToggleTeachFirst: (v: boolean) => void;
 }) {
-  // 今日任务（每日自动排期 + 预生成，点开即答）；按当前学习方向过滤
+  // 今日任务（每日自动排期 + 预生成，点开即答）；展示账号下所有学习方向，避免漏掉其他方向的到期复习
   const [today, setToday] = useState<DailyTaskView[] | null>(null);
   useEffect(() => {
     let alive = true;
@@ -51,15 +51,55 @@ export function Plans({
     };
   }, []);
 
-  // 当前学习方向（在首页切换，这里只跟随）：练习首页也只展示该方向
+  // 今日任务属于整个账号，不再按首页的当前方向过滤。否则切换方向后，其他方向的到期复习会被隐藏。
   const { activeId } = useActivePlan(plans);
-  const todayTasks = today?.filter((t) => t.planId === activeId) ?? [];
-  // 待办任务（PENDING/READY）可点；已完成的置灰展示为「已完成」，防止重复练习同一题
+  const todayTasks = today ?? [];
   const todayActive = todayTasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
   const todayDone = todayTasks.filter((t) => t.status === 'DONE');
   const planList = plans.filter((p) => p.id === activeId);
-  const reviewCount = todayActive.filter((t) => t.kind === 'REVIEW').length;
-  const newCount = todayActive.filter((t) => t.kind === 'NEW').length;
+  const reviewTasks = todayActive.filter((t) => t.kind === 'REVIEW');
+  const learnTasks = todayActive.filter((t) => t.kind === 'NEW');
+  const conceptFor = (task: DailyTaskView) => plans
+    .flatMap((plan) => plan.concepts)
+    .find((concept) => concept.id === task.conceptId);
+
+  const renderTask = (t: DailyTaskView) => {
+    const concept = conceptFor(t);
+    const subPoints = concept?.subPoints ?? [];
+    const completed = new Set(concept?.completedSubPoints ?? []);
+    const target = t.kind === 'NEW' ? subPoints.find((point) => !completed.has(point)) : undefined;
+    return (
+      <button className={`today-task-card ${t.kind === 'REVIEW' ? 'is-review' : 'is-learn'}`} key={t.id} onClick={() => onStartTask(t.id)}>
+        <span className="today-task-top">
+          <Badge kind={t.kind === 'REVIEW' ? 'warn' : 'good'}>{t.kind === 'REVIEW' ? '待复习' : '待学习'}</Badge>
+          <span className="today-task-plan">{t.planTitle}</span>
+          <Play size={14} strokeWidth={1.8} className="today-arrow" />
+        </span>
+        <strong className="today-task-concept">{t.conceptName}<em>L{t.layer}</em></strong>
+        {t.kind === 'NEW' ? (
+          <span className="today-task-target">
+            <BookOpen size={14} />
+            {target ? <>下一子知识点：<b>{target}</b></> : '子知识点已学完，将进入综合检测'}
+          </span>
+        ) : (
+          <span className="today-task-target">
+            <RotateCcw size={14} />
+            {subPoints.length > 0 ? `复习 ${subPoints.length} 个子知识点` : '复习该知识点的关键内容'}
+          </span>
+        )}
+        {subPoints.length > 0 && (
+          <span className="today-subpoints">
+            {subPoints.map((point) => (
+              <span className={completed.has(point) ? 'is-passed' : ''} key={point}>
+                {completed.has(point) ? '✓ ' : ''}{point}
+              </span>
+            ))}
+          </span>
+        )}
+        <span className="today-task-hint">{t.stem ? t.stem.slice(0, 72) : t.kind === 'NEW' ? '点击进入教学与练习' : '复习题生成中，点击后会自动准备'}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="page">
@@ -79,50 +119,37 @@ export function Plans({
 
       {err && <div className="banner info">{err}</div>}
 
-      {planList.length > 0 && (
+      {plans.length > 0 && (
         <Card className="today-card">
           <div className="today-head">
-            <CalendarClock size={16} strokeWidth={1.6} />
-            <span className="today-title">今日任务</span>
+            <CalendarClock size={17} strokeWidth={1.7} />
+            <span className="today-title">今日待办</span>
             <span className="today-count">
-              {reviewCount > 0 && <span className="today-kind today-review">复习 {reviewCount}</span>}
-              {newCount > 0 && <span className="today-kind today-new">新学 {newCount}</span>}
+              <span className="today-kind today-review">复习 {reviewTasks.length}</span>
+              <span className="today-kind today-new">学习 {learnTasks.length}</span>
             </span>
           </div>
-          {todayActive.length === 0 && todayDone.length === 0 ? (
-            <p className="today-empty">今天这个方向的复习/新学都安排完了，去「继续学习」滚动复习吧。</p>
+          {today === null ? (
+            <p className="today-empty">正在安排今天的学习和复习任务…</p>
+          ) : todayActive.length === 0 ? (
+            <p className="today-empty">今天的学习和复习任务已经全部完成。</p>
           ) : (
-            <div className="today-list">
-              {todayActive.map((t) => (
-                <button className="today-item" key={t.id} onClick={() => onStartTask(t.id)}>
-                  <Badge kind={t.kind === 'REVIEW' ? 'warn' : 'good'}>
-                    {t.kind === 'REVIEW' ? '复习' : '新学'}
-                  </Badge>
-                  <span className="today-concept">
-                    {t.conceptName} <em>L{t.layer}</em>
-                  </span>
-                  {t.stem ? (
-                    <span className="today-stem">{t.stem.slice(0, 56)}…</span>
-                  ) : (
-                    <span className="today-pending">题目生成中…</span>
-                  )}
-                  <Play size={13} strokeWidth={1.8} className="today-arrow" />
-                </button>
-              ))}
-              {todayDone.map((t) => (
-                <div className="today-item today-done" key={t.id}>
-                  <Badge kind="good">
-                    {t.kind === 'REVIEW' ? '复习' : '新学'}
-                  </Badge>
-                  <span className="today-concept">
-                    {t.conceptName} <em>L{t.layer}</em>
-                  </span>
-                  <span className="today-stem">已完成</span>
-                  <CheckCircle2 size={14} strokeWidth={2} className="today-done-icon" />
+            <div className="today-groups">
+              <section className="today-group">
+                <div className="today-group-head"><BookOpen size={16} /><strong>要学习</strong><span>{learnTasks.length} 项</span></div>
+                <div className="today-task-grid">
+                  {learnTasks.length > 0 ? learnTasks.map(renderTask) : <p className="today-empty">今天没有新的学习任务。</p>}
                 </div>
-              ))}
+              </section>
+              <section className="today-group">
+                <div className="today-group-head"><RotateCcw size={16} /><strong>要复习</strong><span>{reviewTasks.length} 项</span></div>
+                <div className="today-task-grid">
+                  {reviewTasks.length > 0 ? reviewTasks.map(renderTask) : <p className="today-empty">当前没有到期复习任务。</p>}
+                </div>
+              </section>
             </div>
           )}
+          {todayDone.length > 0 && <p className="today-completed-note"><CheckCircle2 size={14} /> 今日已完成 {todayDone.length} 项</p>}
         </Card>
       )}
 

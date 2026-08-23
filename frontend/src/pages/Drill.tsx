@@ -519,9 +519,8 @@ export function Drill() {
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
   // reveal=true 为「看答案」：不需要输入内容，直接向 AI 索要完整答案；服务端会记录
   // 答案揭示边界，之后的回答不再计入评分。
-  const sendAnswer = (opts?: { reveal?: boolean }) => {
+  const sendAnswer = (reveal = false) => {
     if (!meta || phase !== 'chatting') return;
-    const reveal = opts?.reveal ?? false;
     const userText = reveal ? '我想直接看答案' : input.trim();
     if (!reveal && !userText) return;
     setInput('');
@@ -575,14 +574,6 @@ export function Drill() {
         setMessages((prev) => prev.map((mm) =>
           mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
         ));
-      },
-      (g) => {
-        // 回答完整且无需追问，或参考答案已经给出时，服务端直接结束并评分。
-        setGrade(g);
-        if (g.rawScore >= 60 && ctx?.kind === 'teach' && ctx.taskId != null) {
-          drill.completeTask(ctx.taskId).catch(() => {});
-        }
-        setPhase('graded');
       },
     );
   };
@@ -1045,7 +1036,7 @@ export function Drill() {
                   if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    sendAnswer();
+                    sendAnswer(false);
                   }
                 }}
                 rows={2}
@@ -1073,13 +1064,13 @@ export function Drill() {
                   {phase === 'chatting' && !resumedGraded && (
                     <Button
                       variant="ghost"
-                      onClick={() => sendAnswer({ reveal: true })}
+                      onClick={() => sendAnswer(true)}
                       title="直接看参考答案（此后的回答不再计入评分）"
                     >
                       看答案
                     </Button>
                   )}
-                  <Button onClick={() => sendAnswer()} disabled={!canSend}>
+                  <Button onClick={() => sendAnswer(false)} disabled={!canSend}>
                     {phase === 'generating' ? '等待题目' : '发送'}
                   </Button>
                 </div>

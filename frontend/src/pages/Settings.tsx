@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { ConfigProvider, Segmented, Switch, TimePicker } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Bell, CalendarDays, Check } from 'lucide-react';
 import { aiSettings, type AiSettingsView } from '../api/drill';
 import { Button, Card, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
@@ -205,40 +208,115 @@ function AboutCard() {
   );
 }
 
+const WEEKDAYS = [
+  { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
+  { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' },
+  { value: 0, label: '周日' },
+];
+
 function ReminderCard() {
   const api = window.electronAPI;
   const [enabled, setEnabled] = useState(true);
+  const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY'>('DAILY');
+  const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [time, setTime] = useState('20:00');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api?.getReminder?.().then((v) => { setEnabled(v.enabled); setTime(v.time); }).catch(() => {});
+    api?.getReminder?.().then((v) => {
+      setEnabled(v.enabled);
+      setTime(v.time);
+      setFrequency(v.frequency ?? 'DAILY');
+      setWeekdays(v.weekdays?.length ? v.weekdays : [1, 2, 3, 4, 5]);
+    }).catch(() => {});
   }, [api]);
 
   if (!api?.getReminder) return null;
+  const toggleWeekday = (day: number) => setWeekdays((current) => current.includes(day)
+    ? (current.length > 1 ? current.filter((v) => v !== day) : current)
+    : [...current, day]);
   const save = async () => {
-    const v = await api.setReminder({ enabled, time });
-    setEnabled(v.enabled); setTime(v.time); setSaved(true);
+    const v = await api.setReminder({ enabled, time, frequency, weekdays });
+    setEnabled(v.enabled); setTime(v.time); setFrequency(v.frequency); setWeekdays(v.weekdays);
+    setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
   };
+  const timeValue = dayjs(`2000-01-01 ${time}`);
+  const onTimeChange = (value: Dayjs | null) => value && setTime(value.format('HH:mm'));
   return (
-    <Card className="settings-card">
-      <h2 className="settings-section-title">学习提醒</h2>
-      <label className="reminder-toggle">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        应用挂在后台时，到点发送系统通知
-      </label>
-      <label className="field">
-        <span className="field-label">每天提醒时间</span>
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!enabled} />
-      </label>
-      <div className="settings-actions">
-        <Button onClick={save}>保存提醒</Button>
-        <Button variant="ghost" onClick={() => api.testReminder()}>测试通知</Button>
-        {saved && <span className="settings-saved"><Check size={14} /> 已保存</span>}
-      </div>
-      <p className="settings-note">关闭窗口会隐藏到托盘，不会退出应用；只有托盘中选择“彻底退出”后提醒才会停止。</p>
-    </Card>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#3567d6',
+          borderRadius: 10,
+          controlHeight: 40,
+          fontFamily: 'var(--font-sans)',
+        },
+      }}
+    >
+      <Card className="settings-card reminder-card">
+        <div className="reminder-heading">
+          <span className="reminder-icon"><Bell size={19} /></span>
+          <div className="reminder-heading-copy">
+            <h2 className="settings-section-title">学习提醒</h2>
+            <p>在有待办任务时按计划发送系统通知</p>
+          </div>
+          <Switch checked={enabled} onChange={setEnabled} aria-label="启用学习提醒" />
+        </div>
+
+        <div className="reminder-form">
+          <div className="reminder-field">
+            <span className="field-label">提醒周期</span>
+            <Segmented
+              block
+              value={frequency}
+              disabled={!enabled}
+              options={[{ value: 'DAILY', label: '每天' }, { value: 'WEEKLY', label: '每周' }]}
+              onChange={(value) => setFrequency(value as 'DAILY' | 'WEEKLY')}
+            />
+          </div>
+
+          {frequency === 'WEEKLY' && (
+            <div className="reminder-field reminder-week-field">
+              <span className="field-label"><CalendarDays size={15} /> 提醒日期</span>
+              <div className="weekday-picker" role="group" aria-label="每周提醒日期">
+                {WEEKDAYS.map((day) => (
+                  <button type="button" disabled={!enabled} className={weekdays.includes(day.value) ? 'is-on' : ''} key={day.value} onClick={() => toggleWeekday(day.value)}>
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="reminder-field">
+            <span className="field-label">提醒时间</span>
+            <TimePicker
+              className="reminder-time"
+              value={timeValue}
+              disabled={!enabled}
+              format="HH:mm"
+              minuteStep={5}
+              allowClear={false}
+              inputReadOnly
+              showNow={false}
+              popupClassName="reminder-time-popup"
+              onChange={onTimeChange}
+            />
+          </div>
+        </div>
+
+        <div className="reminder-footer">
+          <div className="settings-actions">
+            <Button onClick={save} disabled={!enabled}>保存提醒</Button>
+            <Button variant="ghost" onClick={() => api.testReminder()}>测试通知</Button>
+            {saved && <span className="settings-saved"><Check size={14} /> 已保存</span>}
+          </div>
+          <p className="settings-note">窗口关闭并驻留托盘后，提醒仍会按计划运行。</p>
+        </div>
+      </Card>
+    </ConfigProvider>
   );
 }
 
@@ -318,20 +396,21 @@ export function Settings() {
 
       {err && <div className="banner info">{err}</div>}
 
-      <AppearanceCard />
-      <ReminderCard />
+      <div className="settings-grid">
+        <AppearanceCard />
+        <ReminderCard />
 
-      {cfg !== null && !cfg.hasApiKey && (
-        <div className="banner warn">
+        {cfg !== null && !cfg.hasApiKey && (
+          <div className="banner warn settings-wide">
           尚未配置 API Key：AI 出题、判分、复盘、计划生成等都会不可用。请先在下表填写你自己的
           API Key（Web 端按账号保存，互不可见；桌面端只存本机）。
-        </div>
-      )}
+          </div>
+        )}
 
-      {cfg === null ? (
-        <Loading label="读取设置…" />
-      ) : (
-        <Card className="settings-card">
+        {cfg === null ? (
+          <div className="settings-wide"><Loading label="读取设置…" /></div>
+        ) : (
+          <Card className="settings-card">
           <h2 className="settings-section-title">模型</h2>
           <label className="field">
             <span className="field-label">Provider 名称（仅用于显示）</span>
@@ -375,10 +454,11 @@ export function Settings() {
               </span>
             )}
           </div>
-        </Card>
-      )}
+          </Card>
+        )}
 
-      {isDesktop && <AboutCard />}
+        {isDesktop && <AboutCard />}
+      </div>
     </div>
   );
 }

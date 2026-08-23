@@ -744,11 +744,10 @@ public class DrillController {
         }
 
         // —— 答案揭示边界（“得到答案之前”的评分依据）——
-        // 用户点「看答案」按钮（reveal=true）或自然语言明确索要答案/提示 →
-        // 记录首次揭示所在轮次；此后 AI 转完整讲解模式，finish 评分只拼接该轮之前的回答。
-        // 仅判分前（READY/ANSWERING）写入；已 GRADED 后的继续追问不改变边界。
-        boolean reveal = Boolean.TRUE.equals(req.reveal())
-                || AnswerRevealDetector.isRevealRequest(req.rawAnswer());
+        // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
+        // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
+        // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
+        boolean reveal = Boolean.TRUE.equals(req.reveal());
         boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
                 || run.getStatus() == DrillRunStatus.ANSWERING;
         if (reveal && isPreGraded && run.getAnswerRevealedRound() == null) {
@@ -772,7 +771,6 @@ public class DrillController {
         final List<String> followups = extractFollowups(pointsJson);
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
-        final boolean fPreGraded = isPreGraded;
         final String context = contextOf(uid, run.getQuestionId());
 
         StreamingResponseBody body = out -> {
@@ -795,19 +793,10 @@ public class DrillController {
                         r -> sseReasoning(out, r),
                         fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
 
-                // 完整文本写回 turn。老师判断无需继续追问，或答案已揭示时，本题直接自动评分。
+                // 完整文本只写回 turn。AI 可以停止追问并提示用户点击按钮，但不得替用户结束或触发评分。
                 if (full != null) {
-                    String visible = full.replace(TutorGenerator.FINISH_MARKER, "").trim();
-                    fTurn.setTutorText(visible);
+                    fTurn.setTutorText(full.trim());
                     turnRepo.save(fTurn);
-                    boolean shouldFinish = fPreGraded
-                            && (fReveal || full.contains(TutorGenerator.FINISH_MARKER));
-                    if (shouldFinish) {
-                        GradeView grade = answerService.finish(uid, runId);
-                        out.write(("event: grade\ndata: " + objectMapper.writeValueAsString(grade) + "\n\n")
-                                .getBytes(StandardCharsets.UTF_8));
-                        out.flush();
-                    }
                 }
 
                 out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
