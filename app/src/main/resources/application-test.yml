@@ -1,9 +1,9 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:resume_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: ${APP_TEST_DATASOURCE_URL:jdbc:postgresql://localhost:5432/interview_test}
+    driver-class-name: org.postgresql.Driver
+    username: ${APP_TEST_DATASOURCE_USERNAME:postgres}
+    password: ${APP_TEST_DATASOURCE_PASSWORD:123456}
 
   jpa:
     hibernate:

@@ -14,7 +14,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 面试会话 Repository 测试（使用 H2 内存库）
+// 面试会话 Repository 测试（使用 application-test.yml 指向的 PostgreSQL 测试库）
 @DataJpaTest
 public class InterviewSessionTest {
 

@@ -187,11 +187,11 @@ npm run dev         # http://localhost:5173，/api 已代理到 8080
 
 ### 6. 桌面应用
 
-桌面应用将 React SPA、Spring Boot fat jar 和精简 JRE 一起打包，安装后无需另行配置 Java、Gradle、Docker 或数据库。默认使用本地模式：应用启动时自动拉起内嵌后端，数据保存在 Electron 用户数据目录中。
+桌面应用将 React SPA、Spring Boot fat jar 和精简 JRE 一起打包，安装后无需另行配置 Java 或 Gradle。默认使用本地模式：应用启动时自动拉起内嵌后端，业务数据写入 PostgreSQL。
 
 当前能力：
 
-- **完整本地运行**：内嵌 Java 运行时、Spring Boot 后端和 H2 数据库
+- **本地运行**：内嵌 Java 运行时、Spring Boot 后端，数据库统一使用 PostgreSQL
 - **本地文件桥接**：可选择本机文件或目录作为学习资料，无需先上传到远程服务器
 - **系统托盘驻留**：关闭主窗口后应用和本地后端继续在后台运行；双击托盘图标或点击“打开面霸”可恢复窗口
 - **彻底退出**：托盘菜单点击“彻底退出”后关闭 Electron，并清理本地 Java 后端进程树
@@ -336,7 +336,7 @@ interview/
 │   │       ├── interview/        # 既有面试会话模块
 │   │       └── resume/           # 既有简历分析模块
 │   └── src/main/resources/
-│       ├── db/migration/         # Flyway V1–V21 建表脚本（V20 知识卡片 / V21 detail）
+│       ├── db/migration/         # Flyway 建表与迁移脚本（common + postgresql）
 │       └── application.yml
 ├── frontend/                     # Vite + React + TS SPA
 │   └── src/{pages,components,api,auth,lib,styles}

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS study_plan (
 );
 CREATE INDEX IF NOT EXISTS idx_study_plan_user ON study_plan (user_id);
 
--- updated_at 由实体侧 @UpdateTimestamp 维护（H2 无 plpgsql 触发器）。
+-- updated_at 由实体侧 @UpdateTimestamp 维护。
 
 -- ============ concept 挂到方向：study_plan_id（可空，旧种子概念不强制归属某方向） ============
 ALTER TABLE concept ADD COLUMN IF NOT EXISTS study_plan_id BIGINT REFERENCES study_plan(id);

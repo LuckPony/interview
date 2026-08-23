@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <ul>
  *   <li>{@code allow_jdbc_metadata_access=false} + 显式 dialect：Hibernate 不去连库探元数据</li>
  *   <li>{@code ddl-auto=none} + 关 Flyway：不建表、不迁移</li>
- *   <li>{@code Replace.NONE}：不让测试框架塞一个 H2 进来 —— H2 认不得 {@code integer[]} 和 {@code jsonb}</li>
+ *   <li>{@code Replace.NONE}：沿用 PostgreSQL 方言配置，不让测试框架替换 DataSource</li>
  * </ul>
  * 测试方法上的 {@code NOT_SUPPORTED} 是必须的：@DataJpaTest 默认开事务，一开就要连接。
  */
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         "spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false",
         "spring.datasource.url=jdbc:postgresql://localhost:5432/interview",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
-        "spring.datasource.username=pony",
+        "spring.datasource.username=postgres",
         "spring.datasource.password=123456"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)

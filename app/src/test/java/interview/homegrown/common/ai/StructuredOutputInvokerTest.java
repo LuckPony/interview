@@ -3,6 +3,8 @@ package interview.homegrown.common.ai;
 import interview.homegrown.common.config.AiConfigProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,7 +54,7 @@ class StructuredOutputInvokerTest {
     }
 
     @Test
-    @DisplayName("registry 为空且用户也未配 key：给出明确错误而不是模糊的「LLM 返回为空」")
+    @DisplayName("registry 为空且用户也未配 key：返回可读请求错误而不是冒成 500")
     void throwsClearErrorWhenBothUnavailable() {
         LlmProviderRegistry registry = mock(LlmProviderRegistry.class);
         when(registry.getChatClientOrDefault(anyString()))
@@ -63,7 +65,10 @@ class StructuredOutputInvokerTest {
 
         StructuredOutputInvoker invoker = new StructuredOutputInvoker(registry, configWithOneAttempt(), raw);
         assertThatThrownBy(() -> invoker.invoke("system", "user", DemoOutput.class))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThatThrownBy(() -> invoker.invoke("system", "user", DemoOutput.class))
                 .hasMessageContaining("尚未配置 API Key");
     }
 }

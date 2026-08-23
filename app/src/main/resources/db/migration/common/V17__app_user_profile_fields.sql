@@ -38,5 +38,5 @@ ALTER TABLE app_user ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
 ALTER TABLE app_user ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 -- ---------- updated_at ----------
--- 原为 PostgreSQL 触发器（调用 update_updated_at_column()）；H2 无 plpgsql，已移除。
+-- 原为 PostgreSQL 触发器（调用 update_updated_at_column()），已移除。
 -- app_user.updated_at 由数据库默认值维护（该字段非关键路径，前端未依赖实时更新）。

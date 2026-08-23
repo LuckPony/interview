@@ -1,5 +1,3 @@
 -- ============ 清空数据库里保存的 API Key：不再支持服务器级 / 共享 key ============
 --
--- 原实现用 PostgreSQL 专有的 jsonb_set 抹掉 user_ai_setting.settings_json 里的 apiKey 字段。
--- 迁移到嵌入式 H2 后是全新数据库，user_ai_setting 为空、无历史遗留 key，无需清理；
--- 故本迁移改为 no-op（仅保留版本号占位，保证迁移历史与既有环境对齐）。
+-- 本迁移保留为 no-op 版本占位，保证迁移历史与既有环境对齐。
