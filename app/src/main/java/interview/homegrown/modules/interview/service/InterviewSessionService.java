@@ -126,6 +126,7 @@ public class InterviewSessionService {
         //创建会话实体并落库
         InterviewSessionEntity session = new InterviewSessionEntity();
         session.setId(UUID.randomUUID().toString());
+        session.setUserId(userId);
         session.setResumeId(resumeId);
         session.setSkillId(request.skillId());
         session.setDifficulty(difficulty);
@@ -240,7 +241,7 @@ public class InterviewSessionService {
                 .toList();
 
         //调用 LLM 评估
-        String skillName = skillService.getSkill(session.getSkillId()).getName();
+        String skillName = skillNameOf(session);
         InterviewEvaluationResult evaluation = evaluateService.evaluate(
                 sessionId,questionText,answerTexts,skillName,session.getLlmProvider()
         );
