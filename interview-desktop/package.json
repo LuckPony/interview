@@ -1,6 +1,6 @@
 {
   "name": "interview-desktop",
-  "version": "0.3.27",
+  "version": "0.3.28",
   "private": true,
   "description": "面霸 · 备考助手的桌面壳：本地模式拉起 Spring Boot 后端，云端模式直连服务器；加载 React SPA + 本地 fs 桥（免上传读大项目）",
   "main": "src/main.js",
