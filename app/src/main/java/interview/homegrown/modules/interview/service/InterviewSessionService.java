@@ -141,7 +141,7 @@ public class InterviewSessionService {
                 ? request.planIds().stream().map(String::valueOf).distinct().collect(Collectors.joining(","))
                 : null);
         session.setStartAt(LocalDateTime.now());
-        session.setDurationMin(cfg.maxMinutes());
+        session.setDurationMin(DifficultyConfig.UNIFIED_DURATION_MINUTES);
         persistenceService.save(session);
 
         // 题目持久化到数据库（进程重启可恢复）
@@ -252,12 +252,13 @@ public class InterviewSessionService {
             nextQuestion = baseTexts.get(1);
             nextIsFollowUp = false;
         } else if (!last.followUp()) {
-            // 基础题答完 → 生成第 1 个追问（该难度有追问时）
+            // 基础题答完 → 生成第 1 个追问；若回答表示“不清楚/不会”则改为最基础的概念确认问题
             if (cfg.followUpCount() > 0) {
                 nextQuestion = followupService.generateFollowUp(
                         session.getDifficulty(), skillName,
                         baseTexts.get(last.baseIndex()), last.answer(),
-                        0, cfg.followUpCount(), session.getLlmProvider());
+                        0, cfg.followUpCount(), session.getLlmProvider(),
+                        looksIgnorant(last.answer()));
                 nextIsFollowUp = true;
                 nextFuIndex = 1;
             } else {
@@ -266,8 +267,14 @@ public class InterviewSessionService {
                 nextIsFollowUp = false;
             }
         } else {
-            // 追问答完 → 继续下一个追问 或 进入下一道基础题
-            if (last.fuIndex() < cfg.followUpCount()) {
+            // 追问答完：仍表示“不清楚/不会”（基础问题也答不上来）→ 停止追问，直接进入下一道基础题
+            if (looksIgnorant(last.answer())) {
+                log.info("候选人基础概念也未答上，停止追问并进入下一题: sessionId={}, baseIndex={}", sessionId, last.baseIndex());
+                nextBaseIndex = last.baseIndex() + 1;
+                nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
+                nextIsFollowUp = false;
+            } else if (last.fuIndex() < cfg.followUpCount()) {
+                // 答上来了 → 继续延伸追问
                 nextQuestion = followupService.generateFollowUp(
                         session.getDifficulty(), skillName,
                         baseTexts.get(last.baseIndex()), last.answer(),
@@ -386,6 +393,20 @@ public class InterviewSessionService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该面试会话");
         }
         return session;
+    }
+
+    /** 判断候选人回答是否表示“不清楚/不会”（回答过短也算没答上来） */
+    private boolean looksIgnorant(String answer) {
+        if (answer == null || answer.isBlank()) return true;
+        String t = answer.trim();
+        if (t.length() < 8) return true; // 太短 = 没答上来
+        String lower = t.toLowerCase();
+        String[] hints = {"不知道", "不清楚", "不会", "没学过", "没接触", "没了解", "不懂", "没做过",
+                "没听过", "忘了", "不了解", "讲不上", "说不出", "没深入"};
+        for (String h : hints) {
+            if (lower.contains(h)) return true;
+        }
+        return false;
     }
 
     /** 问答流中的一条记录：question 已生成、answer 为 null 表示待回答 */

@@ -18,7 +18,7 @@ function msg(e: unknown): string {
 }
 
 const DIFFICULTY_LABEL: Record<string, string> = { JUNIOR: '初级', MIDDLE: '中级', SENIOR: '高级' };
-const DIFFICULTY_TIME: Record<string, string> = { JUNIOR: '18-24 分钟', MIDDLE: '30-40 分钟', SENIOR: '48-60 分钟' };
+const DIFFICULTY_TIME: Record<string, string> = { JUNIOR: '约 60 分钟', MIDDLE: '约 60 分钟', SENIOR: '约 60 分钟' };
 
 type Phase = 'config' | 'interview' | 'result';
 
@@ -421,7 +421,7 @@ function InterviewConfig(props: {
           ))}
         </div>
         <p className="iv-ratio-hint">
-          初级：追问浅显、数量少 · 中级：有一定深度 · 高级：深入考察真实掌握度。超时将自动结束面试进入待评估。
+          时长统一约 60 分钟；难度决定追问深度：初级浅显·数量少，中级有深度，高级深入考察真实掌握度。超时自动结束进入待评估。
         </p>
       </section>
 
