@@ -1,0 +1,66 @@
+name: Deploy to server
+
+# 推送到 main（或手动触发）时自动部署后端 + Web 到服务器：
+#   1) rsync 同步源码到服务器部署目录（排除 .git / node_modules / 桌面端 / .env 等）；
+#   2) 运行 deploy/deploy-prod.sh：
+#      - 基础设施镜像（postgres/redis/minio）已存在则直接复用，缺失才拉取；
+#      - 业务镜像（backend/web）用 docker 层缓存构建（源码没变的层直接复用）；
+#      - compose up 带 --no-build，绝不重复构建/拉取已存在的镜像；
+#      - 部署前自动备份 PostgreSQL，部署后健康检查。
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_dir:
+        description: '服务器部署目录（默认 /opt/mianba，可被 Secret DEPLOY_DIR 覆盖）'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+
+concurrency:
+  group: server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 部署到服务器
+    runs-on: ubuntu-latest
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SSH_HOST: ${{ secrets.SERVER_HOST }}
+      SSH_USER: ${{ secrets.SERVER_USER }}
+      DEPLOY_DIR: ${{ inputs.deploy_dir || secrets.DEPLOY_DIR || '/opt/mianba' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 校验 Secrets
+        run: |
+          set -euo pipefail
+          [ -n "$SSH_HOST" ] || { echo "::error::缺少 SERVER_HOST Secret（服务器 IP，如 103.236.92.40）"; exit 1; }
+          [ -n "$SSH_USER" ] || { echo "::error::缺少 SERVER_USER Secret（SSH 用户名，如 root）"; exit 1; }
+          [ -n "$SSH_PRIVATE_KEY" ] || { echo "::error::缺少 SERVER_SSH_KEY Secret（SSH 私钥内容，含 BEGIN/END 行）"; exit 1; }
+          echo "部署目标：$SSH_USER@$SSH_HOST:$DEPLOY_DIR"
+
+      - name: 同步源码并部署
+        run: |
+          set -euo pipefail
+          command -v rsync >/dev/null 2>&1 || { sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq rsync >/dev/null; }
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+          echo "==> 1/2 同步源码到服务器 ${DEPLOY_DIR}"
+          # .env 排除在同步与删除之外：服务器上已有的环境变量/密钥必须保留
+          rsync -az --delete -e "$SSH_OPTS" \
+            --exclude '.git/' --exclude 'node_modules/' --exclude 'interview-desktop/' \
+            --exclude 'docs/' --exclude 'data/' --exclude 'runtime/' --exclude 'runtime-win/' \
+            --exclude 'dist-electron/' --exclude 'dist-electron-cloud/' \
+            --exclude '.env' --exclude '*.log' --exclude '.DS_Store' \
+            "$GITHUB_WORKSPACE/" "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/"
+
+          echo "==> 2/2 运行部署脚本（复用已有镜像 → 构建缓存 → compose up）"
+          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" \
+            "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.prod.yml'; bash '$DEPLOY_DIR/deploy/deploy-prod.sh'"
