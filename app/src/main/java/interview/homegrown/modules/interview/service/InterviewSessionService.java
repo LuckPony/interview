@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
-import interview.homegrown.infrastructure.redis.RedisService;
+import interview.homegrown.modules.interview.repository.InterviewQuestionRepository;
 import interview.homegrown.modules.interview.config.InterviewSkillProperties;
 import interview.homegrown.modules.interview.model.*;
 import interview.homegrown.modules.interview.repository.InterviewAnswerRepository;
@@ -41,8 +41,7 @@ public class InterviewSessionService {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewSessionService.class);
 
-    private static final String QUESTION_CACHE_KEY = "interview:question";
-    private static final Duration CACHE_TIL = Duration.ofHours(24);
+    // 题目持久化到数据库（interview_question 表）：进程重启不丢，桌面端可随时恢复面试
 
     private final ResumeRepository resumeRepository;
     private final InterviewPersistenceService persistenceService;
@@ -53,14 +52,14 @@ public class InterviewSessionService {
     private final InterviewAnswerRepository answerRepository;
     private final ConceptRepository conceptRepo;
     private final ObjectMapper objectMapper;
-    private final RedisService redisService;
+    private final InterviewQuestionRepository questionRepo;
 
     public InterviewSessionService(ResumeRepository resumeRepository,
                                    InterviewSkillService skillService,InterviewSessionRepository sessionRepository,
                                    InterviewPersistenceService persistenceService,InterviewQuestionService questionService,
                                    InterviewEvaluateService evaluateService,InterviewAnswerRepository answerRepository,
                                    ConceptRepository conceptRepo,
-                                   ObjectMapper objectMapper,RedisService redisService) {
+                                   ObjectMapper objectMapper,InterviewQuestionRepository questionRepo) {
 
         this.resumeRepository = resumeRepository;
         this.persistenceService = persistenceService;
@@ -71,7 +70,7 @@ public class InterviewSessionService {
         this.answerRepository = answerRepository;
         this.conceptRepo = conceptRepo;
         this.objectMapper = objectMapper;
-        this.redisService = redisService;
+        this.questionRepo = questionRepo;
     }
 
     //=====================创建会话===================
@@ -268,8 +267,8 @@ public class InterviewSessionService {
 
         persistenceService.save(session);
 
-        //清理题目缓存
-        redisService.delete(QUESTION_CACHE_KEY + sessionId);
+        //清理题目记录（已完成，不再需要）
+        questionRepo.deleteBySessionId(sessionId);
 
         log.info("面试完成并评估: sessionId={}, 总分={}", sessionId, evaluation.totalScore());
 
@@ -310,10 +309,12 @@ public class InterviewSessionService {
     private void cacheQuestions(String sessionId,InterviewQuestionResult questions){
 
         try{
-            String json = objectMapper.writeValueAsString(questions);   //增加可读性，方便调试
-            redisService.set(QUESTION_CACHE_KEY + sessionId,json,CACHE_TIL);
+            InterviewQuestionEntity entity = new InterviewQuestionEntity();
+            entity.setSessionId(sessionId);
+            entity.setQuestionsJson(objectMapper.writeValueAsString(questions));
+            questionRepo.save(entity);
         }catch (JsonProcessingException e){
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"题目缓存序列化失败");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"题目持久化失败");
         }
     }
 
@@ -363,17 +364,18 @@ public class InterviewSessionService {
 
     private InterviewQuestionResult readCachedQuestion(String sessionId){
 
-        return redisService.get(QUESTION_CACHE_KEY + sessionId)
+        return questionRepo.findById(sessionId)
+                .map(InterviewQuestionEntity::getQuestionsJson)
                 .map(json -> {
                     try{
                         return objectMapper.readValue(json, new TypeReference<InterviewQuestionResult>() {
                         });
                     } catch (JsonProcessingException e) {
-                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目缓存反序列化失败");
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目解析失败");
                     }
                 })
                 .orElseThrow(() -> new BusinessException(
-                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "题目缓存不存在或已过期"));
+                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "该会话的面试题目不存在，可能已被清理"));
     }
 
     //===============内部Record=================

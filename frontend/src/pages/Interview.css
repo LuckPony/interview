@@ -617,3 +617,13 @@
   border-color: var(--cinnabar);
   background: var(--cinnabar-wash);
 }
+
+/* —— 页面导航（历史/详情顶部返回按钮组） —— */
+.ih-nav {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.ih-nav .ih-back {
+  margin-bottom: 0;
+}
