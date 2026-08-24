@@ -358,9 +358,10 @@ export const drill = {
     apiFetch<LearningNextView>(`/drill/learning-next/${planId}`),
 
   // 方向级入口：综合检测仍复用 QuestionView + 聊天 + finish
+  // planId 允许为空：concept-practice 由后端从 conceptId 反推方向
   startPlan: (
-    planId: number,
-    mode: 'continue' | 'review' | 'layer' | 'concept-assessment' | 'level-assessment' = 'continue',
+    planId: number | undefined,
+    mode: 'continue' | 'review' | 'layer' | 'concept-practice' | 'layer-practice' | 'concept-assessment' | 'level-assessment' = 'continue',
     layer?: number,
     conceptId?: number,
   ) =>

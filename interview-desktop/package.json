@@ -1,6 +1,6 @@
 {
   "name": "interview-desktop",
-  "version": "0.3.29",
+  "version": "0.4.0",
   "private": true,
   "description": "面霸 · 备考助手的桌面壳：本地模式拉起 Spring Boot 后端，云端模式直连服务器；加载 React SPA + 本地 fs 桥（免上传读大项目）",
   "main": "src/main.js",
@@ -15,6 +15,7 @@
     "dist:cloud:win": "node scripts/build-cloud.js && electron-builder --win --config electron-builder.cloud.yml",
     "dist:win": "node scripts/build-cloud.js && electron-builder --win --config electron-builder.cloud.yml",
     "dist:win:local": "bash scripts/build-win.sh",
+    "release": "bash scripts/release.sh",
     "release:cloud": "node scripts/build-cloud.js && electron-builder --config electron-builder.cloud.yml --publish always",
     "release:win:local": "PUBLISH=always bash scripts/build-win.sh",
     "release:local": "bash scripts/release-local.sh",

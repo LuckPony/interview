@@ -319,7 +319,8 @@ export function PlansPage() {
                             <Button
                               variant="ghost"
                               className="layer-practice"
-                              onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'layer', layer: Number(layer) }, replace: true })}
+                              title="按整个层级出题：范围 = 已学内容 + 整个层级，跨多个知识点"
+                              onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'layer-practice', layer: Number(layer) }, replace: true })}
                             >
                               <Play size={13} strokeWidth={1.8} /> 练这一层
                             </Button>

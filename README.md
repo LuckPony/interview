@@ -228,8 +228,8 @@ Electron 桌面壳，一套代码两种模式：
 从 [GitHub Releases](https://github.com/LuckPony/interview/releases) 下载当前平台的安装包：
 
 ```text
-Windows：mianba-*-win-x64.exe
-macOS：  mianba-*-mac-x64.dmg
+Windows：mianba-*-cloud-win-x64.exe
+macOS：  mianba-*-cloud-mac-*.dmg
 ```
 
 Windows 推荐使用 `.exe` 安装版，以获得完整的自动更新能力；`.zip` 主要用于便携运行。macOS 未使用有效 Developer ID 签名和公证时，可能需要通过“右键 → 打开”首次启动。
@@ -249,20 +249,30 @@ npm start
 
 **CI（推荐）**：推送到 `main` 后，GitHub Actions 在 Windows / macOS Runner 上构建**云端模式**安装包（只含前端），并把安装包、blockmap、`latest*.yml` 发布到 GitHub Release。需要在仓库 **Settings → Secrets** 配置 `MIANBA_SERVER`（后端服务器地址，用于烘焙前端 API 地址）。
 
-**本地构建**：
+**本地一键发布（云端模式）**：
 
 ```bash
 cd interview-desktop
-# 云端模式（后端在服务器，只打包前端）
+MIANBA_SERVER=http://103.236.92.40:23333 GH_TOKEN=xxx npm run release
+# 一次构建并上传 Windows x64（exe/zip）与当前 Mac 架构（dmg/zip）的云模式安装包
+```
+
+正式发布一律走**云端模式**（桌面端只含前端，后端在服务器）；`MIANBA_SERVER` 可不带协议（自动补 `http://`）。
+
+**本地构建 / 调试**：
+
+```bash
+cd interview-desktop
+# 云端模式（后端在服务器，只打包前端；不发布，仅出产物）
 MIANBA_SERVER=https://你的域名 npm run dist:cloud      # macOS
 MIANBA_SERVER=https://你的域名 npm run dist:cloud:win  # Windows
 
-# 本地模式（内嵌后端）
+# 本地模式（内嵌后端，连外部 PostgreSQL，本地调试用）
 npm run dist            # 当前平台
 npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 ```
 
-构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
+构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。`release:local` / `release:win:local` 仅用于本地模式的分发（调试 / 离线场景），**不要**用作正式发布通道——正式发布请用 CI 或 `npm run release`（云模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
 
 ```text
 Windows：%APPDATA%\interview-desktop\updater.log

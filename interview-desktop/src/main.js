@@ -536,7 +536,7 @@ function createTray() {
   tray.setToolTip('面霸 · 备考助手');
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: '打开面霸', click: showMainWindow },
+      { label: '打开面霸', click: () => showMainWindow() },
       { type: 'separator' },
       {
         label: '彻底退出',
@@ -547,7 +547,7 @@ function createTray() {
       },
     ])
   );
-  tray.on('double-click', showMainWindow);
+  tray.on('double-click', () => showMainWindow());
 }
 
 function createWindow() {
@@ -864,7 +864,7 @@ app.whenReady().then(async () => {
   scheduleLearningReminder();
   setupAutoUpdate(); // 本地模式和云模式都检查 GitHub Release 更新；源码运行会自动跳过
 
-  app.on('activate', showMainWindow);
+  app.on('activate', () => showMainWindow());
 });
 
 // 只有真正退出应用时才清理后端；关闭窗口只隐藏到托盘。

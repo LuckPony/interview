@@ -142,6 +142,10 @@ public class DrillController {
         if ("concept-assessment".equals(mode) || "level-assessment".equals(mode)) {
             return openAssessmentRun(uid, req.planId(), mode, req.layer(), req.conceptId());
         }
+        // 用户主动的整知识点 / 整层级练习：范围 = 已学内容 + 整个知识点 / 整个层级
+        if ("concept-practice".equals(mode) || "layer-practice".equals(mode)) {
+            return openScopedPracticeRun(uid, req.planId(), mode, req.layer(), req.conceptId());
+        }
         SelectedTask task = switch (mode) {
             case "review" -> selectionService.pickReviewWithinPlan(uid, req.planId());
             case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
@@ -245,6 +249,74 @@ public class DrillController {
                 + (purpose == DrillPurpose.CONCEPT_ASSESSMENT
                 ? "这是大知识点综合检测。题目应综合该知识点下多个子知识点，考察组合运用，不要只重复单个定义。"
                 : "这是 L" + layer + " 层级综合检测。题目应在当前层的多个知识点间建立真实工程联系，难度不得超过当前层级。")
+                + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
+        QuestionBank q = questionService.generate(task, context);
+        QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
+        tagRun(view.runId(), purpose, planId, conceptId, layer);
+        return view;
+    }
+
+    /**
+     * 用户主动的整知识点 / 整层级练习出题：
+     * <ul>
+     *   <li>concept-practice：范围 = 已学内容（进度画像 + 概念要点 + 资料）+ 整个知识点；</li>
+     *   <li>layer-practice：范围 = 已学内容 + 整个层级（该层全部概念进上下文）。</li>
+     * </ul>
+     * 与工作流的综合检测（CONCEPT/LEVEL_ASSESSMENT）互不计数：这是练习，不是关卡。
+     */
+    private QuestionView openScopedPracticeRun(Long uid, Long planId, String mode, Integer layer, Long conceptId) {
+        // 必须新开对应范围的题，不能被同方向另一条普通子点题“恢复”并冒充。
+        for (DrillRun active : runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN)) {
+            active.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(active);
+        }
+        // 前端可能不传 planId（从知识点页进入）：用概念反推所属方向
+        if (planId == null && conceptId != null) {
+            Concept byId = conceptRepo.findById(conceptId).orElse(null);
+            if (byId != null) planId = byId.getStudyPlanId();
+        }
+        if (planId == null) throw new ResponseStatusException(BAD_REQUEST, "缺少学习方向");
+        List<Concept> layerAll = List.of();   // 整层全部概念：作为「整个层级」的上下文范围
+        List<Concept> scope;
+        DrillPurpose purpose;
+        if ("concept-practice".equals(mode)) {
+            Concept target = conceptRepo.findById(conceptId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+            scope = List.of(target);
+            if (planId == null) planId = target.getStudyPlanId();
+            layer = target.getLayer();
+            purpose = DrillPurpose.CONCEPT_PRACTICE;
+        } else {
+            final int targetLayer = layer == null ? 1 : layer;
+            List<Concept> layerPool = conceptRepo.findByStudyPlanId(planId).stream()
+                    .filter(c -> c.getLayer() == targetLayer)
+                    .sorted(Comparator.comparing(Concept::getId))
+                    .toList();
+            if (layerPool.isEmpty()) throw new ResponseStatusException(NOT_FOUND, "该层还没有知识点，先去「继续学习」");
+            layerAll = layerPool;
+            // 题面参与概念数受 probe_type 支持上限约束（最大 3），取不到整层；
+            // 但「范围」是整层：下面 contextFor 用整层概念注入（已学内容 + 整层要点）。
+            int already = runRepo.findByUserIdAndPlanIdAndPurposeAndAssessmentLayerAndStatus(
+                    uid, planId, DrillPurpose.LAYER_PRACTICE, targetLayer, DrillRunStatus.GRADED).size();
+            int take = Math.min(3, layerPool.size());
+            scope = java.util.stream.IntStream.range(0, take)
+                    .mapToObj(i -> layerPool.get((already + i) % layerPool.size()))
+                    .toList();
+            layer = targetLayer;
+            purpose = DrillPurpose.LAYER_PRACTICE;
+        }
+        List<ConceptRef> refs = java.util.stream.IntStream.range(0, scope.size())
+                .mapToObj(i -> ConceptRef.of(scope.get(i), i == 0 ? ConceptRole.PRIMARY : ConceptRole.ANCHOR))
+                .toList();
+        SelectedTask task = new SelectedTask(refs);
+        List<Long> contextIds = purpose == DrillPurpose.LAYER_PRACTICE
+                ? layerAll.stream().map(Concept::getId).toList()
+                : task.conceptIds();
+        String context = progressContext.contextFor(uid, contextIds);
+        context = (context == null ? "" : context + "\n\n")
+                + (purpose == DrillPurpose.CONCEPT_PRACTICE
+                ? "这是整个知识点的综合练习。题目应综合这个知识点下的多个子知识点，考察组合运用，不要只重复单个子知识点。"
+                : "这是 L" + layer + " 整个层级的综合练习。题目应综合覆盖当前层级的多个知识点，在它们之间建立真实工程联系，难度不得超过 L" + layer + "。")
                 + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
         QuestionBank q = questionService.generate(task, context);
         QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);

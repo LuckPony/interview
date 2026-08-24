@@ -205,7 +205,11 @@ export function Plans({
                   const pending = p.concepts
                     .slice()
                     .sort((a, b) => a.layer - b.layer || a.id - b.id)
-                    .find((c) => !c.subPoints.length || c.completedSubPoints.length < c.subPoints.length);
+                    .find((c) => {
+                      const sub = c.subPoints ?? [];
+                      const done = c.completedSubPoints ?? [];
+                      return sub.length === 0 || done.length < sub.length;
+                    });
                   return pending ? (
                     <button className="concept-chip" onClick={() => onPick(pending.id)}>
                       <span className="chip-name">正在学习：{pending.name}</span>
