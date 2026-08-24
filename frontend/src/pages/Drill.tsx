@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw } from 'lucide-react';
 import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
@@ -357,8 +357,8 @@ export function Drill() {
   const directStart = (conceptId: number) =>
     startQuestion(() => drill.start(conceptId), { kind: 'concept', conceptId });
 
-  // 播放某个子知识点的讲解（SSE 流式）
-  const playSubLesson = (conceptId: number, subPoint: string) => {
+  // 播放某个子知识点的讲解（SSE 流式）；refresh=true 走「换种描述」：后端跳过缓存重新生成
+  const playSubLesson = (conceptId: number, subPoint: string, refresh = false) => {
     setView('teach');
     setLessonText('');
     setLessonReasoning('');
@@ -376,6 +376,7 @@ export function Drill() {
         sseRef.current = null;
         setErr(msg || '讲解生成失败');
       },
+      refresh,
     );
   };
 
@@ -940,9 +941,19 @@ export function Drill() {
                 )}
               </div>
               <div className="teach-foot">
-                <Button variant="ghost" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
-                  返回清单
-                </Button>
+                <div className="teach-foot-left">
+                  <Button variant="ghost" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                    返回清单
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => t && playSubLesson(t.conceptId, t.subPoints[t.curIdx], true)}
+                    disabled={lessonBusy}
+                    title="用另一种说法、另一组例子重新讲解这个子知识点"
+                  >
+                    <RefreshCw size={14} strokeWidth={1.8} className={lessonBusy ? 'spin' : ''} /> 换种描述
+                  </Button>
+                </div>
                 <Button onClick={startSubQuiz} disabled={lessonBusy}>
                   开始做题 <ChevronRight size={16} strokeWidth={1.6} />
                 </Button>

@@ -316,8 +316,9 @@ export function chatStream(
 }
 
 /**
- * 子知识点讲解 SSE 流（POST /{conceptId}/lesson?subPoint=...，SSE）：
- * 逐 token 推讲解文本，event:done 结束。缓存命中时后端整体一帧下发。
+ * 子知识点讲解 SSE 流（POST /{conceptId}/lesson?subPoint=...&refresh=，SSE）：
+ * 逐 token 推讲解文本，event:done 结束。缓存命中时后端整体一帧下发；
+ * refresh=true（「换种描述」）时后端跳过缓存强制重新生成，并覆盖缓存。
  */
 export function lessonStream(
   conceptId: number,
@@ -326,9 +327,10 @@ export function lessonStream(
   onReasoning: (text: string) => void,
   onDone: () => void,
   onError: (status?: number, message?: string) => void,
+  refresh = false,
 ): TutorStream {
   const token = getToken();
-  const url = `${API_BASE_SSE}/api/drill/${conceptId}/lesson?subPoint=${encodeURIComponent(subPoint)}`;
+  const url = `${API_BASE_SSE}/api/drill/${conceptId}/lesson?subPoint=${encodeURIComponent(subPoint)}${refresh ? '&refresh=1' : ''}`;
   return openSse(url, {
     method: 'POST',
     headers: {

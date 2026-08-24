@@ -295,10 +295,13 @@ public class DrillController {
         return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, completedSubPoints, cached);
     }
 
-    /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。 */
+    /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。
+     *  {@code refresh=true}（「换种描述」按钮）：跳过缓存强制重新生成，并把旧讲解文本
+     *  传给生成器作参考，让新讲解换角度/换描述、不照搬；生成后覆盖缓存。 */
     @PostMapping(value = "/{conceptId}/lesson", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> lesson(@PathVariable Long conceptId,
-                                                        @RequestParam String subPoint) {
+                                                        @RequestParam String subPoint,
+                                                        @RequestParam(defaultValue = "false") boolean refresh) {
         Long uid = currentUserId();
         Concept concept = conceptRepo.findById(conceptId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
@@ -307,9 +310,12 @@ public class DrillController {
             throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
         }
 
-        // 缓存命中：直接整体下发（一个 data 帧）；未命中则流式生成后写回。
+        // 缓存命中：直接整体下发（一个 data 帧）；refresh=true 时跳过缓存强制重新生成。
         final ConceptLesson cachedLesson = conceptLessonRepo
                 .findByConceptIdAndSubPoint(conceptId, sub).orElse(null);
+        final boolean useCache = !refresh && cachedLesson != null;
+        // 换种描述时把旧讲解文本交给生成器，让它换角度/换例子，避免照搬。
+        final String previousText = (refresh && cachedLesson != null) ? cachedLesson.getLessonText() : null;
         final String context = progressContext.contextFor(uid, conceptId);
 
         StreamingResponseBody body = out -> {
@@ -317,7 +323,7 @@ public class DrillController {
                 out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                 out.flush();
 
-                if (cachedLesson != null) {
+                if (useCache) {
                     String cachedText = cachedLesson.getLessonText();
                     String normalized = lessonGenerator.normalizeLesson(cachedText);
                     if (!normalized.equals(cachedText == null ? "" : cachedText.trim())) {
@@ -331,7 +337,7 @@ public class DrillController {
                     out.flush();
                 } else {
                     final StringBuilder buf = new StringBuilder();
-                    String full = lessonGenerator.streamLesson(concept, sub, context,
+                    String full = lessonGenerator.streamLesson(concept, sub, context, previousText,
                             token -> {
                                 buf.append(token);
                                 try {
@@ -345,17 +351,25 @@ public class DrillController {
                             r -> sseReasoning(out, r));
 
                     if (full != null && !full.isBlank()) {
-                        ConceptLesson cl = new ConceptLesson();
-                        cl.setConceptId(conceptId);
-                        cl.setSubPoint(sub);
-                        cl.setLessonText(full);
-                        cl.setCharCount(full.length());
-                        try {
-                            conceptLessonRepo.save(cl);
-                        } catch (Exception e) {
-                            // 并发/重复插入撞唯一索引：忽略，已有缓存即可
-                            log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
-                        }
+                        // refresh 时覆盖旧缓存；否则插入新缓存（并发撞唯一索引则忽略）
+                        conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
+                                .ifPresentOrElse(exist -> {
+                                    exist.setLessonText(full);
+                                    exist.setCharCount(full.length());
+                                    conceptLessonRepo.save(exist);
+                                }, () -> {
+                                    ConceptLesson cl = new ConceptLesson();
+                                    cl.setConceptId(conceptId);
+                                    cl.setSubPoint(sub);
+                                    cl.setLessonText(full);
+                                    cl.setCharCount(full.length());
+                                    try {
+                                        conceptLessonRepo.save(cl);
+                                    } catch (Exception e) {
+                                        // 并发/重复插入撞唯一索引：忽略，已有缓存即可
+                                        log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
+                                    }
+                                });
                     } else {
                         out.write(("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n")
                                 .getBytes(StandardCharsets.UTF_8));

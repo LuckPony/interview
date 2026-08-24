@@ -993,3 +993,14 @@
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+.teach-foot-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@keyframes teach-spin {
+  to { transform: rotate(360deg); }
+}
+.teach-foot .spin {
+  animation: teach-spin 1s linear infinite;
+}

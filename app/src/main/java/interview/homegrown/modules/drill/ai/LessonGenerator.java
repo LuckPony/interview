@@ -144,20 +144,39 @@ public class LessonGenerator {
      */
     public String streamLesson(Concept concept, String subPoint, String context,
                                Consumer<String> onToken, Consumer<String> onReasoning) {
-        String user = String.format("""
+        return streamLesson(concept, subPoint, context, null, onToken, onReasoning);
+    }
+
+    /**
+     * 「换种描述」重讲：previousText 非空时，在 prompt 里附上旧讲解并要求换角度/换描述重新讲，
+     * 避免生成与上次几乎相同的文本；生成逻辑与普通讲解完全一致。
+     */
+    public String streamLesson(Concept concept, String subPoint, String context, String previousText,
+                               Consumer<String> onToken, Consumer<String> onReasoning) {
+        StringBuilder user = new StringBuilder(String.format("""
                 概念：%s（主题：%s，认知层 L%d）
                 子知识点：%s
 
                 学习上下文（学生进度 / 概念要点 / 用户上传资料 / 互联网补充）：
                 %s
-
-                请讲解这个子知识点。
                 """, concept.getName(), concept.getTopic(), concept.getLayer(),
-                subPoint, contextBlock(context));
+                subPoint, contextBlock(context)));
+
+        if (previousText != null && !previousText.isBlank()) {
+            user.append("""
+
+                    用户觉得上次讲解不够清楚，点「换种描述」要求重新讲一遍。请务必做到：
+                    - 换一个讲解角度、换一种组织方式、换一组例子或比喻，不要照搬上次的结构与措辞
+                    - 内容保持准确，仍然覆盖这个子知识点
+                    - 上一次的讲解（只作参考避免重复，不要重复它，也不要展示给用户）：
+                    """).append(truncate(previousText, 1500));
+        }
+        user.append("\n\n请讲解这个子知识点。");
+        final String userPrompt = user.toString();
 
         StringBuilder buf = new StringBuilder();
         boolean[] stopped = {false};
-        rawClient.stream(LESSON_SYSTEM, user,
+        rawClient.stream(LESSON_SYSTEM, userPrompt,
                 token -> {
                     if (stopped[0]) return;
                     String candidate = buf + token;
@@ -189,6 +208,11 @@ public class LessonGenerator {
                 });
         String text = normalizeLesson(buf.toString());
         return text.isEmpty() ? null : text;
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null || s.length() <= max) return s;
+        return s.substring(0, max) + "…";
     }
 
     /** 清理旧缓存中已经存在的“讲完后从头再讲”尾段。 */
