@@ -1,11 +1,9 @@
 name: Probe server connectivity (temp)
 
 # 临时诊断：从 GitHub Actions 机器实测能连通服务器哪些端口（机房 NAT/防火墙排查用）。
-# 用后即删。
+# 探测确认：国外 IP 入站全封（22/80/23333/5678/5454 全部超时）。用后即删。
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   probe:
