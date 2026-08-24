@@ -57,14 +57,14 @@ public class ResumeUploadService {
     }
 
     //上传同步简历
-    public ResumeDetailDTO upload(byte[] bytes,String originalName){
+    public ResumeDetailDTO upload(byte[] bytes, String originalName, Long userId){
 
         //校验文件大小以及是否在类型白名单
         String contentType = fileValidationService.validate(bytes,originalName);
         //计算存储位置的hash值
         String hash = fileHashService.computesha256(bytes);
         //内容去重
-        resumeRepository.findByContentHash(hash).ifPresent(existing -> {
+        resumeRepository.findByUserIdAndContentHash(userId, hash).ifPresent(existing -> {
             throw new BusinessException(ErrorCode.DUPLICATE_FILE, "已存在相同内容的简历 id = " + existing.getId());
         });
         //存储到MinIO（S3）
@@ -99,7 +99,7 @@ public class ResumeUploadService {
         }
         resumeRepository.save(resume);
 
-        return resumeQueryService.getDetail(resume.getId());
+        return resumeQueryService.getDetail(userId, resume.getId());
 
     }
 

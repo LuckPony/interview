@@ -18,6 +18,10 @@ public class ResumeEntity {
     @Column(name = "id", nullable = false)
     private Long id;
 
+    /** 归属用户（数据隔离：只能看到自己上传的简历） */
+    @Column(name = "user_id")
+    private Long userId;
+
     @Size(max = 255)
     @NotNull
     @Column(name = "original_name", nullable = false)

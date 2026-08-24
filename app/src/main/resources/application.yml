@@ -14,10 +14,23 @@ spring:
       enabled: true
   datasource:
     # PostgreSQL 是唯一运行时数据库；本地开发默认连接 docker-compose.dev.yml 中的 iv-postgres。
-    url: ${APP_DATASOURCE_URL:jdbc:postgresql://localhost:5432/interview}
+    url: ${APP_DATASOURCE_URL:jdbc:postgresql://103.236.92.40:5454/interview}
     username: ${APP_DATASOURCE_USERNAME:postgres}
     password: ${APP_DATASOURCE_PASSWORD:123456}
     driver-class-name: ${APP_DATASOURCE_DRIVER:org.postgresql.Driver}
+  data:
+    redis:
+      # 本地开发默认访问云端 Redis
+      # Docker 部署时由 SPRING_DATA_REDIS_HOST=redis 覆盖
+      host: ${SPRING_DATA_REDIS_HOST:103.236.92.40}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 3000ms
+
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
   jpa:
     hibernate:
       # schema 由 Flyway 全权管理，Hibernate 不再做严格类型校验（避免 SMALLINT/INTEGER 之类良性差异报错）
@@ -60,11 +73,6 @@ spring:
           auth: true
           starttls:
             enable: true
-      lettuce:
-        pool:
-          max-active: 16
-          max-idle: 8
-          min-idle: 2
 springdoc:
   # 生产默认关闭（避免把全部接口结构暴露给公网）；本地开发设 APP_SWAGGER_ENABLED=true 打开
   api-docs:
@@ -81,7 +89,7 @@ springdoc:
 
 app:
   storage:
-    endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}
+    endpoint: ${APP_STORAGE_ENDPOINT:https://103.236.92.40:9000}
     access-key: ${APP_STORAGE_ACCESS_KEY:minioadmin}
     secret-key: ${APP_STORAGE_SECRET_KEY:minioadmin}
     bucket: ${APP_STORAGE_BUCKET:interview}
@@ -123,7 +131,7 @@ app:
       - text/plain
   jwt:
     secret: ${APP_JWT_SECRET:drill-dev-secret-change-me-please-32bytes}
-    expiration-ms: 86400000   # 24h
+    expiration-ms: 5184000000  # 2 个月（60 天）
   mail:
     from: ${MAIL_FROM:}
 

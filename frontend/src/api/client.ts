@@ -68,6 +68,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (res.status === 401) {
     clearSession();
+    // 广播：AuthContext 同步清 React 登录态，RequireAuth 立即跳转登录页
+    window.dispatchEvent(new Event('yan:logout'));
     throw new ApiError(401, '登录已失效，请重新登录');
   }
   if (!res.ok) {

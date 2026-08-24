@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
-import interview.homegrown.infrastructure.redis.RedisService;
+import interview.homegrown.modules.interview.repository.InterviewQuestionRepository;
 import interview.homegrown.modules.interview.config.InterviewSkillProperties;
 import interview.homegrown.modules.interview.model.*;
 import interview.homegrown.modules.interview.repository.InterviewAnswerRepository;
@@ -41,8 +41,7 @@ public class InterviewSessionService {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewSessionService.class);
 
-    private static final String QUESTION_CACHE_KEY = "interview:question";
-    private static final Duration CACHE_TIL = Duration.ofHours(24);
+    // 题目持久化到数据库（interview_question 表）：进程重启不丢，桌面端可随时恢复面试
 
     private final ResumeRepository resumeRepository;
     private final InterviewPersistenceService persistenceService;
@@ -53,14 +52,14 @@ public class InterviewSessionService {
     private final InterviewAnswerRepository answerRepository;
     private final ConceptRepository conceptRepo;
     private final ObjectMapper objectMapper;
-    private final RedisService redisService;
+    private final InterviewQuestionRepository questionRepo;
 
     public InterviewSessionService(ResumeRepository resumeRepository,
                                    InterviewSkillService skillService,InterviewSessionRepository sessionRepository,
                                    InterviewPersistenceService persistenceService,InterviewQuestionService questionService,
                                    InterviewEvaluateService evaluateService,InterviewAnswerRepository answerRepository,
                                    ConceptRepository conceptRepo,
-                                   ObjectMapper objectMapper,RedisService redisService) {
+                                   ObjectMapper objectMapper,InterviewQuestionRepository questionRepo) {
 
         this.resumeRepository = resumeRepository;
         this.persistenceService = persistenceService;
@@ -71,12 +70,12 @@ public class InterviewSessionService {
         this.answerRepository = answerRepository;
         this.conceptRepo = conceptRepo;
         this.objectMapper = objectMapper;
-        this.redisService = redisService;
+        this.questionRepo = questionRepo;
     }
 
     //=====================创建会话===================
 
-    public InterviewSessionDTO createSession(CreateSessionRequest request){
+    public InterviewSessionDTO createSession(CreateSessionRequest request, Long userId){
 
         // 面试依据校验：简历 与 学习方向 必须二选一（可都选）
         boolean hasResume = request.resumeId() != null;
@@ -91,13 +90,17 @@ public class InterviewSessionService {
         //确定难度
         InterviewDifficulty difficulty = request.difficulty() != null ? request.difficulty() : InterviewDifficulty.MIDDLE;
 
-        //关联简历文本（可选）
+        //关联简历文本（可选，校验归属：只能使用自己的简历）
         Long resumeId = request.resumeId();
-        String resumeText = resumeId != null
-                ? resumeRepository.findById(resumeId)
-                        .map(ResumeEntity::getResumeText)
-                        .orElse("")
-                : "";
+        String resumeText = "";
+        if (resumeId != null) {
+            ResumeEntity resumeEntity = resumeRepository.findById(resumeId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在"));
+            if (!userId.equals(resumeEntity.getUserId())) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "无权使用该简历");
+            }
+            resumeText = resumeEntity.getResumeText() == null ? "" : resumeEntity.getResumeText();
+        }
 
         //学习方向知识点（可选，多选合并去重）
         List<String> planConcepts = (request.planIds() == null || request.planIds().isEmpty())
@@ -146,9 +149,9 @@ public class InterviewSessionService {
 
     //================取当前题目==============
 
-    public CurrentQuestion getCurrentQuestion(String sessionId){
+    public CurrentQuestion getCurrentQuestion(String sessionId, Long userId){
 
-        InterviewSessionEntity session = persistenceService.getById(sessionId);
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
 
         if(session.getStatus() != InterviewStatus.IN_PROGRESS){
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
@@ -173,9 +176,9 @@ public class InterviewSessionService {
 
     //====================提交答案======================
 
-    public void submitAnswer(String sessionId, int questionIndex, String answerText){
+    public void submitAnswer(String sessionId, int questionIndex, String answerText, Long userId){
 
-        InterviewSessionEntity session = persistenceService.getById(sessionId);
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
 
         if(session.getStatus() != InterviewStatus.IN_PROGRESS){
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
@@ -207,9 +210,9 @@ public class InterviewSessionService {
 
     //==================完成面试 并 进行评估=================
 
-    public InterviewSessionDTO completeInterview(String sessionId){
+    public InterviewSessionDTO completeInterview(String sessionId, Long userId){
 
-        InterviewSessionEntity session = persistenceService.getById(sessionId);
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
 
         if(session.getStatus() != InterviewStatus.IN_PROGRESS){
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
@@ -268,8 +271,8 @@ public class InterviewSessionService {
 
         persistenceService.save(session);
 
-        //清理题目缓存
-        redisService.delete(QUESTION_CACHE_KEY + sessionId);
+        //清理题目记录（已完成，不再需要）
+        questionRepo.deleteBySessionId(sessionId);
 
         log.info("面试完成并评估: sessionId={}, 总分={}", sessionId, evaluation.totalScore());
 
@@ -279,9 +282,9 @@ public class InterviewSessionService {
     //======================查询=================
 
     //查会话列表
-    public List<InterviewListItemDTO> listSessions(){
+    public List<InterviewListItemDTO> listSessions(Long userId){
 
-        return sessionRepository.findAllByOrderByCreatedAtDesc().stream()
+        return sessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(s -> {
                     int answered = answerRepository.findBySessionIdOrderByQuestionIndex(s.getId()).size();
                     return new InterviewListItemDTO(
@@ -301,19 +304,30 @@ public class InterviewSessionService {
     }
 
     //查单个详细会话信息
-    public InterviewSessionDTO getSession(String sessionId){
-        return toDetailDTO(persistenceService.getById(sessionId));
+    public InterviewSessionDTO getSession(String sessionId, Long userId){
+        return toDetailDTO(requireOwned(sessionId, userId));
     }
 
     //====================私有方法=====================
 
+    /** 取会话并校验归属用户（不是本人则拒绝） */
+    private InterviewSessionEntity requireOwned(String sessionId, Long userId) {
+        InterviewSessionEntity session = persistenceService.getById(sessionId);
+        if (!userId.equals(session.getUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该面试会话");
+        }
+        return session;
+    }
+
     private void cacheQuestions(String sessionId,InterviewQuestionResult questions){
 
         try{
-            String json = objectMapper.writeValueAsString(questions);   //增加可读性，方便调试
-            redisService.set(QUESTION_CACHE_KEY + sessionId,json,CACHE_TIL);
+            InterviewQuestionEntity entity = new InterviewQuestionEntity();
+            entity.setSessionId(sessionId);
+            entity.setQuestionsJson(objectMapper.writeValueAsString(questions));
+            questionRepo.save(entity);
         }catch (JsonProcessingException e){
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"题目缓存序列化失败");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"题目持久化失败");
         }
     }
 
@@ -363,17 +377,18 @@ public class InterviewSessionService {
 
     private InterviewQuestionResult readCachedQuestion(String sessionId){
 
-        return redisService.get(QUESTION_CACHE_KEY + sessionId)
+        return questionRepo.findById(sessionId)
+                .map(InterviewQuestionEntity::getQuestionsJson)
                 .map(json -> {
                     try{
                         return objectMapper.readValue(json, new TypeReference<InterviewQuestionResult>() {
                         });
                     } catch (JsonProcessingException e) {
-                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目缓存反序列化失败");
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目解析失败");
                     }
                 })
                 .orElseThrow(() -> new BusinessException(
-                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "题目缓存不存在或已过期"));
+                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "该会话的面试题目不存在，可能已被清理"));
     }
 
     //===============内部Record=================
