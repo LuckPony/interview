@@ -27,10 +27,10 @@ public class ResumeQueryService {
         this.resumeRepository = resumeRepository;
     }
 
-    //简历列表（带分析得分）
-    public List<ResumeListItemDTO> list(){
+    //简历列表（带分析得分，仅当前用户）
+    public List<ResumeListItemDTO> list(Long userId){
 
-        List<ResumeEntity> resumes = resumeRepository.findAllByOrderByCreatedAtDesc();
+        List<ResumeEntity> resumes = resumeRepository.findByUserIdOrderByCreatedAtDesc(userId);
         if (resumes.isEmpty()){
             return List.of();
         }
@@ -46,9 +46,12 @@ public class ResumeQueryService {
     }
 
     //简历详情(含分析结果)
-    public ResumeDetailDTO getDetail(Long id){
+    public ResumeDetailDTO getDetail(Long userId, Long id){
         ResumeEntity resume = resumeRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "id= "+id));
+        if (!userId.equals(resume.getUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该简历");
+        }
         ResumeAnalysisEntity analysis = resumeAnalysisRepository.findByResumeId(id).orElse(null);
         return toDetail(resume,analysis);
     }

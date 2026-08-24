@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,6 +35,11 @@ public class ResumeController {
         this.resumeDeleteService = resumeDeleteService;
     }
 
+    private Long uid() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (Long) auth.getPrincipal();
+    }
+
     //上传简历并分析简历
     @PostMapping(value = "/upload",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "上传并分析简历",description =  "上传 PDF/DOCX/TXT -> 校验 -> 去重 -> S3 存储 -> 解析 -> AI 分析（同步）")
@@ -40,7 +47,7 @@ public class ResumeController {
             @Parameter(description = "简历文件（PDF/DOCX/TXT/DEC")
             @RequestParam("file")MultipartFile file
             ) throws IOException {
-        ResumeDetailDTO detail = resumeUploadService.upload(file.getBytes(),file.getOriginalFilename());
+        ResumeDetailDTO detail = resumeUploadService.upload(file.getBytes(),file.getOriginalFilename(), uid());
         return Result.success(detail);
     }
 
@@ -48,14 +55,14 @@ public class ResumeController {
     @GetMapping
     @Operation(summary = "简历列表", description = "按照创建时间倒序返回所有简历及分析得分")
     public Result<List<ResumeListItemDTO>> list(){
-        return Result.success(resumeQueryService.list());
+        return Result.success(resumeQueryService.list(uid()));
     }
 
     //查看简历详情
     @GetMapping("/{id}")
     @Operation(summary = "简历详情", description = "返回简历原文与AI分析报告")
     public Result<ResumeDetailDTO> detail(@PathVariable Long id){
-        return Result.success(resumeQueryService.getDetail(id));
+        return Result.success(resumeQueryService.getDetail(uid(), id));
     }
 
     //删除简历
@@ -65,7 +72,7 @@ public class ResumeController {
             @Parameter(description = "id")
             @PathVariable Long id) {
 
-        resumeDeleteService.delete(id);
+        resumeDeleteService.delete(uid(), id);
         return Result.success();
     }
 

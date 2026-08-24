@@ -20,6 +20,10 @@ public class InterviewSessionEntity {
     @Column(name = "id", nullable = false, length = 36)
     private String id;
 
+    /** 归属用户（数据隔离：只能看到自己的面试） */
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "resume_id")
     private Long resumeId;
 
