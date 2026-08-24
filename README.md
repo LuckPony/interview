@@ -228,8 +228,8 @@ Electron 桌面壳，一套代码两种模式：
 从 [GitHub Releases](https://github.com/LuckPony/interview/releases) 下载当前平台的安装包：
 
 ```text
-Windows：mianba-*-win-x64.exe
-macOS：  mianba-*-mac-x64.dmg
+Windows：mianba-*-cloud-win-x64.exe
+macOS：  mianba-*-cloud-mac-*.dmg
 ```
 
 Windows 推荐使用 `.exe` 安装版，以获得完整的自动更新能力；`.zip` 主要用于便携运行。macOS 未使用有效 Developer ID 签名和公证时，可能需要通过“右键 → 打开”首次启动。
@@ -249,20 +249,42 @@ npm start
 
 **CI（推荐）**：推送到 `main` 后，GitHub Actions 在 Windows / macOS Runner 上构建**云端模式**安装包（只含前端），并把安装包、blockmap、`latest*.yml` 发布到 GitHub Release。需要在仓库 **Settings → Secrets** 配置 `MIANBA_SERVER`（后端服务器地址，用于烘焙前端 API 地址）。
 
-**本地构建**：
+**本地一键发布（云端模式）**：
 
 ```bash
 cd interview-desktop
-# 云端模式（后端在服务器，只打包前端）
+MIANBA_SERVER=http://103.236.92.40:23333 GH_TOKEN=xxx npm run release
+# 一次构建并上传 Windows x64（exe/zip）与当前 Mac 架构（dmg/zip）的云模式安装包
+```
+
+正式发布一律走**云端模式**（桌面端只含前端，后端在服务器）；`MIANBA_SERVER` 可不带协议（自动补 `http://`）。
+
+**本地构建 / 调试**：
+
+```bash
+cd interview-desktop
+# 云端模式（后端在服务器，只打包前端；不发布，仅出产物）
 MIANBA_SERVER=https://你的域名 npm run dist:cloud      # macOS
 MIANBA_SERVER=https://你的域名 npm run dist:cloud:win  # Windows
 
-# 本地模式（内嵌后端）
+# 本地模式（内嵌后端，连外部 PostgreSQL，本地调试用）
 npm run dist            # 当前平台
 npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 ```
 
-构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
+构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。`release:local` / `release:win:local` 仅用于本地模式的分发（调试 / 离线场景），**不要**用作正式发布通道——正式发布请用 CI 或 `npm run release`（云模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
+
+### 服务器部署
+
+后端与 Web 部署到服务器（`/opt/mianba`）。当前服务器机房（陕西电信云基地）限制**境外入站**，GitHub Actions（美国机房）无法直连，因此用本机一键脚本部署（本机为国内 IP，SSH 可达）：
+
+```bash
+bash deploy/deploy-local.sh
+# 构建 jar + Web SPA → rsync 上传 → 服务器跑 deploy-prod.sh（PG 备份→docker 重启→健康检查）
+# 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
+```
+
+> 机房放行境外访问后（ICP 备案或联系服务商），推送到 `main` 将自动触发 `.github/workflows/deploy.yml` 完成部署（该流水线已修复 rsync 与 web 构建模式问题）。
 
 ```text
 Windows：%APPDATA%\interview-desktop\updater.log
@@ -291,6 +313,26 @@ docker compose -f docker-compose.prod.yml up -d --build
 3. **启动**：把 `.env` 里的环境变量传进去后 `java -jar app/build/libs/app-0.0.1-SNAPSHOT.jar`。
 
 **公网**：用 Nginx / Caddy 反代 **23333** 端口并配 HTTPS。桌面端 SPA 从 `file://` 请求，跨域已放行（CORS `*`）。
+
+### 自动部署（GitHub Actions）
+
+推送到 `main` 时，`Deploy to server` 工作流会自动构建并部署后端 + Web 到服务器（也可在 Actions 页手动触发）。采用**产物式部署**，与服务器 `/opt/mianba` 的实际结构一致：
+
+1. **CI 构建产物**：后端 fat jar（`./gradlew :app:bootJar`）+ Web SPA（`npm run build`）。
+2. **上传产物**：rsync 只上传 `app.jar → /opt/mianba/backend/app.jar`、`frontend/dist/* → /opt/mianba/web-image/web/`、同步 `deploy/deploy-prod.sh`；**不删除服务器上任何其它文件**（`.env`、`backups/`、自定义 `docker-compose.yml` 都保留）。
+3. **复用镜像**：`deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）「已存在则复用、缺失才拉取」；backend/web 用 docker 层缓存构建（未变化的层直接复用）；`compose up` 带 `--no-build`；部署前自动备份 PostgreSQL，部署后健康检查。
+
+配置一次即可（仓库 **Settings → Secrets and variables → Actions**）：
+
+| Secret | 值 |
+|---|---|
+| `SERVER_HOST` | 服务器 IP，如 `103.236.92.40` |
+| `SERVER_USER` | SSH 用户名，如 `root` |
+| `SERVER_SSH_KEY` | SSH 私钥完整内容（含 `-----BEGIN ...-----` 行；公钥需已加入服务器 `~/.ssh/authorized_keys`） |
+| `SERVER_SSH_PORT` | SSH 端口（非默认 22 时必填，如 `37777`） |
+| `DEPLOY_DIR` | 可选，部署目录，默认 `/opt/mianba` |
+
+> 要求：服务器已装 docker 与 docker compose v2；`/opt/mianba/.env` 已配置好全部环境变量（`APP_JWT_SECRET` 等）；Web 对外端口按你的 NAT/防火墙规则暴露（如内部 18080 NAT 到 5678）。
 
 ## 🏗️ 架构设计
 

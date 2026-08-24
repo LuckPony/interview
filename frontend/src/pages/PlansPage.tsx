@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Play,
@@ -16,6 +16,7 @@ import {
 import { studyPlan } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Button, Card, Loading } from '../components/ui';
+import { ACTIVE_PLAN_KEY, readActivePlanId } from '../lib/useActivePlan';
 import type { PlanView, PlanConceptView } from '../api/types';
 import './PlansPage.css';
 
@@ -42,13 +43,29 @@ const LAYER_LABEL: Record<number, string> = {
 
 export function PlansPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [plans, setPlans] = useState<PlanView[]>([]);
-  const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
+  // —— 方向 tab 与编辑态由 URL 查询参数驱动（?plan=&edit=1），支持浏览器前进/后退 ——
+  // 无 ?plan= 时默认跟随全局「当前学习方向」（首页/他页选择记忆），而不是固定第一个
+  const storedIdx = (() => {
+    const id = readActivePlanId();
+    if (id == null) return 0;
+    const i = plans.findIndex((p) => p.id === id);
+    return i >= 0 ? i : 0;
+  })();
+  const activeIdx = Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? storedIdx) || 0));
+  const editing = searchParams.get('edit') === '1';
+
+  /** 切换方向 tab：写 URL + 同步全局「当前学习方向」 */
+  const switchPlanTab = (i: number, planId: number) => {
+    try { localStorage.setItem(ACTIVE_PLAN_KEY, String(planId)); } catch { /* ignore */ }
+    setSearchParams({ plan: String(i) });
+  };
+
   // —— 编辑态：方向标题/目标 + 知识点增改删 ——
-  const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editGoal, setEditGoal] = useState('');
   const [editBusy, setEditBusy] = useState(false);
@@ -91,7 +108,7 @@ export function PlansPage() {
     setEditTitle(activePlan.title);
     setEditGoal(activePlan.goal ?? '');
     setEditErr('');
-    setEditing(true);
+    setSearchParams({ plan: String(activeIdx), edit: '1' });
   };
 
   const savePlan = async () => {
@@ -116,9 +133,9 @@ export function PlansPage() {
     setEditErr('');
     try {
       await studyPlan.remove(activePlan.id);
-      setEditing(false);
+      const idx = Math.max(0, Math.min(activeIdx, plans.length - 2));
+      setSearchParams({ plan: String(idx) });
       await load();
-      setActiveIdx((i) => Math.max(0, Math.min(i, plans.length - 2)));
     } catch (e) {
       setEditErr(msg(e));
     } finally {
@@ -171,7 +188,7 @@ export function PlansPage() {
               <button
                 key={p.id}
                 className={'plan-tab' + (i === activeIdx ? ' active' : '')}
-                onClick={() => setActiveIdx(i)}
+                onClick={() => switchPlanTab(i, p.id)}
               >
                 <BookOpen size={14} strokeWidth={1.6} />
                 {p.title}
@@ -233,7 +250,7 @@ export function PlansPage() {
                     <RefreshCw size={15} strokeWidth={1.8} /> 复习
                     {activePlan.dueReviewCount > 0 && <span className="due-badge">{activePlan.dueReviewCount}</span>}
                   </Button>
-                  <Button variant="ghost" onClick={() => (editing ? setEditing(false) : enterEdit())}>
+                  <Button variant="ghost" onClick={() => (editing ? setSearchParams({ plan: String(activeIdx) }) : enterEdit())}>
                     {editing ? <><X size={15} strokeWidth={1.8} /> 完成</> : <><Pencil size={15} strokeWidth={1.8} /> 编辑</>}
                   </Button>
                   <Button variant="danger" onClick={deletePlan} disabled={editBusy}>
@@ -319,9 +336,10 @@ export function PlansPage() {
                             <Button
                               variant="ghost"
                               className="layer-practice"
-                              onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'layer', layer: Number(layer) }, replace: true })}
+                              title="按整个层级出题：范围 = 已学内容 + 整个层级，跨多个知识点"
+                              onClick={() => navigate('/drill', { state: { planId: activePlan.id, planMode: 'layer-practice', layer: Number(layer) }, replace: true })}
                             >
-                              <Play size={13} strokeWidth={1.8} /> 练这一层
+                              <Play size={13} strokeWidth={1.8} /> 按 L{layer} 整层出题
                             </Button>
                           </div>
                           <div className="layer-chips">

@@ -432,7 +432,9 @@ public class StudyPlanService {
                     return new PlanConceptView(c.getId(), c.getName(), c.getTopic(), c.getLayer(),
                             lvl.getOrDefault(c.getId(), 0), c.getDescription(), subPoints, completed);
                 })
-                .sorted(Comparator.comparingInt(PlanConceptView::layer))
+                // 固定排序：layer 升序、同层按 id（= 计划内插入顺序）升序。
+                // 之前只按 layer 稳定排序，同层顺序依赖 DB 无序返回；概念行被 UPDATE 后堆序会变，导致返回顺序漂移。
+                .sorted(Comparator.comparingInt(PlanConceptView::layer).thenComparing(PlanConceptView::id))
                 .toList();
         long mastered = concepts.stream().filter(c -> c.masteryLevel() > 0).count();
         // 待复习 = 本方向内「已掌握(level>0)且到期(dueAt<=now)」的概念数，供前端置灰「复习」按钮

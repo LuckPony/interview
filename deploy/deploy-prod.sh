@@ -6,7 +6,8 @@ set -Eeuo pipefail
 # Persistent volumes are never removed.
 
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
-COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}"
+# 仓库里的生产 compose 文件名（GitHub Actions 部署时显式传 COMPOSE_FILE，这里仅兜底）
+COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.prod.yml}"
 BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
 SKIP_BACKUP="${SKIP_BACKUP:-false}"
 

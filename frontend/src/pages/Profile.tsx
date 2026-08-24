@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Layers, TrendingUp, Play, X } from 'lucide-react';
 import { studyPlan } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Card, Loading, Badge } from '../components/ui';
+import { ACTIVE_PLAN_KEY, readActivePlanId } from '../lib/useActivePlan';
 import type { PlanView, PlanConceptView } from '../api/types';
 import './Profile.css';
 
@@ -39,12 +40,27 @@ function masteryBadge(ml: number): { kind: 'good' | 'warn' | 'bad' | 'soft'; lab
 
 export function Profile() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [plans, setPlans] = useState<PlanView[]>([]);
-  const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  // 点击知识点后展开的「认知层模块」弹层：展示该层都有哪些内容
-  const [layerDetail, setLayerDetail] = useState<number | null>(null);
+  // 方向 tab 与「认知层模块」弹层由 URL 查询参数驱动（?plan=&layer=），支持浏览器前进/后退
+  // 无 ?plan= 时默认跟随全局「当前学习方向」（首页/他页选择记忆），而不是固定第一个
+  const storedIdx = (() => {
+    const id = readActivePlanId();
+    if (id == null) return 0;
+    const i = plans.findIndex((p) => p.id === id);
+    return i >= 0 ? i : 0;
+  })();
+  const activeIdx = Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? storedIdx) || 0));
+  const layerParam = searchParams.get('layer');
+  const layerDetail = layerParam != null && Number.isInteger(Number(layerParam)) ? Number(layerParam) : null;
+
+  /** 切换方向 tab：写 URL + 同步全局「当前学习方向」 */
+  const switchPlanTab = (i: number, planId: number) => {
+    try { localStorage.setItem(ACTIVE_PLAN_KEY, String(planId)); } catch { /* ignore */ }
+    setSearchParams({ plan: String(i) });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -94,7 +110,7 @@ export function Profile() {
               <button
                 key={p.id}
                 className={'profile-tab' + (i === activeIdx ? ' active' : '')}
-                onClick={() => setActiveIdx(i)}
+                onClick={() => switchPlanTab(i, p.id)}
               >
                 <BookOpen size={14} strokeWidth={1.6} />
                 {p.title}
@@ -161,7 +177,7 @@ export function Profile() {
                             <button
                               key={c.id}
                               className="profile-chip"
-                              onClick={() => setLayerDetail(c.layer)}
+                              onClick={() => setSearchParams({ plan: String(activeIdx), layer: String(c.layer) })}
                               title="查看这一层模块的内容"
                             >
                               <span className="chip-name">{c.name}</span>
@@ -190,11 +206,11 @@ export function Profile() {
         </div>
       )}
 
-      {/* ====== 认知层模块内容弹层：点击知识点后查看该层包含什么 ====== */}
+      {/* ====== 认知层模块内容弹层：点击知识点后查看该层包含什么（?layer= 驱动，可后退关闭）====== */}
       {plan && layerDetail != null && (
-        <div className="module-backdrop" onClick={() => setLayerDetail(null)}>
+        <div className="module-backdrop" onClick={() => setSearchParams({ plan: String(activeIdx) })}>
           <div className="module-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="module-close" onClick={() => setLayerDetail(null)} aria-label="关闭">
+            <button className="module-close" onClick={() => setSearchParams({ plan: String(activeIdx) })} aria-label="关闭">
               <X size={16} strokeWidth={1.8} />
             </button>
             <div className="module-head">

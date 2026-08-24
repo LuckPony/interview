@@ -142,6 +142,10 @@ public class DrillController {
         if ("concept-assessment".equals(mode) || "level-assessment".equals(mode)) {
             return openAssessmentRun(uid, req.planId(), mode, req.layer(), req.conceptId());
         }
+        // 用户主动的整知识点 / 整层级练习：范围 = 已学内容 + 整个知识点 / 整个层级
+        if ("concept-practice".equals(mode) || "layer-practice".equals(mode)) {
+            return openScopedPracticeRun(uid, req.planId(), mode, req.layer(), req.conceptId());
+        }
         SelectedTask task = switch (mode) {
             case "review" -> selectionService.pickReviewWithinPlan(uid, req.planId());
             case "layer" -> selectionService.pickNextWithinPlanAtLayer(uid, req.planId(), req.layer());
@@ -252,6 +256,74 @@ public class DrillController {
         return view;
     }
 
+    /**
+     * 用户主动的整知识点 / 整层级练习出题：
+     * <ul>
+     *   <li>concept-practice：范围 = 已学内容（进度画像 + 概念要点 + 资料）+ 整个知识点；</li>
+     *   <li>layer-practice：范围 = 已学内容 + 整个层级（该层全部概念进上下文）。</li>
+     * </ul>
+     * 与工作流的综合检测（CONCEPT/LEVEL_ASSESSMENT）互不计数：这是练习，不是关卡。
+     */
+    private QuestionView openScopedPracticeRun(Long uid, Long planId, String mode, Integer layer, Long conceptId) {
+        // 必须新开对应范围的题，不能被同方向另一条普通子点题“恢复”并冒充。
+        for (DrillRun active : runRepo.findByUserIdAndStatusInAndMode(uid, ACTIVE_STATUSES, DrillMode.LEARN)) {
+            active.setStatus(DrillRunStatus.PARKED);
+            runRepo.save(active);
+        }
+        // 前端可能不传 planId（从知识点页进入）：用概念反推所属方向
+        if (planId == null && conceptId != null) {
+            Concept byId = conceptRepo.findById(conceptId).orElse(null);
+            if (byId != null) planId = byId.getStudyPlanId();
+        }
+        if (planId == null) throw new ResponseStatusException(BAD_REQUEST, "缺少学习方向");
+        List<Concept> layerAll = List.of();   // 整层全部概念：作为「整个层级」的上下文范围
+        List<Concept> scope;
+        DrillPurpose purpose;
+        if ("concept-practice".equals(mode)) {
+            Concept target = conceptRepo.findById(conceptId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+            scope = List.of(target);
+            if (planId == null) planId = target.getStudyPlanId();
+            layer = target.getLayer();
+            purpose = DrillPurpose.CONCEPT_PRACTICE;
+        } else {
+            final int targetLayer = layer == null ? 1 : layer;
+            List<Concept> layerPool = conceptRepo.findByStudyPlanId(planId).stream()
+                    .filter(c -> c.getLayer() == targetLayer)
+                    .sorted(Comparator.comparing(Concept::getId))
+                    .toList();
+            if (layerPool.isEmpty()) throw new ResponseStatusException(NOT_FOUND, "该层还没有知识点，先去「继续学习」");
+            layerAll = layerPool;
+            // 题面参与概念数受 probe_type 支持上限约束（最大 3），取不到整层；
+            // 但「范围」是整层：下面 contextFor 用整层概念注入（已学内容 + 整层要点）。
+            int already = runRepo.findByUserIdAndPlanIdAndPurposeAndAssessmentLayerAndStatus(
+                    uid, planId, DrillPurpose.LAYER_PRACTICE, targetLayer, DrillRunStatus.GRADED).size();
+            int take = Math.min(3, layerPool.size());
+            scope = java.util.stream.IntStream.range(0, take)
+                    .mapToObj(i -> layerPool.get((already + i) % layerPool.size()))
+                    .toList();
+            layer = targetLayer;
+            purpose = DrillPurpose.LAYER_PRACTICE;
+        }
+        List<ConceptRef> refs = java.util.stream.IntStream.range(0, scope.size())
+                .mapToObj(i -> ConceptRef.of(scope.get(i), i == 0 ? ConceptRole.PRIMARY : ConceptRole.ANCHOR))
+                .toList();
+        SelectedTask task = new SelectedTask(refs);
+        List<Long> contextIds = purpose == DrillPurpose.LAYER_PRACTICE
+                ? layerAll.stream().map(Concept::getId).toList()
+                : task.conceptIds();
+        String context = progressContext.contextFor(uid, contextIds);
+        context = (context == null ? "" : context + "\n\n")
+                + (purpose == DrillPurpose.CONCEPT_PRACTICE
+                ? "这是整个知识点的综合练习。题目应综合这个知识点下的多个子知识点，考察组合运用，不要只重复单个子知识点。"
+                : "这是 L" + layer + " 整个层级的综合练习。题目应综合覆盖当前层级的多个知识点，在它们之间建立真实工程联系，难度不得超过 L" + layer + "。")
+                + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
+        QuestionBank q = questionService.generate(task, context);
+        QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
+        tagRun(view.runId(), purpose, planId, conceptId, layer);
+        return view;
+    }
+
     private void tagRun(Long runId, DrillPurpose purpose, Long planId, Long conceptId, Integer layer) {
         runRepo.findById(runId).ifPresent(run -> {
             run.setPurpose(purpose);
@@ -295,10 +367,13 @@ public class DrillController {
         return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, completedSubPoints, cached);
     }
 
-    /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。 */
+    /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。
+     *  {@code refresh=true}（「换种描述」按钮）：跳过缓存强制重新生成，并把旧讲解文本
+     *  传给生成器作参考，让新讲解换角度/换描述、不照搬；生成后覆盖缓存。 */
     @PostMapping(value = "/{conceptId}/lesson", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> lesson(@PathVariable Long conceptId,
-                                                        @RequestParam String subPoint) {
+                                                        @RequestParam String subPoint,
+                                                        @RequestParam(defaultValue = "false") boolean refresh) {
         Long uid = currentUserId();
         Concept concept = conceptRepo.findById(conceptId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
@@ -307,9 +382,12 @@ public class DrillController {
             throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
         }
 
-        // 缓存命中：直接整体下发（一个 data 帧）；未命中则流式生成后写回。
+        // 缓存命中：直接整体下发（一个 data 帧）；refresh=true 时跳过缓存强制重新生成。
         final ConceptLesson cachedLesson = conceptLessonRepo
                 .findByConceptIdAndSubPoint(conceptId, sub).orElse(null);
+        final boolean useCache = !refresh && cachedLesson != null;
+        // 换种描述时把旧讲解文本交给生成器，让它换角度/换例子，避免照搬。
+        final String previousText = (refresh && cachedLesson != null) ? cachedLesson.getLessonText() : null;
         final String context = progressContext.contextFor(uid, conceptId);
 
         StreamingResponseBody body = out -> {
@@ -317,7 +395,7 @@ public class DrillController {
                 out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                 out.flush();
 
-                if (cachedLesson != null) {
+                if (useCache) {
                     String cachedText = cachedLesson.getLessonText();
                     String normalized = lessonGenerator.normalizeLesson(cachedText);
                     if (!normalized.equals(cachedText == null ? "" : cachedText.trim())) {
@@ -331,7 +409,7 @@ public class DrillController {
                     out.flush();
                 } else {
                     final StringBuilder buf = new StringBuilder();
-                    String full = lessonGenerator.streamLesson(concept, sub, context,
+                    String full = lessonGenerator.streamLesson(concept, sub, context, previousText,
                             token -> {
                                 buf.append(token);
                                 try {
@@ -345,17 +423,25 @@ public class DrillController {
                             r -> sseReasoning(out, r));
 
                     if (full != null && !full.isBlank()) {
-                        ConceptLesson cl = new ConceptLesson();
-                        cl.setConceptId(conceptId);
-                        cl.setSubPoint(sub);
-                        cl.setLessonText(full);
-                        cl.setCharCount(full.length());
-                        try {
-                            conceptLessonRepo.save(cl);
-                        } catch (Exception e) {
-                            // 并发/重复插入撞唯一索引：忽略，已有缓存即可
-                            log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
-                        }
+                        // refresh 时覆盖旧缓存；否则插入新缓存（并发撞唯一索引则忽略）
+                        conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
+                                .ifPresentOrElse(exist -> {
+                                    exist.setLessonText(full);
+                                    exist.setCharCount(full.length());
+                                    conceptLessonRepo.save(exist);
+                                }, () -> {
+                                    ConceptLesson cl = new ConceptLesson();
+                                    cl.setConceptId(conceptId);
+                                    cl.setSubPoint(sub);
+                                    cl.setLessonText(full);
+                                    cl.setCharCount(full.length());
+                                    try {
+                                        conceptLessonRepo.save(cl);
+                                    } catch (Exception e) {
+                                        // 并发/重复插入撞唯一索引：忽略，已有缓存即可
+                                        log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
+                                    }
+                                });
                     } else {
                         out.write(("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n")
                                 .getBytes(StandardCharsets.UTF_8));

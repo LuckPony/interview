@@ -80,6 +80,15 @@
 }
 
 /* —— 头部「换个方向」返回键 —— */
+.head-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.head-actions .head-back {
+  margin-left: 0;
+}
 .head-back {
   margin-left: auto;
   display: inline-flex;
@@ -295,10 +304,7 @@
 .chat-thread {
   padding: var(--s-5) var(--s-6);
   background: var(--paper);
-  /* 聊天线程可滚动：题干 + 多轮对话 + 评分全在一个面板里 */
-  max-height: calc(100vh - 240px);
-  overflow-y: auto;
-  scroll-behavior: smooth;
+  /* 聊天线程不再内部滚动：整页随内容自然滚动（.main 负责滚动） */
 }
 .chat-stem-meta {
   display: flex;
@@ -721,15 +727,16 @@
   .today-groups { grid-template-columns: 1fr; }
 }
 
-/* —— 聊天页（LEARN）：占满整个屏幕，输入框常驻底部，滚动只在聊天线程 —— */
+/* —— 聊天页（LEARN）：整页随内容自然滚动；标题不固定、聊天线程不内部滚动，
+      上下滚动即可看到完整聊天内容（.main 负责滚动） —— */
 .chat-page {
-  height: 100vh;
-  max-height: 100vh;
   max-width: none;
   padding: var(--s-3) var(--s-5) var(--s-4);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  height: auto;
+  max-height: none;
+  overflow: visible;
 }
 .chat-page .chat-head {
   display: flex;
@@ -748,10 +755,8 @@
   margin-bottom: var(--s-3);
 }
 .chat-page .chat-panel {
-  /* 聊天框高度 = 应用高度的 80%（按视口比例自适应，不锁死像素） */
-  flex: 0 0 80vh;
-  height: 80vh;
-  max-height: 80vh;
+  /* 聊天区不再锁死固定高度：随内容自然撑开，由页面统一滚动 */
+  flex: none;
   max-width: none;
   margin: 0;
   display: flex;
@@ -759,17 +764,18 @@
   gap: var(--s-3);
 }
 .chat-page .chat-thread {
-  flex: 1;
+  flex: none;
   min-height: 0;
   max-height: none;
-  overflow-y: auto;
+  overflow: visible;
 }
 .chat-page .chat-input {
   flex-shrink: 0;
 }
 .chat-page .chat-input-textarea {
-  resize: none;
-  max-height: 24vh;
+  /* 回复框默认 5 行起步，允许手动上下拉伸；整页滚动后不再担心撑破布局 */
+  resize: vertical;
+  max-height: 40vh;
 }
 .chat-page .chat-verdict {
   flex-shrink: 0;
@@ -992,4 +998,15 @@
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+.teach-foot-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@keyframes teach-spin {
+  to { transform: rotate(360deg); }
+}
+.teach-foot .spin {
+  animation: teach-spin 1s linear infinite;
 }
