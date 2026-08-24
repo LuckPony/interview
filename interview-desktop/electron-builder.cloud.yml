@@ -1,0 +1,38 @@
+appId: com.mianba.desktop
+# 产物/更新文件名必须 ASCII：GitHub 上传时中文名会导致 URL 未转义报错（Request path contains unescaped characters）
+productName: mianba
+artifactName: ${productName}-${version}-cloud-${os}-${arch}.${ext}
+directories:
+  output: dist-electron-cloud
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - config.json
+  - app-dist/**/*
+# 云模式桌面端：后端部署在服务器，这里只打包「Electron 壳 + 前端 SPA」，
+# 不内嵌 jlink JRE / Spring Boot fat jar（对比 electron-builder.yml / electron-builder.win.yml）。
+# 前端在构建时已把 VITE_API_BASE 烘焙为 MIANBA_SERVER，config.json 写入 serverUrl →
+# main.js 启动时识别为云模式（不拉本地后端）。
+icon: build/icon.png
+# mac 无 Apple 证书时补 ad-hoc 签名：把「包含恶意软件」降级为「无法验证开发者」（右键→打开即可）
+afterSign: ./scripts/afterSign.js
+# 自动更新源：与本地版共用 GitHub Releases；发布时选择只传云产物，latest*.yml 会只列云产物
+publish:
+  provider: github
+  owner: LuckPony
+  repo: interview
+mac:
+  category: public.app-category.education
+  target:
+    - dmg
+    - zip
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - zip
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

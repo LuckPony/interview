@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -39,11 +38,12 @@ public class LessonGenerator {
     /**
      * 模型偶尔在一篇讲解已经收尾后再次说“开始上课”，并从第 1 节重新生成。
      * 该重复正文如果进入 concept_lesson 缓存，之后每次打开都会重复展示。
+     * <p>只认「重开话术 + 随后的顶格编号小节」两个信号同时出现才算重开，
+     * 普通讲解里的编号列表（含代码块里的编号注释）不会被误判截断。
      */
     private static final int RESTART_DETECT_AFTER_CHARS = 400;
-    private static final int MAX_LESSON_CHARS = 5000;
-    private static final Pattern SECTION_ONE = Pattern.compile(
-            "(?m)^\\s*(?:#{1,4}\\s*)?(?:\\*\\*)?1[.、]\\s*[^\\n]+");
+    /** 讲解硬上限：远大于提示词要求的 200-400 字，只在模型失控无限输出时兜底（按行边界截断）。 */
+    private static final int MAX_LESSON_CHARS = 20000;
     private static final Pattern RESTART_INTRO = Pattern.compile(
             "(?m)^\\s*(?:好的|好)[，,。！!\\s]*(?:我们)?(?:现在)?开始(?:上课|学习|讲解)");
 
@@ -162,7 +162,7 @@ public class LessonGenerator {
                     if (stopped[0]) return;
                     String candidate = buf + token;
                     int cut = findRestartIndex(candidate);
-                    if (cut < 0 && candidate.length() > MAX_LESSON_CHARS) cut = MAX_LESSON_CHARS;
+                    if (cut < 0 && candidate.length() > MAX_LESSON_CHARS) cut = capIndex(candidate, MAX_LESSON_CHARS);
                     int acceptedEnd = cut >= 0 ? Math.max(buf.length(), cut) : candidate.length();
                     String accepted = candidate.substring(buf.length(), acceptedEnd);
                     if (!accepted.isEmpty()) {
@@ -195,27 +195,81 @@ public class LessonGenerator {
     public String normalizeLesson(String text) {
         if (text == null || text.isBlank()) return "";
         int cut = findRestartIndex(text);
-        if (cut < 0 && text.length() > MAX_LESSON_CHARS) cut = MAX_LESSON_CHARS;
+        if (cut < 0 && text.length() > MAX_LESSON_CHARS) cut = capIndex(text, MAX_LESSON_CHARS);
         return (cut >= 0 ? text.substring(0, cut) : text).trim();
     }
 
+    /**
+     * 检测“讲解已收尾后从头再讲”的重复尾段起点；找不到返回 -1。
+     * <p>只认明确的「重开」信号，且必须满足全部条件才判定，避免把正常讲解误截：
+     * <ul>
+     *   <li>信号出现在 {@value #RESTART_DETECT_AFTER_CHARS} 字之后（讲解已进入正文）；</li>
+     *   <li>信号行不在代码围栏（``` ... ```）内；</li>
+     *   <li>信号行前面是空行（独立段落，而不是正文里的过渡句）；</li>
+     *   <li>「好的，我们开始上课/学习/讲解」话术，且随后 3 行内出现顶格编号小节
+     *       （行首顶格、无缩进的 “1.” / “1、”），确认是重开而不是“开始讲解第二个要点”之类的过渡。</li>
+     * </ul>
+     * 普通讲解里的编号列表（核心要点、例子、常见误区各一组）不会命中：它们不在空行后的
+     * 「重开话术」之后，且代码围栏内的编号注释被直接跳过。
+     */
     private static int findRestartIndex(String text) {
         if (text == null || text.length() < RESTART_DETECT_AFTER_CHARS) return -1;
 
-        Matcher sections = SECTION_ONE.matcher(text);
-        int sectionCount = 0;
-        while (sections.find()) {
-            sectionCount++;
-            if (sectionCount >= 2 && sections.start() >= RESTART_DETECT_AFTER_CHARS) {
-                return sections.start();
-            }
-        }
+        boolean inFence = false;
+        boolean prevBlank = true; // 首行视为“前面有空行”
+        int lineStart = 0;
+        int n = text.length();
+        while (lineStart < n) {
+            int lineEnd = text.indexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = n;
+            String line = text.substring(lineStart, lineEnd);
+            String trimmed = line.trim();
 
-        Matcher intro = RESTART_INTRO.matcher(text);
-        while (intro.find()) {
-            if (intro.start() >= RESTART_DETECT_AFTER_CHARS) return intro.start();
+            if (trimmed.startsWith("```")) {
+                inFence = !inFence;
+                prevBlank = trimmed.isEmpty();
+                lineStart = lineEnd + 1;
+                continue;
+            }
+            if (!inFence && lineStart >= RESTART_DETECT_AFTER_CHARS
+                    && prevBlank && RESTART_INTRO.matcher(line).find()
+                    && hasTopLevelSectionWithin(text, lineEnd + 1, 3)) {
+                return lineStart;
+            }
+            prevBlank = trimmed.isEmpty();
+            lineStart = lineEnd + 1;
         }
         return -1;
+    }
+
+    /** 从 pos 起往下最多 maxLines 行内，是否出现顶格编号小节（行首无缩进的 “1.” / “1、”）。 */
+    private static boolean hasTopLevelSectionWithin(String text, int pos, int maxLines) {
+        int lineStart = pos;
+        int n = text.length();
+        boolean inFence = false;
+        for (int i = 0; i < maxLines && lineStart < n; i++) {
+            int lineEnd = text.indexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = n;
+            String line = text.substring(lineStart, lineEnd);
+            String trimmed = line.trim();
+            if (trimmed.startsWith("```")) {
+                inFence = !inFence;
+                lineStart = lineEnd + 1;
+                continue;
+            }
+            if (!inFence && (trimmed.startsWith("1.") || trimmed.startsWith("1、"))
+                    && line.length() > 0 && line.charAt(0) != ' ' && line.charAt(0) != '\t') {
+                return true;
+            }
+            lineStart = lineEnd + 1;
+        }
+        return false;
+    }
+
+    /** 硬上限截断点：取 max 之前最后一个换行（按行边界截断，不把一句话劈成两半）；找不到则用 max。 */
+    private static int capIndex(String text, int max) {
+        int nl = text.lastIndexOf('\n', max);
+        return nl > 0 ? nl : max;
     }
 
     private String cleanSubPoint(String s) {

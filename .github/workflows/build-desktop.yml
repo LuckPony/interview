@@ -14,8 +14,10 @@ permissions:
   contents: write
 
 env:
-  # jlink 精简 JRE 的模块清单（win/mac 共用）
-  JLINK_MODULES: "java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.smartcardio,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.jfr,jdk.management,jdk.management.agent,jdk.net,jdk.nio.mapmode,jdk.unsupported,jdk.zipfs"
+  # 后端部署在服务器：桌面端只打包「Electron 壳 + 前端 SPA」（云模式）。
+  # 前端构建时把 API 地址烘焙为 MIANBA_SERVER，config.json 写入 serverUrl →
+  # 应用启动即云模式（不拉本地后端）。仓库需配置同名 Secret。
+  MIANBA_SERVER: ${{ secrets.MIANBA_SERVER }}
 
 jobs:
   build:
@@ -28,25 +30,16 @@ jobs:
           - os: windows-latest
             label: win-x64
             target: win
-            config: electron-builder.win.yml
             artifact: windows-package
           # mac 只用一个 macos-latest（arm64）runner，交叉编译 x64 + arm64 两套包
           - os: macos-latest
             label: mac-x64+arm64
             target: mac
-            config: electron-builder.yml
             artifact: macos-package
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -57,99 +50,55 @@ jobs:
             frontend/package-lock.json
             interview-desktop/package-lock.json
 
-      - name: Build backend
+      - name: Check MIANBA_SERVER secret
         shell: bash
-        run: ./gradlew :app:bootJar --console=plain
+        run: |
+          if [ -z "$MIANBA_SERVER" ]; then
+            echo "::error::缺少 MIANBA_SERVER 仓库 Secret（后端服务器地址，云打包用它把前端 API 地址烘焙进安装包）。请在仓库 Settings → Secrets 里配置后重试。"
+            exit 1
+          fi
 
-      - name: Install deps and build SPA
+      - name: Install deps and build SPA (cloud)
         shell: bash
         run: |
           npm --prefix frontend ci
           npm --prefix interview-desktop ci
           cd interview-desktop
-          npm run sync-spa
+          node scripts/build-cloud.js
 
-      # ---------------- Windows ----------------
-      - name: Prepare embedded runtime (Windows)
-        if: matrix.target == 'win'
-        shell: bash
-        run: |
-          rm -rf runtime runtime-win
-          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-win"
-          rm -rf "$JLINK_OUTPUT"
-          mkdir -p runtime
-          JAVA_HOME_UNIX="$(cygpath -u "$JAVA_HOME")"
-          "$JAVA_HOME_UNIX/bin/jlink.exe" --module-path "$JAVA_HOME_UNIX/jmods" --add-modules "$JLINK_MODULES" \
-            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          test -x "$JLINK_OUTPUT/bin/java.exe" || (echo "jlink did not create a usable runtime"; exit 1)
-          mv "$JLINK_OUTPUT" runtime/jre
-          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
-          mv runtime runtime-win
-
+      # ---------------- Windows（云模式：只打包前端） ----------------
       - name: Build Windows package
         if: matrix.target == 'win'
         shell: bash
         run: |
           cd interview-desktop
-          npx electron-builder --win --x64 --config electron-builder.win.yml --publish never
+          npx electron-builder --win --x64 --config electron-builder.cloud.yml --publish never
 
-      # ---------------- macOS：单 runner 交叉编译 x64 + arm64 ----------------
-      - name: Fetch x64 JDK (Intel JRE 交叉 jlink 用)
-        if: matrix.target == 'mac'
-        shell: bash
-        run: |
-          # arm64 runner 上跑 x64 JDK 需要 Rosetta 2；已装则跳过
-          arch -x86_64 /usr/bin/true 2>/dev/null || softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
-          curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jdk/hotspot/normal/eclipse" \
-            -o "$RUNNER_TEMP/jdk-x64.tar.gz"
-          rm -rf "$RUNNER_TEMP/jdk-x64"
-          mkdir -p "$RUNNER_TEMP/jdk-x64"
-          tar -xzf "$RUNNER_TEMP/jdk-x64.tar.gz" -C "$RUNNER_TEMP/jdk-x64" --strip-components=1
-          echo "JAVA_HOME_X64=$RUNNER_TEMP/jdk-x64/Contents/Home" >> "$GITHUB_ENV"
-          test -x "$RUNNER_TEMP/jdk-x64/Contents/Home/bin/jlink" || (echo "x64 JDK missing jlink"; exit 1)
-
+      # ---------------- macOS：单 runner 交叉编译 x64 + arm64（云模式） ----------------
       - name: Build macOS arm64 package
         if: matrix.target == 'mac'
         shell: bash
         run: |
-          rm -rf runtime
-          mkdir -p runtime
-          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-arm64"
-          rm -rf "$JLINK_OUTPUT"
-          "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$JLINK_MODULES" \
-            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
-          mv "$JLINK_OUTPUT" runtime/jre
-          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
           cd interview-desktop
-          npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+          npx electron-builder --mac --arm64 --config electron-builder.cloud.yml --publish never
 
       - name: Build macOS x64 package
         if: matrix.target == 'mac'
         shell: bash
         run: |
-          rm -rf runtime
-          mkdir -p runtime
-          JLINK_OUTPUT="$RUNNER_TEMP/mianba-jre-x64"
-          rm -rf "$JLINK_OUTPUT"
-          "$JAVA_HOME_X64/bin/jlink" --module-path "$JAVA_HOME_X64/jmods" --add-modules "$JLINK_MODULES" \
-            --output "$JLINK_OUTPUT" --strip-debug --no-header-files --no-man-pages --compress=2
-          test -x "$JLINK_OUTPUT/bin/java" || (echo "jlink did not create a usable runtime"; exit 1)
-          mv "$JLINK_OUTPUT" runtime/jre
-          cp app/build/libs/app-0.0.1-SNAPSHOT.jar runtime/app.jar
           cd interview-desktop
-          npx electron-builder --mac --x64 --config electron-builder.yml --publish never
+          npx electron-builder --mac --x64 --config electron-builder.cloud.yml --publish never
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
-            interview-desktop/dist-electron/*.exe
-            interview-desktop/dist-electron/*.dmg
-            interview-desktop/dist-electron/*.zip
-            interview-desktop/dist-electron/*.yml
-            interview-desktop/dist-electron/*.blockmap
+            interview-desktop/dist-electron-cloud/*.exe
+            interview-desktop/dist-electron-cloud/*.dmg
+            interview-desktop/dist-electron-cloud/*.zip
+            interview-desktop/dist-electron-cloud/*.yml
+            interview-desktop/dist-electron-cloud/*.blockmap
           if-no-files-found: error
 
   release:
