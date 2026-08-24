@@ -61,6 +61,14 @@ public class InterviewSessionEntity {
     @Column(name = "plan_ids", length = 255)
     private String planIds;
 
+    /** 面试开始时间（用于计时） */
+    @Column(name = "start_at")
+    private LocalDateTime startAt;
+
+    /** 计划时长（分钟，由难度决定） */
+    @Column(name = "duration_min")
+    private Integer durationMin;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

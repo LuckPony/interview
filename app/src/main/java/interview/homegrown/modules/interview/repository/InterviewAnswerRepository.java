@@ -11,6 +11,9 @@ public interface InterviewAnswerRepository extends JpaRepository<InterviewAnswer
     //按照会话 id 查找所有回答
     List<InterviewAnswerEntity> findBySessionIdOrderByQuestionIndex(String sessionId);
 
+    // 按写入顺序（动态追问按时间追加）
+    List<InterviewAnswerEntity> findBySessionIdOrderById(String sessionId);
+
     //按照会话 id 删除所有答案
     void deleteBySessionId(String sessionId);
 }

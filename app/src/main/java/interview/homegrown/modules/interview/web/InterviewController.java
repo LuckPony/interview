@@ -52,14 +52,15 @@ class InterviewController {
         return Result.success(sessionService.getCurrentQuestion(sessionId, uid()));
     }
 
-    @GetMapping("/sessions/{sessionId}/answers")
-    @Operation(summary = "提交答案", description = "提交当前题目的答案并推进到下一题")
-    public Result<Void> submitAnswer(@PathVariable String sessionId,
-                                     @RequestParam int questionIndex,
-                                     @RequestParam String answerText){
-        sessionService.submitAnswer(sessionId, questionIndex, answerText, uid());
-        return Result.success();
+    @PostMapping("/sessions/{sessionId}/answers")
+    @Operation(summary = "提交答案", description = "提交当前题目的答案并推进到下一题（POST+JSON，支持长答案/中文）")
+    public Result<InterviewSessionDTO> submitAnswer(@PathVariable String sessionId,
+                                     @RequestBody SubmitAnswerRequest req){
+        return Result.success(sessionService.submitAnswer(sessionId, req.questionIndex(), req.answerText(), uid()));
     }
+
+    /** 提交答案请求体 */
+    public record SubmitAnswerRequest(int questionIndex, String answerText) {}
 
     @PostMapping("/sessions/{sessionId}/complete-evaluate")
     @Operation(summary = "完成面试",description = "触发统一评估，生成总分与逐题评价")
