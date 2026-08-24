@@ -60,7 +60,8 @@ jobs:
       - name: 构建 Web SPA
         run: |
           npm --prefix frontend ci
-          npm --prefix frontend run build
+          # web 部署由 nginx 同源代理 /api，必须用相对 API 地址构建（--mode web）
+          npm --prefix frontend run build:web
 
       - name: 上传产物并部署
         run: |
@@ -74,18 +75,18 @@ jobs:
           DEST="$SSH_USER@$SSH_HOST"
 
           echo "==> 1/4 上传后端 jar"
-          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+          rsync -az -e "ssh $SSH_OPTS -p $SSH_PORT" \
             "$GITHUB_WORKSPACE/app/build/libs/app-0.0.1-SNAPSHOT.jar" \
             "$DEST:$DEPLOY_DIR/backend/app.jar"
 
           echo "==> 2/4 上传 Web SPA"
-          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+          rsync -az -e "ssh $SSH_OPTS -p $SSH_PORT" \
             --delete \
             "$GITHUB_WORKSPACE/frontend/dist/" \
             "$DEST:$DEPLOY_DIR/web-image/web/"
 
           echo "==> 3/4 同步部署脚本"
-          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+          rsync -az -e "ssh $SSH_OPTS -p $SSH_PORT" \
             "$GITHUB_WORKSPACE/deploy/deploy-prod.sh" \
             "$DEST:$DEPLOY_DIR/deploy-prod.sh"
 
