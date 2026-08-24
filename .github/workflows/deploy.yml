@@ -1,19 +1,16 @@
 name: Deploy to server
 
-# 推送到 main（或手动触发）时自动部署后端 + Web 到服务器：
-#   1) rsync 同步源码到服务器部署目录（排除 .git / node_modules / 桌面端 / .env 等）；
-#   2) 运行 deploy/deploy-prod.sh：
-#      - 基础设施镜像（postgres/redis/minio）已存在则直接复用，缺失才拉取；
-#      - 业务镜像（backend/web）用 docker 层缓存构建（源码没变的层直接复用）；
-#      - compose up 带 --no-build，绝不重复构建/拉取已存在的镜像；
-#      - 部署前自动备份 PostgreSQL，部署后健康检查。
+# 产物式自动部署（匹配服务器 /opt/mianba 的实际结构）：
+#   1) 在 CI 构建后端 fat jar 与 Web SPA；
+#   2) rsync 只上传产物（不删除服务器上任何文件）：
+#        app.jar            -> /opt/mianba/backend/app.jar
+#        frontend/dist/*    -> /opt/mianba/web-image/web/
+#   3) SSH（端口 SERVER_SSH_PORT）运行服务器上的 deploy-prod.sh：
+#        - 基础设施镜像（postgres/redis/minio）已存在则直接复用，缺失才拉取；
+#        - backend/web 用 docker 层缓存构建（未变化的层直接复用）；
+#        - compose up 带 --no-build；部署前自动备份 PostgreSQL，部署后健康检查。
 on:
   workflow_dispatch:
-    inputs:
-      deploy_dir:
-        description: '服务器部署目录（默认 /opt/mianba，可被 Secret DEPLOY_DIR 覆盖）'
-        required: false
-        default: ''
   push:
     branches: [main]
 
@@ -29,20 +26,43 @@ jobs:
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SSH_HOST: ${{ secrets.SERVER_HOST }}
       SSH_USER: ${{ secrets.SERVER_USER }}
-      DEPLOY_DIR: ${{ inputs.deploy_dir || secrets.DEPLOY_DIR || '/opt/mianba' }}
+      SSH_PORT: ${{ secrets.SERVER_SSH_PORT || '22' }}
+      DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || '/opt/mianba' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: 校验 Secrets
         run: |
           set -euo pipefail
-          [ -n "$SSH_HOST" ] || { echo "::error::缺少 SERVER_HOST Secret（服务器 IP，如 103.236.92.40）"; exit 1; }
+          [ -n "$SSH_HOST" ] || { echo "::error::缺少 SERVER_HOST Secret（服务器 IP）"; exit 1; }
           [ -n "$SSH_USER" ] || { echo "::error::缺少 SERVER_USER Secret（SSH 用户名，如 root）"; exit 1; }
-          [ -n "$SSH_PRIVATE_KEY" ] || { echo "::error::缺少 SERVER_SSH_KEY Secret（SSH 私钥内容，含 BEGIN/END 行）"; exit 1; }
-          echo "部署目标：$SSH_USER@$SSH_HOST:$DEPLOY_DIR"
+          [ -n "$SSH_PRIVATE_KEY" ] || { echo "::error::缺少 SERVER_SSH_KEY Secret（SSH 私钥内容）"; exit 1; }
+          echo "部署目标：$SSH_USER@$SSH_HOST:$SSH_PORT -> $DEPLOY_DIR"
 
-      - name: 同步源码并部署
+      - name: 构建后端 fat jar
+        run: ./gradlew :app:bootJar --console=plain
+
+      - name: 构建 Web SPA
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      - name: 上传产物并部署
         run: |
           set -euo pipefail
           command -v rsync >/dev/null 2>&1 || { sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq rsync >/dev/null; }
@@ -51,16 +71,24 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          DEST="$SSH_USER@$SSH_HOST"
 
-          echo "==> 1/2 同步源码到服务器 ${DEPLOY_DIR}"
-          # .env 排除在同步与删除之外：服务器上已有的环境变量/密钥必须保留
-          rsync -az --delete -e "$SSH_OPTS" \
-            --exclude '.git/' --exclude 'node_modules/' --exclude 'interview-desktop/' \
-            --exclude 'docs/' --exclude 'data/' --exclude 'runtime/' --exclude 'runtime-win/' \
-            --exclude 'dist-electron/' --exclude 'dist-electron-cloud/' \
-            --exclude '.env' --exclude '*.log' --exclude '.DS_Store' \
-            "$GITHUB_WORKSPACE/" "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/"
+          echo "==> 1/4 上传后端 jar"
+          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+            "$GITHUB_WORKSPACE/app/build/libs/app-0.0.1-SNAPSHOT.jar" \
+            "$DEST:$DEPLOY_DIR/backend/app.jar"
 
-          echo "==> 2/2 运行部署脚本（复用已有镜像 → 构建缓存 → compose up）"
-          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" \
-            "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.prod.yml'; bash '$DEPLOY_DIR/deploy/deploy-prod.sh'"
+          echo "==> 2/4 上传 Web SPA"
+          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+            --delete \
+            "$GITHUB_WORKSPACE/frontend/dist/" \
+            "$DEST:$DEPLOY_DIR/web-image/web/"
+
+          echo "==> 3/4 同步部署脚本"
+          rsync -az -e "$SSH_OPTS -p $SSH_PORT" \
+            "$GITHUB_WORKSPACE/deploy/deploy-prod.sh" \
+            "$DEST:$DEPLOY_DIR/deploy-prod.sh"
+
+          echo "==> 4/4 运行部署脚本（复用已有镜像）"
+          ssh $SSH_OPTS -p $SSH_PORT "$DEST" \
+            "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml'; chmod +x '$DEPLOY_DIR/deploy-prod.sh'; bash '$DEPLOY_DIR/deploy-prod.sh'"

@@ -294,11 +294,11 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ### 自动部署（GitHub Actions）
 
-推送到 `main` 时，`Deploy to server` 工作流会自动部署后端 + Web 到服务器（也可在 Actions 页手动触发）：
+推送到 `main` 时，`Deploy to server` 工作流会自动构建并部署后端 + Web 到服务器（也可在 Actions 页手动触发）。采用**产物式部署**，与服务器 `/opt/mianba` 的实际结构一致：
 
-1. **同步源码**：rsync 把仓库同步到服务器部署目录（默认 `/opt/mianba`，可用 Secret `DEPLOY_DIR` 覆盖；`.env` 永远保留在服务器上、不会被覆盖）。
-2. **复用镜像**：`deploy/deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）执行「已存在则复用、缺失才拉取」；业务镜像（backend/web）用 docker 层缓存构建（源码没变的层直接复用）；`compose up` 带 `--no-build`，绝不重复构建已存在的镜像。
-3. **部署前自动备份 PostgreSQL**，部署后做健康检查。
+1. **CI 构建产物**：后端 fat jar（`./gradlew :app:bootJar`）+ Web SPA（`npm run build`）。
+2. **上传产物**：rsync 只上传 `app.jar → /opt/mianba/backend/app.jar`、`frontend/dist/* → /opt/mianba/web-image/web/`、同步 `deploy/deploy-prod.sh`；**不删除服务器上任何其它文件**（`.env`、`backups/`、自定义 `docker-compose.yml` 都保留）。
+3. **复用镜像**：`deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）「已存在则复用、缺失才拉取」；backend/web 用 docker 层缓存构建（未变化的层直接复用）；`compose up` 带 `--no-build`；部署前自动备份 PostgreSQL，部署后健康检查。
 
 配置一次即可（仓库 **Settings → Secrets and variables → Actions**）：
 
@@ -307,9 +307,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 | `SERVER_HOST` | 服务器 IP，如 `103.236.92.40` |
 | `SERVER_USER` | SSH 用户名，如 `root` |
 | `SERVER_SSH_KEY` | SSH 私钥完整内容（含 `-----BEGIN ...-----` 行；公钥需已加入服务器 `~/.ssh/authorized_keys`） |
+| `SERVER_SSH_PORT` | SSH 端口（非默认 22 时必填，如 `37777`） |
 | `DEPLOY_DIR` | 可选，部署目录，默认 `/opt/mianba` |
 
-> 要求：服务器已装 docker 与 docker compose v2；`/opt/mianba/.env` 已配置好全部环境变量（`APP_JWT_SECRET` 等）。
+> 要求：服务器已装 docker 与 docker compose v2；`/opt/mianba/.env` 已配置好全部环境变量（`APP_JWT_SECRET` 等）；Web 对外端口按你的 NAT/防火墙规则暴露（如内部 18080 NAT 到 5678）。
 
 ## 🏗️ 架构设计
 
