@@ -4,6 +4,7 @@ import { BookOpen, Layers, TrendingUp, Play, X } from 'lucide-react';
 import { studyPlan } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Card, Loading, Badge } from '../components/ui';
+import { ACTIVE_PLAN_KEY, readActivePlanId } from '../lib/useActivePlan';
 import type { PlanView, PlanConceptView } from '../api/types';
 import './Profile.css';
 
@@ -44,9 +45,22 @@ export function Profile() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   // 方向 tab 与「认知层模块」弹层由 URL 查询参数驱动（?plan=&layer=），支持浏览器前进/后退
-  const activeIdx = Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? 0) || 0));
+  // 无 ?plan= 时默认跟随全局「当前学习方向」（首页/他页选择记忆），而不是固定第一个
+  const storedIdx = (() => {
+    const id = readActivePlanId();
+    if (id == null) return 0;
+    const i = plans.findIndex((p) => p.id === id);
+    return i >= 0 ? i : 0;
+  })();
+  const activeIdx = Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? storedIdx) || 0));
   const layerParam = searchParams.get('layer');
   const layerDetail = layerParam != null && Number.isInteger(Number(layerParam)) ? Number(layerParam) : null;
+
+  /** 切换方向 tab：写 URL + 同步全局「当前学习方向」 */
+  const switchPlanTab = (i: number, planId: number) => {
+    try { localStorage.setItem(ACTIVE_PLAN_KEY, String(planId)); } catch { /* ignore */ }
+    setSearchParams({ plan: String(i) });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -96,7 +110,7 @@ export function Profile() {
               <button
                 key={p.id}
                 className={'profile-tab' + (i === activeIdx ? ' active' : '')}
-                onClick={() => setSearchParams({ plan: String(i) })}
+                onClick={() => switchPlanTab(i, p.id)}
               >
                 <BookOpen size={14} strokeWidth={1.6} />
                 {p.title}
