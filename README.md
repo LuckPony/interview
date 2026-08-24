@@ -274,6 +274,18 @@ npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 
 构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。`release:local` / `release:win:local` 仅用于本地模式的分发（调试 / 离线场景），**不要**用作正式发布通道——正式发布请用 CI 或 `npm run release`（云模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
 
+### 服务器部署
+
+后端与 Web 部署到服务器（`/opt/mianba`）。当前服务器机房（陕西电信云基地）限制**境外入站**，GitHub Actions（美国机房）无法直连，因此用本机一键脚本部署（本机为国内 IP，SSH 可达）：
+
+```bash
+bash deploy/deploy-local.sh
+# 构建 jar + Web SPA → rsync 上传 → 服务器跑 deploy-prod.sh（PG 备份→docker 重启→健康检查）
+# 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
+```
+
+> 机房放行境外访问后（ICP 备案或联系服务商），推送到 `main` 将自动触发 `.github/workflows/deploy.yml` 完成部署（该流水线已修复 rsync 与 web 构建模式问题）。
+
 ```text
 Windows：%APPDATA%\interview-desktop\updater.log
 macOS：  ~/Library/Application Support/interview-desktop/updater.log
