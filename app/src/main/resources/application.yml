@@ -131,7 +131,7 @@ app:
       - text/plain
   jwt:
     secret: ${APP_JWT_SECRET:drill-dev-secret-change-me-please-32bytes}
-    expiration-ms: 86400000   # 24h
+    expiration-ms: 5184000000  # 2 个月（60 天）
   mail:
     from: ${MAIL_FROM:}
 
