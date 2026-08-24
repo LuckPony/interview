@@ -50,8 +50,9 @@ export function App() {
           </RequireAuth>
         }
       />
+      {/* /drill/* 让 Drill 在子路由间保持挂载（视图由路径派生，支持前进/后退） */}
       <Route
-        path="/drill"
+        path="/drill/*"
         element={
           <RequireAuth>
             <AppShell>

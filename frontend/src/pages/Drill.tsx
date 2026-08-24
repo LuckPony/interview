@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Layers, Target } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target } from 'lucide-react';
 import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
@@ -91,8 +91,7 @@ export function Drill() {
   // 聊天面板底部哨兵：整页滚动时，新消息 / 评分出现后把最新内容与输入框滚进视野
   const endRef = useRef<HTMLDivElement>(null);
 
-  // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题) ——
-  const [view, setView] = useState<'home' | 'teach' | 'learn'>('home');
+  // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题)。view 由路由派生（见上方）。
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [planErr, setPlanErr] = useState('');
 
@@ -146,58 +145,87 @@ export function Drill() {
     try { return localStorage.getItem(TEACH_FIRST_KEY) !== '0'; } catch { return true; }
   });
 
-  // —— 视图导航栈：支持「返回」按钮与鼠标后退键逐级返回（home → teach清单 → 子点讲解 → 做题）——
-  // 每次进入更深一层视图时 push 一条历史（pushState 同 URL 不同 state，不干扰 hash 路由），
-  // popstate 命中 {drillNav:true} 就还原上一视图；其余交给路由自己处理。
-  type NavEntry = { view: 'home' } | { view: 'teach'; teach: TeachState | null };
-  const navStackRef = useRef<NavEntry[]>([]);
+  // —— 视图由路由派生：/drill=home，/drill/teach/:cid(/:subIdx)=先教后考，/drill/learn=做题 ——
+  // 子路由让浏览器前进/后退与「返回」按钮直接走真实历史，不再用内部状态栈。
+  const pathSegs = location.pathname.split('/').filter(Boolean); // ['drill', ...]
+  const routeTeachCid = pathSegs[1] === 'teach' ? Number(pathSegs[2]) : undefined;
+  const routeSubIdx = pathSegs[1] === 'teach' && pathSegs[3] != null ? Number(pathSegs[3]) : undefined;
+  const view: 'home' | 'teach' | 'learn' =
+    pathSegs[1] === 'teach' ? 'teach' : pathSegs[1] === 'learn' ? 'learn' : 'home';
+  // teach 路由可携带工作流/任务上下文（?plan=&task=），进入做题时保持链式推进
+  const planQ = Number(new URLSearchParams(location.search).get('plan')) || undefined;
+  const taskQ = Number(new URLSearchParams(location.search).get('task')) || undefined;
 
-  const pushNav = (entry: NavEntry) => {
-    navStackRef.current.push(entry);
-    try { window.history.pushState({ drillNav: true }, ''); } catch { /* 忽略 */ }
-  };
-
-  const goBack = () => {
-    // 同 goHome：离开做题/讲解前取消流、清会话状态，避免后台继续流式写消息
-    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    setMeta(null);
-    setMessages([]);
-    setInput('');
-    setCtx(null);
-    setErr('');
-    setGate('');
-    setGrade(null);
-    setResumedGraded(false);
-    setBrowseQid(null);
-    setLessonText('');
-    setLessonReasoning('');
-    setLessonBusy(false);
-    setOutlineBusy(false);
-    const entry = navStackRef.current.pop();
-    if (!entry) { goHome(); return; }
-    if (entry.view === 'teach') {
-      setTeach(entry.teach);
-      setView('teach');
-    } else {
-      goHome();
-    }
-  };
-
-  // 「返回」按钮：栈里有条目就真的走历史后退（与鼠标后退键共用 popstate），否则回学习计划首页
+  // 「返回」按钮：有历史就后退（鼠标后退键同效），直达场景回学习计划首页
   const backOrHome = () => {
-    if (navStackRef.current.length > 0) window.history.back();
-    else goHome();
+    if (location.key === 'default') navigate('/drill');
+    else navigate(-1);
   };
 
+  // —— 离开 learn 视图时取消流式请求（聊天 SSE / 题干打字机），会话状态保留供返回展示 ——
+  const prevViewRef = useRef(view);
   useEffect(() => {
-    const onPop = (e: PopStateEvent) => {
-      if (e.state && (e.state as { drillNav?: boolean }).drillNav) goBack();
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    if (prevViewRef.current === 'learn' && view !== 'learn') {
+      if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+      if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+    }
+    prevViewRef.current = view;
+  }, [view]);
+
+  // —— 已按路由加载完成的 teach 视图（cid + sub，-1=清单；用于防止重复播放讲解）——
+  const teachRouteRef = useRef<{ cid: number; sub: number } | null>(null);
+
+  // —— 路由 → teach 状态同步：进入/切换知识点拉 outline；切换子点播放讲解 ——
+  useEffect(() => {
+    if (view !== 'teach') { teachRouteRef.current = null; return; }
+    const cid = routeTeachCid;
+    if (cid == null || Number.isNaN(cid)) { navigate('/drill', { replace: true }); return; }
+    const sub = routeSubIdx ?? -1;
+
+    if (!teach || teach.conceptId !== cid) {
+      // 首次进入或切换知识点：拉子知识点清单（懒生成并缓存于后端）
+      teachRouteRef.current = { cid, sub };
+      if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+      if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+      setOutlineBusy(true);
+      setErr('');
+      setLessonText('');
+      setLessonReasoning('');
+      setLessonBusy(false);
+      setTeach({ conceptId: cid, name: '', topic: '', subPoints: [], curIdx: sub, done: [], planId: planQ, taskId: taskQ });
+      (async () => {
+        try {
+          const o = await drill.outline(cid);
+          if (teachRouteRef.current?.cid !== cid) return; // 已切到别的知识点
+          setTeach({
+            conceptId: cid, name: o.name, topic: o.topic,
+            subPoints: o.subPoints, curIdx: sub,
+            done: o.completedSubPoints ?? [], planId: planQ, taskId: taskQ,
+          });
+        } catch (e) {
+          if (teachRouteRef.current?.cid !== cid) return;
+          setErr(e instanceof ApiError ? e.message : '拆解失败');
+          setTeach(null);
+          navigate('/drill', { replace: true });
+        } finally {
+          setOutlineBusy(false);
+        }
+      })();
+      return;
+    }
+
+    // 同一知识点：只同步子点层级（前进/后退到清单或某个讲解页）
+    const loaded = teachRouteRef.current;
+    if (loaded && loaded.cid === cid && loaded.sub === sub) return; // 已处理，避免重复播放
+    teachRouteRef.current = { cid, sub };
+    if (sub < 0) {
+      setTeach({ ...teach, curIdx: -1 });
+    } else if (sub < teach.subPoints.length) {
+      setTeach({ ...teach, curIdx: sub });
+      playSubLesson(cid, teach.subPoints[sub]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [view, routeTeachCid, routeSubIdx, planQ, taskQ]);
 
   // —— 加载学习方向列表 ——
   const loadPlans = useCallback(async () => {
@@ -211,6 +239,14 @@ export function Drill() {
   useEffect(() => {
     if (view === 'home') loadPlans();
   }, [view, loadPlans]);
+
+  // —— 挂载即处于 /drill/learn 且无会话上下文（刷新/直达）：回学习计划首页重新进入 ——
+  useEffect(() => {
+    if (view === 'learn' && !meta && !genLockRef.current && !browseMode) {
+      navigate('/drill', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // —— 新消息 / 评分出现时，把聊天面板底部（最新气泡 + 输入框）滚进视野 ——
   useEffect(() => {
@@ -303,10 +339,9 @@ export function Drill() {
             setResumedGraded(false);
             setPhase('chatting');
             setBrowseQid(null);
-            setView('learn');
-            navigate('/drill', { replace: true });
+            navigate('/drill/learn');
           } else {
-            setView('learn'); // 全部已判分 → browse 页展示历史 + 继续对话
+            // 全部已判分 → browse 页展示历史 + 继续对话（browseQid 仍存在，走 browse 视图）
           }
         } catch (e) { setErr(e instanceof ApiError ? e.message : '加载失败'); }
         finally { setConvLoading(false); }
@@ -320,10 +355,6 @@ export function Drill() {
   const startQuestion = async (apiFn: () => Promise<QuestionView>, sessionCtx: SessionCtx) => {
     if (genLockRef.current) return;
     genLockRef.current = true;
-
-    // 记录来源视图：从学习计划首页直接进做题 → 返回首页；从知识点页进做题 → 返回其清单页
-    if (view === 'home') pushNav({ view: 'home' });
-    else if (view === 'teach' && teach) pushNav({ view: 'teach', teach: { ...teach, curIdx: -1 } });
 
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
@@ -339,8 +370,10 @@ export function Drill() {
     setResumedGraded(false);
     setPhase('generating');
     setBrowseQid(null);
-    setView('learn');
-    navigate('/drill', { replace: true });
+    // 进入做题页：从知识点页/首页进入 → 压历史（返回可回到来源页）；
+    // 已是做题页（下一题）→ replace，避免每一题都堆积一条历史
+    if (view === 'learn') navigate('/drill/learn', { replace: true });
+    else navigate('/drill/learn');
 
     const stemId = nextMsgId();
     setMessages([{ id: stemId, role: 'ai', text: '', streaming: true, type: 'stem' }]);
@@ -416,7 +449,6 @@ export function Drill() {
 
   // 播放某个子知识点的讲解（SSE 流式）；refresh=true 走「换种描述」：后端跳过缓存重新生成
   const playSubLesson = (conceptId: number, subPoint: string, refresh = false) => {
-    setView('teach');
     setLessonText('');
     setLessonReasoning('');
     setLessonBusy(true);
@@ -437,33 +469,9 @@ export function Drill() {
     );
   };
 
-  // 进入「先教后考」：拉子知识点清单
-  const enterTeach = async (conceptId: number) => {
-    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    pushNav({ view: 'home' });   // 从清单页返回 → 学习计划首页
-    setView('teach');
-    setOutlineBusy(true);
-    setErr('');
-    setTeach({ conceptId, name: '', topic: '', subPoints: [], curIdx: -1, done: [] });
-    try {
-      const o = await drill.outline(conceptId);
-      setTeach({
-        conceptId,
-        name: o.name,
-        topic: o.topic,
-        subPoints: o.subPoints,
-        curIdx: -1,
-        done: o.completedSubPoints ?? [],
-      });
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '拆解失败');
-      // 拆解失败降级：直接出题（无讲解）
-      setTeach(null);
-      directStart(conceptId);
-    } finally {
-      setOutlineBusy(false);
-    }
+  // 进入「先教后考」：跳子路由，由路由 effect 拉子知识点清单
+  const enterTeach = (conceptId: number) => {
+    navigate(`/drill/teach/${conceptId}`);
   };
 
   const startByConcept = (conceptId: number) => {
@@ -471,41 +479,22 @@ export function Drill() {
     else directStart(conceptId);
   };
 
-  // 点某个子知识点：讲它
+  // 点某个子知识点：跳子路由（讲解页），由路由 effect 播放讲解
   const openSubPoint = (idx: number) => {
     if (!teach) return;
-    pushNav({ view: 'teach', teach: { ...teach, curIdx: -1 } });   // 从讲解页返回 → 清单页
-    setTeach({ ...teach, curIdx: idx });
-    playSubLesson(teach.conceptId, teach.subPoints[idx]);
+    navigate(`/drill/teach/${teach.conceptId}/${idx}`);
   };
 
   /** 从统一工作流直接进入指定的下一个子知识点，不再先展示一整棵重复的概念选择树。 */
-  const enterTeachAt = async (conceptId: number, subPoint: string, planId?: number, taskId?: number) => {
-    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
-    pushNav({ view: 'home' });   // 从讲解页返回 → 学习计划首页
-    setView('teach');
-    setOutlineBusy(true);
-    setErr('');
-    try {
-      const o = await drill.outline(conceptId);
-      const idx = Math.max(0, o.subPoints.indexOf(subPoint));
-      const next = {
-        conceptId,
-        name: o.name,
-        topic: o.topic,
-        subPoints: o.subPoints,
-        curIdx: idx,
-        done: o.completedSubPoints ?? [],
-        planId,
-        taskId,
-      };
-      setTeach(next);
-      playSubLesson(conceptId, o.subPoints[idx]);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '读取学习进度失败');
-      setView('home');
-    } finally {
-      setOutlineBusy(false);
+  const enterTeachAt = (conceptId: number, planId?: number, taskId?: number, subIdx?: number) => {
+    const qs = new URLSearchParams();
+    if (planId != null) qs.set('plan', String(planId));
+    if (taskId != null) qs.set('task', String(taskId));
+    const q = qs.toString();
+    if (subIdx != null && subIdx >= 0) {
+      navigate(`/drill/teach/${conceptId}/${subIdx}${q ? `?${q}` : ''}`);
+    } else {
+      navigate(`/drill/teach/${conceptId}${q ? `?${q}` : ''}`);
     }
   };
 
@@ -515,7 +504,7 @@ export function Drill() {
     try {
       const next = await drill.learningNext(planId);
       if (next.stepType === 'SUB_POINT' && next.conceptId != null && next.subPoint) {
-        await enterTeachAt(next.conceptId, next.subPoint, planId);
+        await enterTeachAt(next.conceptId, planId, undefined, next.subPointIndex);
       } else if (next.stepType === 'CONCEPT_ASSESSMENT' && next.conceptId != null) {
         startQuestion(
           () => drill.startPlan(planId, 'concept-assessment', next.layer, next.conceptId!),
@@ -528,11 +517,11 @@ export function Drill() {
         );
       } else {
         setErr(next.message || '这个学习方向已经完成');
-        setView('home');
+        navigate('/drill');
       }
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : '无法读取下一学习任务');
-      setView('home');
+      navigate('/drill');
     }
   };
 
@@ -556,18 +545,6 @@ export function Drill() {
     );
   };
 
-  // 基于整个层级出题（范围 = 已学内容 + 整个 L{n} 层级）
-  const practiceWholeLayer = () => {
-    if (!teach) return;
-    const t = teach;
-    const layer = plans.flatMap((p) => p.concepts).find((c) => c.id === t.conceptId)?.layer;
-    if (layer == null) return;
-    startQuestion(
-      () => drill.startPlan(t.planId, 'layer-practice', layer, t.conceptId),
-      { kind: 'scoped', planId: t.planId, scope: 'layer', layer, conceptId: t.conceptId },
-    );
-  };
-
   const toggleTeachFirst = (val: boolean) => {
     setTeachFirst(val);
     try { localStorage.setItem(TEACH_FIRST_KEY, val ? '1' : '0'); } catch { /* ignore */ }
@@ -582,9 +559,9 @@ export function Drill() {
       const task = (await drill.today()).find((t) => t.id === taskId);
       if (task?.kind === 'NEW') {
         const outline = await drill.outline(task.conceptId);
-        const nextSub = outline.subPoints.find((s) => !outline.completedSubPoints.includes(s));
-        if (nextSub) {
-          await enterTeachAt(task.conceptId, nextSub, task.planId ?? undefined, taskId);
+        const subIdx = outline.subPoints.findIndex((s) => !outline.completedSubPoints.includes(s));
+        if (subIdx >= 0) {
+          await enterTeachAt(task.conceptId, task.planId ?? undefined, taskId, subIdx);
           return;
         }
       }
@@ -717,15 +694,15 @@ export function Drill() {
         const done = passed && curSub && !teach.done.includes(curSub) ? [...teach.done, curSub] : teach.done;
         const nextIdx = ctx.subIndex + 1;
         if (nextIdx < teach.subPoints.length) {
-          // 还有下一个子点：讲它
+          // 还有下一个子点：讲它（子路由 → 讲解页）
           setTeach({ ...teach, curIdx: nextIdx, done });
-          playSubLesson(teach.conceptId, teach.subPoints[nextIdx]);
+          navigate(`/drill/teach/${teach.conceptId}/${nextIdx}`);
         } else if (ctx.planId != null) {
           // 当前大知识点的全部子点已处理，交回工作流决定重练未通过子点或开始综合检测。
           startWorkflow(ctx.planId);
         } else {
           setTeach({ ...teach, curIdx: -1, done });
-          setView('teach');
+          navigate(`/drill/teach/${teach.conceptId}`);
         }
         break;
       }
@@ -742,7 +719,6 @@ export function Drill() {
   const goHome = () => {
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    navStackRef.current = [];
     setMeta(null);
     setMessages([]);
     setInput('');
@@ -758,7 +734,7 @@ export function Drill() {
     setLessonBusy(false);
     setOutlineBusy(false);
     restoreRef.current = null;
-    setView('home');
+    // replace：换个方向即离开当前会话，返回键不应回到已放弃的页面
     navigate('/drill', { replace: true });
   };
 
@@ -794,8 +770,7 @@ export function Drill() {
     setResumedGraded(latestLearn.status === 'GRADED');
     setPhase('chatting');
     setBrowseQid(null);
-    setView('learn');
-    navigate('/drill', { replace: true });
+    navigate('/drill/learn');
   };
 
   // ===== 从浏览模式重练同一题（基于已 GRADED run 开新 run）=====
@@ -938,7 +913,6 @@ export function Drill() {
   // ===== Teach（先教后考：子知识点清单 + 逐个讲解）=====
   if (view === 'teach') {
     const t = teach;
-    const teachLayer = t ? plans.flatMap((p) => p.concepts).find((c) => c.id === t.conceptId)?.layer : undefined;
     return (
       <div className="page chat-page teach-page">
         <header className="page-head chat-head">
@@ -1004,9 +978,6 @@ export function Drill() {
                   <Button variant="ghost" onClick={practiceWholeConcept} title="基于这个知识点整体出题：范围 = 已学内容 + 整个知识点，覆盖多个子知识点">
                     <Target size={15} strokeWidth={1.6} /> 按整个知识点出题
                   </Button>
-                  <Button variant="ghost" onClick={practiceWholeLayer} title="基于当前层级整体出题：范围 = 已学内容 + 整个层级，跨多个知识点">
-                    <Layers size={15} strokeWidth={1.6} /> 按 L{teachLayer} 整个层级出题
-                  </Button>
                 </div>
               </div>
             </div>
@@ -1014,7 +985,7 @@ export function Drill() {
             // 讲解页：讲当前子知识点
             <div className="card teach-card">
               <div className="teach-lesson-head">
-                <button className="teach-back" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                <button className="teach-back" onClick={() => t && navigate(`/drill/teach/${t.conceptId}`)}>
                   <ArrowLeft size={14} strokeWidth={1.6} /> 返回清单
                 </button>
                 <span className="teach-lesson-eyebrow">
@@ -1046,7 +1017,7 @@ export function Drill() {
               </div>
               <div className="teach-foot">
                 <div className="teach-foot-left">
-                  <Button variant="ghost" onClick={() => t && setTeach({ ...t, curIdx: -1 })}>
+                  <Button variant="ghost" onClick={() => t && navigate(`/drill/teach/${t.conceptId}`)}>
                     返回清单
                   </Button>
                   <Button
