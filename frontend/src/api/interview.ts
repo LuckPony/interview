@@ -14,7 +14,7 @@ async function unwrap<T>(p: Promise<Envelope<T>>): Promise<T> {
 // ============ 模拟面试（interview 模块） ============
 
 export type InterviewDifficulty = 'JUNIOR' | 'MIDDLE' | 'SENIOR';
-export type InterviewStatus = 'IN_PROGRESS' | 'COMPLETED' | 'TERMINATED';
+export type InterviewStatus = 'IN_PROGRESS' | 'PENDING_EVALUATION' | 'COMPLETED' | 'TERMINATED';
 export type InterviewMode = 'TEXT' | 'VOICE';
 
 export interface InterviewAnswer {
@@ -56,6 +56,8 @@ export interface InterviewSession {
   mode: InterviewMode;
   planIds: string | null;
   evaluation: InterviewEvaluation | null;
+  durationMin: number | null;
+  remainingSeconds: number;
 }
 
 export interface InterviewListItem {
@@ -71,12 +73,22 @@ export interface InterviewListItem {
   mode: InterviewMode;
 }
 
+export interface QaHistory {
+  question: string;
+  answer: string | null;
+  followUp: boolean;
+}
+
 export interface CurrentQuestion {
   sessionId: string;
-  currentIndex: number;
   totalQuestions: number;
-  question: string;
-  followUps: string[];
+  baseIndex: number;
+  followUpIndex: number;
+  totalFollowUps: number;
+  finished: boolean;
+  remainingSeconds: number;
+  question: string | null;
+  history: QaHistory[];
 }
 
 export const interviewApi = {
@@ -85,7 +97,6 @@ export const interviewApi = {
   createSession(req: {
     skillId?: string;
     difficulty?: InterviewDifficulty;
-    questionCount?: number;
     resumeId?: number | null;
     planIds?: number[];
     mode?: InterviewMode;
@@ -100,8 +111,11 @@ export const interviewApi = {
     return unwrap(apiFetch<Envelope<CurrentQuestion>>(`/interviews/sessions/${sessionId}/current-question`));
   },
 
-  submitAnswer(sessionId: string, questionIndex: number, answerText: string): Promise<void> {
-    return unwrap(apiFetch<Envelope<void>>(`/interviews/sessions/${sessionId}/answers?questionIndex=${questionIndex}&answerText=${encodeURIComponent(answerText)}`));
+  submitAnswer(sessionId: string, questionIndex: number, answerText: string): Promise<InterviewSession> {
+    return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/sessions/${sessionId}/answers`, {
+      method: 'POST',
+      body: JSON.stringify({ questionIndex, answerText }),
+    }));
   },
 
   completeAndEvaluate(sessionId: string): Promise<InterviewSession> {

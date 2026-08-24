@@ -627,3 +627,76 @@
 .ih-nav .ih-back {
   margin-bottom: 0;
 }
+
+/* —— 倒计时 —— */
+.iv-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 3px 12px;
+}
+.iv-timer.urgent {
+  color: var(--bad);
+  border-color: color-mix(in oklch, var(--bad) 40%, transparent);
+  background: var(--bad-wash);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+/* —— 难度卡片时间标注 —— */
+.iv-diff-time {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+/* —— 已答对话线 —— */
+.iv-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.iv-turn-q {
+  font-size: calc(var(--fs-md) * var(--scale-stem, 1));
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.6;
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--cinnabar);
+}
+.iv-turn-q.followup {
+  border-left-color: var(--amber);
+  font-weight: 500;
+}
+.iv-turn-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border-radius: 99px;
+  padding: 1px 8px;
+  margin-right: var(--s-2);
+  vertical-align: 2px;
+}
+.iv-turn-q.followup .iv-turn-tag {
+  color: var(--warn);
+  background: var(--warn-wash);
+}
+.iv-turn-a {
+  margin-left: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-3);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.7;
+}

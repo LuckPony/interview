@@ -5,10 +5,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
-import interview.homegrown.modules.interview.repository.InterviewQuestionRepository;
-import interview.homegrown.modules.interview.config.InterviewSkillProperties;
+import interview.homegrown.infrastructure.redis.RedisService;
 import interview.homegrown.modules.interview.model.*;
 import interview.homegrown.modules.interview.repository.InterviewAnswerRepository;
+import interview.homegrown.modules.interview.repository.InterviewQuestionRepository;
 import interview.homegrown.modules.interview.repository.InterviewSessionRepository;
 import interview.homegrown.modules.resume.model.ResumeEntity;
 import interview.homegrown.modules.resume.repository.ResumeRepository;
@@ -18,79 +18,83 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 面试会话服务 —— 面试业务核心
-
- * 职责：
- * 1. 创建会话：生成题目（LLM）→ 题目缓存 Redis → 落库
- * 2. 取当前题：从 Redis 读题目列表，按 currentQuestionIndex 定位
- * 3. 提交答案：答案落库，推进 currentQuestionIndex
- * 4. 完成面试：触发评估，更新状态与分数
-
- * 题目存储策略：题目列表存在 Redis（key=interview:questions:{sessionId}），
- * 面试期间可恢复；面试结束后删除缓存。
+ * 面试会话服务 —— 面试业务核心（动态追问版）
+ *
+ * <p>流程：创建会话时按难度预出 {@link DifficultyConfig#BASE_QUESTION_COUNT} 道基础题
+ * （第 1 题固定自我介绍，不追问）；答题过程中<b>根据用户回答动态生成追问</b>，
+ * 追问数量与深度由难度决定；全部答完或<b>超时（难度时长）</b>后进入待评估，
+ * 届时把本轮问答一次性落库，用户点击评估后生成总分与逐题反馈。</p>
+ *
+ * <p>运行时数据存于 Redis（进程内缓存）：问答流 interview:qa:{sessionId}、完成标记 interview:finished:{sessionId}。</p>
  */
-
 @Service
 public class InterviewSessionService {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewSessionService.class);
 
-    // 题目持久化到数据库（interview_question 表）：进程重启不丢，桌面端可随时恢复面试
+    private static final String QA_KEY = "interview:qa:";
+    private static final String FINISHED_KEY = "interview:finished:";
 
     private final ResumeRepository resumeRepository;
     private final InterviewPersistenceService persistenceService;
     private final InterviewQuestionService questionService;
+    private final FollowupGeneratorService followupService;
     private final InterviewEvaluateService evaluateService;
     private final InterviewSkillService skillService;
     private final InterviewSessionRepository sessionRepository;
     private final InterviewAnswerRepository answerRepository;
     private final ConceptRepository conceptRepo;
-    private final ObjectMapper objectMapper;
     private final InterviewQuestionRepository questionRepo;
+    private final RedisService redisService;
+    private final ObjectMapper objectMapper;
 
     public InterviewSessionService(ResumeRepository resumeRepository,
-                                   InterviewSkillService skillService,InterviewSessionRepository sessionRepository,
-                                   InterviewPersistenceService persistenceService,InterviewQuestionService questionService,
-                                   InterviewEvaluateService evaluateService,InterviewAnswerRepository answerRepository,
+                                   InterviewSkillService skillService,
+                                   InterviewSessionRepository sessionRepository,
+                                   InterviewPersistenceService persistenceService,
+                                   InterviewQuestionService questionService,
+                                   FollowupGeneratorService followupService,
+                                   InterviewEvaluateService evaluateService,
+                                   InterviewAnswerRepository answerRepository,
                                    ConceptRepository conceptRepo,
-                                   ObjectMapper objectMapper,InterviewQuestionRepository questionRepo) {
-
+                                   InterviewQuestionRepository questionRepo,
+                                   RedisService redisService,
+                                   ObjectMapper objectMapper) {
         this.resumeRepository = resumeRepository;
         this.persistenceService = persistenceService;
         this.questionService = questionService;
+        this.followupService = followupService;
         this.evaluateService = evaluateService;
         this.skillService = skillService;
         this.sessionRepository = sessionRepository;
         this.answerRepository = answerRepository;
         this.conceptRepo = conceptRepo;
-        this.objectMapper = objectMapper;
         this.questionRepo = questionRepo;
+        this.redisService = redisService;
+        this.objectMapper = objectMapper;
     }
 
-    //=====================创建会话===================
+    //===================== 创建会话 ===================
 
-    public InterviewSessionDTO createSession(CreateSessionRequest request, Long userId){
-
-        // 面试依据校验：简历 与 学习方向 必须二选一（可都选）
+    public InterviewSessionDTO createSession(CreateSessionRequest request, Long userId) {
         boolean hasResume = request.resumeId() != null;
         boolean hasPlans = request.planIds() != null && !request.planIds().isEmpty();
         if (!hasResume && !hasPlans) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请上传简历或选择至少一个学习方向，才能开始面试");
         }
 
-        //确定题目数量（默认 5 题，约 30-40 分钟）
-        int questionCount = request.questionCount() != null ? request.questionCount() : 5;
-
-        //确定难度
         InterviewDifficulty difficulty = request.difficulty() != null ? request.difficulty() : InterviewDifficulty.MIDDLE;
+        DifficultyConfig cfg = DifficultyConfig.of(difficulty);
 
-        //关联简历文本（可选，校验归属：只能使用自己的简历）
+        // 简历文本（校验归属）
         Long resumeId = request.resumeId();
         String resumeText = "";
         if (resumeId != null) {
@@ -102,7 +106,7 @@ public class InterviewSessionService {
             resumeText = resumeEntity.getResumeText() == null ? "" : resumeEntity.getResumeText();
         }
 
-        //学习方向知识点（可选，多选合并去重）
+        // 学习方向知识点（可选，多选合并）
         List<String> planConcepts = (request.planIds() == null || request.planIds().isEmpty())
                 ? List.of()
                 : request.planIds().stream()
@@ -113,17 +117,15 @@ public class InterviewSessionService {
                         .limit(200)
                         .toList();
 
-        //skill 名称（可选：方向由学习方向/简历决定时可空）
         String skillName = (request.skillId() != null && !request.skillId().isBlank())
                 ? skillService.getSkill(request.skillId()).getName()
                 : "";
 
-        //LLM出题：简历 70% + 学习方向 30%
-        InterviewQuestionResult questionResult = questionService.generateQuestions(
-                skillName, difficulty, questionCount, resumeText, planConcepts,
-                hasResume && hasPlans, request.llmProvider());
+        // 出 6 道基础题（第 1 题自我介绍固定，追问动态生成）
+        InterviewQuestionResult baseQuestions = questionService.generateBaseQuestions(
+                skillName, difficulty, resumeText, planConcepts, hasResume && hasPlans, request.llmProvider());
 
-        //创建会话实体并落库
+        // 创建会话实体并落库
         InterviewSessionEntity session = new InterviewSessionEntity();
         session.setId(UUID.randomUUID().toString());
         session.setUserId(userId);
@@ -131,187 +133,253 @@ public class InterviewSessionService {
         session.setSkillId(request.skillId());
         session.setDifficulty(difficulty);
         session.setStatus(InterviewStatus.IN_PROGRESS);
-        session.setTotalQuestions(questionResult.questions().size());//这里之所以不用questionCount是因为不能百分百相信Ai，以实际为主
+        session.setTotalQuestions(baseQuestions.questions().size());
         session.setCurrentQuestionIndex(0);
         session.setLlmProvider(request.llmProvider());
         session.setMode(request.mode() != null && !request.mode().isBlank() ? request.mode().toUpperCase() : "TEXT");
         session.setPlanIds(hasPlans
                 ? request.planIds().stream().map(String::valueOf).distinct().collect(Collectors.joining(","))
                 : null);
+        session.setStartAt(LocalDateTime.now());
+        session.setDurationMin(cfg.maxMinutes());
         persistenceService.save(session);
 
-        //题目列表缓存到Redis
-        cacheQuestions(session.getId(),questionResult);
+        // 题目持久化到数据库（进程重启可恢复）
+        cacheQuestions(session.getId(), baseQuestions);
 
-        log.info("面试会话创建成功: sessionId={}, 题目数={}, mode={}, resume={}, plans={}",
-                session.getId(), questionResult.questions().size(), session.getMode(), hasResume, hasPlans);
+        // 初始化运行时：问答流 = [自我介绍题（未答）]
+        List<QAItem> qa = new ArrayList<>();
+        qa.add(new QAItem(baseQuestions.questions().get(0).question(), null, false, 0));
+        saveQa(session.getId(), qa);
+        redisService.set(FINISHED_KEY + session.getId(), "false");
+
+        log.info("面试会话创建成功: sessionId={}, 难度={}, 基础题数={}, 时长约{}分钟",
+                session.getId(), difficulty, baseQuestions.questions().size(), cfg.durationText());
         return toDetailDTO(session);
     }
 
-    //================取当前题目==============
+    //===================== 取当前题目 ===================
 
-    public CurrentQuestion getCurrentQuestion(String sessionId, Long userId){
-
+    public CurrentQuestion getCurrentQuestion(String sessionId, Long userId) {
         InterviewSessionEntity session = requireOwned(sessionId, userId);
 
-        if(session.getStatus() != InterviewStatus.IN_PROGRESS){
-            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
+        if (session.getStatus() == InterviewStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "该场面试已完成评估");
         }
 
-        InterviewQuestionResult questions = readCachedQuestion(sessionId);
-        int index = session.getCurrentQuestionIndex();
+        boolean finished = isFinished(sessionId);
+        List<QAItem> qa = readQa(sessionId);
+        DifficultyConfig cfg = DifficultyConfig.of(session.getDifficulty());
+        long remaining = remainingSeconds(session);
 
-        if(index >= questions.questions().size()){
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "所有题目已答完，请完成面试");
+        // 完成/超时（且当前问题已答）→ 待评估
+        if (finished) {
+            return new CurrentQuestion(sessionId, session.getTotalQuestions(),
+                    0, 0, cfg.followUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
         }
 
-        InterviewQuestionResult.InterviewQuestion q = questions.questions().get(index);
-        return new CurrentQuestion(
-                sessionId,
-                index,
-                session.getTotalQuestions(),
-                q.question(),
-                q.followups()
-        );
+        // 当前要答的问题 = 问答流中最后一个未答的问题
+        QAItem current = lastUnanswered(qa);
+        if (current == null) {
+            // 没有未答问题（理论上不会到这，兜底）
+            return new CurrentQuestion(sessionId, session.getTotalQuestions(),
+                    0, 0, cfg.followUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
+        }
+
+        int followUpIndex = current.followUp() ? current.fuIndex() : 0;
+        return new CurrentQuestion(sessionId, session.getTotalQuestions(),
+                current.baseIndex(), followUpIndex, cfg.followUpCount(), false,
+                Math.max(0, remaining), current.question(), toHistory(qa));
     }
 
-    //====================提交答案======================
+    //===================== 提交答案 ===================
 
-    public void submitAnswer(String sessionId, int questionIndex, String answerText, Long userId){
-
+    public InterviewSessionDTO submitAnswer(String sessionId, int questionIndex, String answerText, Long userId) {
         InterviewSessionEntity session = requireOwned(sessionId, userId);
 
-        if(session.getStatus() != InterviewStatus.IN_PROGRESS){
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
         }
 
-        InterviewQuestionResult questions = readCachedQuestion(sessionId);
-        if(questionIndex >= questions.questions().size()){
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "题目索引越界");
-        }
-
-        InterviewQuestionResult.InterviewQuestion q = questions.questions().get(questionIndex);
-
-        //保存主问题答案（追加问题后面再加）
-        InterviewAnswerEntity answer = new InterviewAnswerEntity();
-        answer.setSessionId(sessionId);
-        answer.setQuestionIndex(questionIndex);
-        answer.setQuestionText(q.question());
-        answer.setAnswerText(answerText);
-        answer.setIsFollowUp(false);
-        answerRepository.save(answer);
-
-        //更新当前处理问题的索引
-        int nextIndex = Math.min(questionIndex+1, questions.questions().size());
-        session.setCurrentQuestionIndex(nextIndex);
-        persistenceService.save(session);
-
-        log.info("答案已提交: sessionId={}, questionIndex={}", sessionId, questionIndex);
-    }
-
-    //==================完成面试 并 进行评估=================
-
-    public InterviewSessionDTO completeInterview(String sessionId, Long userId){
-
-        InterviewSessionEntity session = requireOwned(sessionId, userId);
-
-        if(session.getStatus() != InterviewStatus.IN_PROGRESS){
-            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
-        }
-
-        //取保存的所有答案
-        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderByQuestionIndex(sessionId);
-
-        //从缓存取题目
-        InterviewQuestionResult questions = readCachedQuestion(sessionId);
-        List<String> questionText = questions.questions().stream()
+        List<QAItem> qa = readQa(sessionId);
+        DifficultyConfig cfg = DifficultyConfig.of(session.getDifficulty());
+        InterviewQuestionResult baseQuestions = readCachedQuestion(sessionId);
+        List<String> baseTexts = baseQuestions.questions().stream()
                 .map(InterviewQuestionResult.InterviewQuestion::question)
                 .toList();
 
-        //先把答案列表转换为Map，Key设置为questionIndex
-        Map<Integer, String> answerMap = answers.stream()
-                .collect(Collectors.toMap(
-                        InterviewAnswerEntity::getQuestionIndex,
-                        InterviewAnswerEntity::getAnswerText,
-                        (v1,v2) -> v1
-                ));
-        //按照question的序号
-        List<String> answerTexts = java.util.stream.IntStream.range(0,questions.questions().size())
-                .mapToObj(index -> answerMap.getOrDefault(index,""))
-                .toList();
-
-        //调用 LLM 评估
-        String skillName = skillNameOf(session);
-        InterviewEvaluationResult evaluation = evaluateService.evaluate(
-                sessionId,questionText,answerTexts,skillName,session.getLlmProvider()
-        );
-
-        //逐题回填 score/feedback 到答案表
-        for (int i = 0;i<answers.size();i++){
-
-            InterviewAnswerEntity answer = answers.get(i);
-
-            if(i < evaluation.questionEvaluations().size()){
-                var qe = evaluation.questionEvaluations().get(i);
-                answer.setScore(qe.score());
-                answer.setFeedback(qe.feedback());
+        // 1. 给当前未答问题补答案
+        boolean answered = false;
+        List<QAItem> updated = new ArrayList<>();
+        for (QAItem item : qa) {
+            if (item.answer() == null && !answered) {
+                updated.add(new QAItem(item.question(), answerText, item.followUp(), item.baseIndex(), item.fuIndex()));
+                answered = true;
+            } else {
+                updated.add(item);
             }
+        }
+        if (!answered) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "当前没有待回答的问题");
+        }
+        qa = updated;
 
-            answerRepository.save(answer);
+        // 2. 判断是否超时 → 超时则结束（答完当前问题即止）
+        boolean timeout = isTimeout(session);
+        boolean allDone = allBaseDone(qa, baseTexts.size());
+
+        if (timeout || allDone) {
+            // 批量落库 + 进入待评估
+            persistQa(session.getId(), qa);
+            redisService.set(FINISHED_KEY + session.getId(), "true");
+            session.setStatus(InterviewStatus.PENDING_EVALUATION);
+            persistenceService.save(session);
+            log.info("面试答题结束: sessionId={}, 原因={}", sessionId, timeout ? "超时" : "全部答完");
+            return toDetailDTO(session);
         }
 
-        //更新会话：总分、评估JSON、状态
-        session.setTotalScore(evaluation.totalScore());
-        session.setStatus(InterviewStatus.COMPLETED);
+        // 3. 生成下一个问题（追问 或 下一道基础题）
+        QAItem last = qa.get(qa.size() - 1);
+        String skillName = skillNameOf(session);
+        String nextQuestion;
+        boolean nextIsFollowUp;
+        int nextBaseIndex = last.baseIndex();
+        int nextFuIndex = 0;
 
-        try{
-            session.setEvaluationJson(objectMapper.writeValueAsString(evaluation));
-        }catch(JsonProcessingException e){
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"LLM评估 JSON 序列化失败");
+        if (!last.followUp() && last.baseIndex() == 0) {
+            // 自我介绍答完 → 进入第 2 道基础题（不追问）
+            nextBaseIndex = 1;
+            nextQuestion = baseTexts.get(1);
+            nextIsFollowUp = false;
+        } else if (!last.followUp()) {
+            // 基础题答完 → 生成第 1 个追问（该难度有追问时）
+            if (cfg.followUpCount() > 0) {
+                nextQuestion = followupService.generateFollowUp(
+                        session.getDifficulty(), skillName,
+                        baseTexts.get(last.baseIndex()), last.answer(),
+                        0, cfg.followUpCount(), session.getLlmProvider());
+                nextIsFollowUp = true;
+                nextFuIndex = 1;
+            } else {
+                nextBaseIndex = last.baseIndex() + 1;
+                nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
+                nextIsFollowUp = false;
+            }
+        } else {
+            // 追问答完 → 继续下一个追问 或 进入下一道基础题
+            if (last.fuIndex() < cfg.followUpCount()) {
+                nextQuestion = followupService.generateFollowUp(
+                        session.getDifficulty(), skillName,
+                        baseTexts.get(last.baseIndex()), last.answer(),
+                        last.fuIndex(), cfg.followUpCount(), session.getLlmProvider());
+                nextIsFollowUp = true;
+                nextFuIndex = last.fuIndex() + 1;
+            } else {
+                nextBaseIndex = last.baseIndex() + 1;
+                nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
+                nextIsFollowUp = false;
+            }
         }
 
+        if (nextQuestion == null) {
+            // 没有下一题（全部基础题答完）→ 待评估
+            persistQa(session.getId(), qa);
+            redisService.set(FINISHED_KEY + session.getId(), "true");
+            session.setStatus(InterviewStatus.PENDING_EVALUATION);
+            persistenceService.save(session);
+            return toDetailDTO(session);
+        }
+
+        qa.add(new QAItem(nextQuestion, null, nextIsFollowUp, nextBaseIndex, nextFuIndex));
+        saveQa(session.getId(), qa);
+        session.setCurrentQuestionIndex(nextBaseIndex);
         persistenceService.save(session);
 
-        //清理题目记录（已完成，不再需要）
-        questionRepo.deleteBySessionId(sessionId);
-
-        log.info("面试完成并评估: sessionId={}, 总分={}", sessionId, evaluation.totalScore());
-
+        log.info("答案已提交并推进: sessionId={}, baseIndex={}, fuIndex={}, isFollowUp={}",
+                sessionId, nextBaseIndex, nextFuIndex, nextIsFollowUp);
         return toDetailDTO(session);
     }
 
-    //======================查询=================
+    //================== 完成面试并评估 ==================
 
-    //查会话列表
-    public List<InterviewListItemDTO> listSessions(Long userId){
+    public InterviewSessionDTO completeInterview(String sessionId, Long userId) {
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
 
+        if (session.getStatus() == InterviewStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "该场面试已完成评估");
+        }
+
+        // 若 Redis 运行时还在且未落库，先落库
+        List<QAItem> qa = readQa(sessionId);
+        if (!qa.isEmpty()) {
+            persistQa(sessionId, qa);
+        }
+
+        // 从数据库读取本轮全部问答（按时间顺序）
+        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderById(sessionId);
+        if (answers.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "本场面试还没有作答记录");
+        }
+
+        List<String> questions = answers.stream().map(InterviewAnswerEntity::getQuestionText).toList();
+        List<String> answerTexts = answers.stream()
+                .map(a -> a.getAnswerText() == null ? "" : a.getAnswerText())
+                .toList();
+
+        // LLM 评估
+        String skillName = skillNameOf(session);
+        InterviewEvaluationResult evaluation = evaluateService.evaluate(
+                sessionId, questions, answerTexts, skillName, session.getLlmProvider());
+
+        // 回填逐题评分
+        for (int i = 0; i < answers.size(); i++) {
+            InterviewAnswerEntity a = answers.get(i);
+            if (i < evaluation.questionEvaluations().size()) {
+                var qe = evaluation.questionEvaluations().get(i);
+                a.setScore(qe.score());
+                a.setFeedback(qe.feedback());
+            }
+            answerRepository.save(a);
+        }
+
+        session.setTotalScore(evaluation.totalScore());
+        session.setStatus(InterviewStatus.COMPLETED);
+        try {
+            session.setEvaluationJson(objectMapper.writeValueAsString(evaluation));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "评估 JSON 序列化失败");
+        }
+        persistenceService.save(session);
+
+        // 清理运行时与题目记录
+        redisService.delete(QA_KEY + sessionId);
+        redisService.delete(FINISHED_KEY + sessionId);
+        questionRepo.deleteBySessionId(sessionId);
+
+        log.info("面试完成并评估: sessionId={}, 总分={}", sessionId, evaluation.totalScore());
+        return toDetailDTO(session);
+    }
+
+    //====================== 查询 ==================
+
+    public List<InterviewListItemDTO> listSessions(Long userId) {
         return sessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(s -> {
-                    int answered = answerRepository.findBySessionIdOrderByQuestionIndex(s.getId()).size();
+                    int answered = answerRepository.findBySessionIdOrderById(s.getId()).size();
                     return new InterviewListItemDTO(
-                            s.getId(),
-                            s.getSkillId(),
-                            skillNameOf(s),
-                            s.getDifficulty(),
-                            s.getStatus(),
-                            s.getTotalQuestions(),
-                            answered,
-                            s.getTotalScore(),
-                            s.getCreatedAt(),
-                            s.getMode() != null ? s.getMode() : "TEXT"
-                    );
+                            s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
+                            s.getTotalQuestions(), answered, s.getTotalScore(), s.getCreatedAt(),
+                            s.getMode() != null ? s.getMode() : "TEXT");
                 })
                 .toList();
     }
 
-    //查单个详细会话信息
-    public InterviewSessionDTO getSession(String sessionId, Long userId){
+    public InterviewSessionDTO getSession(String sessionId, Long userId) {
         return toDetailDTO(requireOwned(sessionId, userId));
     }
 
-    //====================私有方法=====================
+    //===================== 私有方法 =====================
 
-    /** 取会话并校验归属用户（不是本人则拒绝） */
     private InterviewSessionEntity requireOwned(String sessionId, Long userId) {
         InterviewSessionEntity session = persistenceService.getById(sessionId);
         if (!userId.equals(session.getUserId())) {
@@ -320,40 +388,121 @@ public class InterviewSessionService {
         return session;
     }
 
-    private void cacheQuestions(String sessionId,InterviewQuestionResult questions){
+    /** 问答流中的一条记录：question 已生成、answer 为 null 表示待回答 */
+    public record QAItem(String question, String answer, boolean followUp, int baseIndex, int fuIndex) {
+        public QAItem(String question, String answer, boolean followUp, int baseIndex) {
+            this(question, answer, followUp, baseIndex, 0);
+        }
+    }
 
-        try{
+    private void saveQa(String sessionId, List<QAItem> qa) {
+        try {
+            redisService.set(QA_KEY + sessionId, objectMapper.writeValueAsString(qa), Duration.ofHours(24));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "问答流序列化失败");
+        }
+    }
+
+    private List<QAItem> readQa(String sessionId) {
+        return redisService.get(QA_KEY + sessionId)
+                .map(json -> {
+                    try {
+                        return objectMapper.readValue(json, new TypeReference<List<QAItem>>() {});
+                    } catch (Exception e) {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "问答流解析失败");
+                    }
+                })
+                .orElseGet(ArrayList::new);
+    }
+
+    private boolean isFinished(String sessionId) {
+        return "true".equals(redisService.get(FINISHED_KEY + sessionId).orElse("false"));
+    }
+
+    private long remainingSeconds(InterviewSessionEntity session) {
+        if (session.getStartAt() == null || session.getDurationMin() == null) return 0;
+        long deadline = session.getStartAt().plusMinutes(session.getDurationMin())
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond();
+        return deadline - System.currentTimeMillis() / 1000;
+    }
+
+    private boolean isTimeout(InterviewSessionEntity session) {
+        return remainingSeconds(session) <= 0;
+    }
+
+    private QAItem lastUnanswered(List<QAItem> qa) {
+        for (int i = qa.size() - 1; i >= 0; i--) {
+            if (qa.get(i).answer() == null) return qa.get(i);
+        }
+        return null;
+    }
+
+    private boolean allBaseDone(List<QAItem> qa, int baseSize) {
+        return qa.stream().anyMatch(i -> i.baseIndex() >= baseSize - 1)
+                && qa.get(qa.size() - 1).answer() != null
+                && !qa.get(qa.size() - 1).followUp();
+    }
+
+    private List<QaHistory> toHistory(List<QAItem> qa) {
+        return qa.stream().map(i -> new QaHistory(i.question(), i.answer(), i.followUp())).toList();
+    }
+
+    /** 已答问答（前端对话线展示用） */
+    public record QaHistory(String question, String answer, boolean followUp) {}
+
+    /** 把问答流一次性落库（面试结束进入待评估时调用） */
+    private void persistQa(String sessionId, List<QAItem> qa) {
+        for (QAItem item : qa) {
+            if (item.answer() == null) continue; // 未答的当前题不落库
+            InterviewAnswerEntity answer = new InterviewAnswerEntity();
+            answer.setSessionId(sessionId);
+            answer.setQuestionIndex(item.baseIndex());
+            answer.setQuestionText(item.question());
+            answer.setAnswerText(item.answer());
+            answer.setIsFollowUp(item.followUp());
+            answerRepository.save(answer);
+        }
+        log.info("问答已落库: sessionId={}, 条数={}", sessionId, qa.size());
+    }
+
+    private void cacheQuestions(String sessionId, InterviewQuestionResult questions) {
+        try {
             InterviewQuestionEntity entity = new InterviewQuestionEntity();
             entity.setSessionId(sessionId);
             entity.setQuestionsJson(objectMapper.writeValueAsString(questions));
             questionRepo.save(entity);
-        }catch (JsonProcessingException e){
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,"题目持久化失败");
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目持久化失败");
         }
     }
 
-    private InterviewSessionDTO toDetailDTO(InterviewSessionEntity s){
-
-        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderByQuestionIndex(s.getId());
-        return new InterviewSessionDTO(
-                s.getId(),
-                s.getSkillId(),
-                skillNameOf(s),
-                s.getDifficulty(),
-                s.getStatus(),
-                s.getTotalQuestions(),
-                s.getCurrentQuestionIndex(),
-                s.getTotalScore(),
-                s.getLlmProvider(),
-                s.getCreatedAt(),
-                answers,
-                s.getMode() != null ? s.getMode() : "TEXT",
-                s.getPlanIds(),
-                parseEvaluation(s.getEvaluationJson())
-        );
+    private InterviewQuestionResult readCachedQuestion(String sessionId) {
+        return questionRepo.findById(sessionId)
+                .map(InterviewQuestionEntity::getQuestionsJson)
+                .map(json -> {
+                    try {
+                        return objectMapper.readValue(json, new TypeReference<InterviewQuestionResult>() {});
+                    } catch (JsonProcessingException e) {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目解析失败");
+                    }
+                })
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "该会话的面试题目不存在，可能已被清理"));
     }
 
-    /** 解析评估 JSON（容错：未评估/损坏时返回 null） */
+    private InterviewSessionDTO toDetailDTO(InterviewSessionEntity s) {
+        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderById(s.getId());
+        return new InterviewSessionDTO(
+                s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
+                s.getTotalQuestions(), s.getCurrentQuestionIndex(), s.getTotalScore(),
+                s.getLlmProvider(), s.getCreatedAt(), answers,
+                s.getMode() != null ? s.getMode() : "TEXT",
+                s.getPlanIds(),
+                parseEvaluation(s.getEvaluationJson()),
+                s.getDurationMin(),
+                Math.max(0, remainingSeconds(s)));
+    }
+
     private InterviewEvaluationResult parseEvaluation(String json) {
         if (json == null || json.isBlank()) return null;
         try {
@@ -364,43 +513,28 @@ public class InterviewSessionService {
         }
     }
 
-    /** skillId 可能为空（方向由简历/学习方向决定），容错返回可读名称 */
     private String skillNameOf(InterviewSessionEntity s) {
         if (s.getSkillId() != null && !s.getSkillId().isBlank()) {
             try {
                 return skillService.getSkill(s.getSkillId()).getName();
             } catch (Exception ignored) {
-                // skill 配置可能已变更，回退
             }
         }
         return "综合面试";
     }
 
-    private InterviewQuestionResult readCachedQuestion(String sessionId){
-
-        return questionRepo.findById(sessionId)
-                .map(InterviewQuestionEntity::getQuestionsJson)
-                .map(json -> {
-                    try{
-                        return objectMapper.readValue(json, new TypeReference<InterviewQuestionResult>() {
-                        });
-                    } catch (JsonProcessingException e) {
-                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目解析失败");
-                    }
-                })
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "该会话的面试题目不存在，可能已被清理"));
-    }
-
-    //===============内部Record=================
+    //=============== 内部 Record =================
 
     public record CurrentQuestion(
             String sessionId,
-            int currentIndex,
             int totalQuestions,
+            int baseIndex,
+            int followUpIndex,
+            int totalFollowUps,
+            boolean finished,
+            long remainingSeconds,
             String question,
-            List<String> followUps
-    ){
-
+            List<QaHistory> history
+    ) {
     }
 }

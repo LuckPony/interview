@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-
 import {
   Mic, Type, FileText, BookOpen, ChevronRight, X,
-  CheckCircle2, XCircle, Send, Volume2, Square, Loader2,
+  CheckCircle2, XCircle, Send, Volume2, Square, Loader2, Timer,
 } from 'lucide-react';
 import { interviewApi, resumeApi, type InterviewSession, type CurrentQuestion, type InterviewMode } from '../api/interview';
 import { studyPlan } from '../api/drill';
@@ -19,10 +18,11 @@ function msg(e: unknown): string {
 }
 
 const DIFFICULTY_LABEL: Record<string, string> = { JUNIOR: '初级', MIDDLE: '中级', SENIOR: '高级' };
+const DIFFICULTY_TIME: Record<string, string> = { JUNIOR: '18-24 分钟', MIDDLE: '30-40 分钟', SENIOR: '48-60 分钟' };
 
 type Phase = 'config' | 'interview' | 'result';
 
-/** 语音识别（Web Speech API，Chrome 免费内置，无需付费） */
+/** 语音识别（Web Speech API，Chrome 免费内置） */
 function createRecognizer(onText: (t: string) => void, onEnd: () => void): any {
   const W = window as any;
   const SR = W.SpeechRecognition ?? W.webkitSpeechRecognition;
@@ -45,7 +45,7 @@ function createRecognizer(onText: (t: string) => void, onEnd: () => void): any {
   return rec;
 }
 
-/** AI 发声（浏览器内置 speechSynthesis，免费；音质取决于系统语音包） */
+/** AI 发声（浏览器内置 speechSynthesis） */
 export function speak(text: string): void {
   try {
     const synth = window.speechSynthesis;
@@ -60,11 +60,18 @@ export function speak(text: string): void {
   } catch { /* 语音不可用时静默降级 */ }
 }
 
-/** 进行中面试会话持久化：切走再回来可恢复 */
+/** 秒 → mm:ss */
+function fmtTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.max(0, sec % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/** 进行中面试会话持久化 */
 const SESSION_KEY = 'yan.interview.sessionId';
 
 export function Interview() {
-    const [phase, setPhase] = useState<Phase>('config');
+  const [phase, setPhase] = useState<Phase>('config');
 
   // —— 配置态 ——
   const [mode, setMode] = useState<InterviewMode>('TEXT');
@@ -73,7 +80,6 @@ export function Interview() {
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [planIds, setPlanIds] = useState<number[]>([]);
   const [difficulty, setDifficulty] = useState<'JUNIOR' | 'MIDDLE' | 'SENIOR'>('MIDDLE');
-  const [questionCount, setQuestionCount] = useState(5);
   const [configErr, setConfigErr] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -86,6 +92,7 @@ export function Interview() {
   const [voiceOn, setVoiceOn] = useState(false);
   const [recogText, setRecogText] = useState('');
   const [listening, setListening] = useState(false);
+  const [left, setLeft] = useState(0);
   const recRef = useRef<any>(null);
   const [err, setErr] = useState('');
 
@@ -94,7 +101,17 @@ export function Interview() {
     resumeApi.list().then(setResumes).catch(() => {});
   }, []);
 
-  // 恢复进行中的面试（切走再回来 / 从历史点击继续）
+  // 倒计时
+  useEffect(() => {
+    setLeft(question?.remainingSeconds ?? 0);
+    if (!question || question.finished) return;
+    const iv = window.setInterval(() => {
+      setLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearInterval(iv);
+  }, [question?.sessionId, question?.question, question?.finished]);
+
+  // 恢复进行中的面试
   useEffect(() => {
     const resumeId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('resume')
       ?? sessionStorage.getItem(SESSION_KEY);
@@ -104,26 +121,14 @@ export function Interview() {
       try {
         const s = await interviewApi.detail(resumeId);
         if (!alive) return;
-        if (s.status !== 'IN_PROGRESS') {
-          sessionStorage.removeItem(SESSION_KEY);
-          return;
-        }
+        if (s.status === 'COMPLETED') { sessionStorage.removeItem(SESSION_KEY); return; }
         setSession(s);
         setPhase('interview');
-        try {
-          const q = await interviewApi.currentQuestion(resumeId);
-          if (!alive) return;
-          setQuestion(q);
-          setAnswer('');
-          setRecogText('');
-          if (s.mode === 'VOICE') speak('第' + (q.currentIndex + 1) + '题：' + q.question);
-        } catch (e) {
-          // 题目已答完但未评估：提示完成评估
-          if (alive) { setSession(s); setQuestion(null); setErr('题目已全部答完，请点击「完成评估」'); }
-        }
+        await refreshQuestion(resumeId);
       } catch { /* 会话不存在/过期，忽略 */ }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const togglePlan = (id: number) => {
@@ -145,6 +150,18 @@ export function Interview() {
     }
   };
 
+  const refreshQuestion = async (sessionId: string) => {
+    const q = await interviewApi.currentQuestion(sessionId);
+    setQuestion(q);
+    setAnswer('');
+    setRecogText('');
+    if (q.question && mode === 'VOICE') {
+      const tag = q.followUpIndex > 0 ? `追问：` : '';
+      speak(`${tag}${q.question}`);
+    }
+    return q;
+  };
+
   const startInterview = async () => {
     if (!resumeId && planIds.length === 0) {
       setConfigErr('请上传简历或选择至少一个学习方向，才能开始面试（二选一，可都选）');
@@ -153,31 +170,16 @@ export function Interview() {
     setConfigErr('');
     setCreating(true);
     try {
-      const s = await interviewApi.createSession({
-        resumeId,
-        planIds,
-        difficulty,
-        questionCount,
-        mode,
-      });
+      const s = await interviewApi.createSession({ resumeId, planIds, difficulty, mode });
       sessionStorage.setItem(SESSION_KEY, s.id);
       setSession(s);
       setPhase('interview');
-      await loadQuestion(s.id);
+      await refreshQuestion(s.id);
     } catch (e) {
       setConfigErr(msg(e));
+    } finally {
       setCreating(false);
     }
-  };
-
-  const loadQuestion = async (sessionId: string) => {
-    const q = await interviewApi.currentQuestion(sessionId);
-    setQuestion(q);
-    setAnswer('');
-    setRecogText('');
-    // 语音模式：AI 发声提问
-    if (mode === 'VOICE') speak(`第${q.currentIndex + 1}题：${q.question}`);
-    return q;
   };
 
   const completeNow = async (sid: string) => {
@@ -187,6 +189,7 @@ export function Interview() {
       const done = await interviewApi.completeAndEvaluate(sid);
       sessionStorage.removeItem(SESSION_KEY);
       setSession(done);
+      setQuestion(null);
       setPhase('result');
     } catch (e) {
       setErr('评估失败：' + msg(e) + '，可稍后重试');
@@ -202,12 +205,13 @@ export function Interview() {
     setBusy(true);
     setErr('');
     try {
-      await interviewApi.submitAnswer(session.id, question.currentIndex, text);
-      if (question.currentIndex + 1 >= question.totalQuestions) {
-        // 全部答完 → 评估
-        await completeNow(session.id);
+      const s = await interviewApi.submitAnswer(session.id, question.baseIndex, text);
+      setSession(s);
+      if (s.status === 'PENDING_EVALUATION' || s.status === 'COMPLETED') {
+        // 答题结束 → 待评估（显示面试结束，等用户点评估）
+        setQuestion(q => (q ? { ...q, finished: true } : q));
       } else {
-        await loadQuestion(session.id);
+        await refreshQuestion(session.id);
       }
     } catch (e) {
       setErr(msg(e));
@@ -217,7 +221,7 @@ export function Interview() {
   };
 
   const quit = () => {
-    if (!window.confirm('确定退出本场面试吗？退出后本次作答不计分。')) return;
+    if (!window.confirm('退出后计时仍会继续，计时结束将自动结束面试并进入待评估。确定退出吗？')) return;
     if (recRef.current) recRef.current.stop();
     sessionStorage.removeItem(SESSION_KEY);
     setPhase('config');
@@ -225,10 +229,6 @@ export function Interview() {
     setQuestion(null);
     setAnswer('');
     setErr('');
-  };
-
-  const toggleVoice = () => {
-    setVoiceOn(v => !v);
   };
 
   const toggleListening = () => {
@@ -248,12 +248,14 @@ export function Interview() {
     rec.start();
   };
 
+  const finished = question?.finished || session?.status === 'PENDING_EVALUATION';
+
   return (
     <div className="page interview-page">
       <header className="page-head">
         <span className="eyebrow">模拟面试 · INTERVIEW</span>
         <h1>模拟面试</h1>
-        <p>基于简历与学习方向出题，30-40 分钟一场，结束后 AI 评估打分。</p>
+        <p>基于简历与学习方向出题，时长与追问深度由难度决定，结束后 AI 评估打分。</p>
       </header>
 
       <div className="iv-header-actions">
@@ -268,7 +270,6 @@ export function Interview() {
           plans={plans} planIds={planIds} togglePlan={togglePlan}
           resumes={resumes} resumeId={resumeId} setResumeId={setResumeId}
           difficulty={difficulty} setDifficulty={setDifficulty}
-          questionCount={questionCount} setQuestionCount={setQuestionCount}
           uploading={uploading} onUpload={uploadResume}
           err={configErr} creating={creating}
           canStart={!!resumeId || planIds.length > 0}
@@ -276,20 +277,7 @@ export function Interview() {
         />
       )}
 
-      {phase === 'interview' && session && !question && (
-        <Card className="iv-question-card">
-          <span className="eyebrow">面试官</span>
-          <div className="iv-question-text">所有题目已作答完毕，可以进行评估了。</div>
-          <div className="iv-answer-foot" style={{ marginTop: 'var(--s-4)' }}>
-            <span className="iv-answer-hint">评估后将生成总分与逐题反馈</span>
-            <Button onClick={() => completeNow(session.id)} disabled={busy}>
-              {busy ? <><Loader2 size={15} className="spin" /> 评估中…</> : '完成评估'}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {phase === 'interview' && session && question && (
+      {phase === 'interview' && session && (
         <InterviewRun
           session={session}
           question={question}
@@ -298,11 +286,14 @@ export function Interview() {
           setAnswer={setAnswer}
           busy={busy}
           onSubmit={submit}
+          onComplete={() => completeNow(session.id)}
           onQuit={quit}
+          finished={!!finished}
+          left={left}
           listening={listening}
           recogText={recogText}
           voiceOn={voiceOn}
-          onToggleVoice={toggleVoice}
+          onToggleVoice={() => setVoiceOn(v => !v)}
           onToggleListening={toggleListening}
         />
       )}
@@ -320,7 +311,6 @@ function InterviewConfig(props: {
   plans: PlanView[]; planIds: number[]; togglePlan: (id: number) => void;
   resumes: Awaited<ReturnType<typeof resumeApi.list>>; resumeId: number | null; setResumeId: (id: number | null) => void;
   difficulty: 'JUNIOR' | 'MIDDLE' | 'SENIOR'; setDifficulty: (d: 'JUNIOR' | 'MIDDLE' | 'SENIOR') => void;
-  questionCount: number; setQuestionCount: (n: number) => void;
   uploading: boolean; onUpload: (f: File) => void;
   err: string; creating: boolean; canStart: boolean; onStart: () => void;
 }) {
@@ -353,9 +343,7 @@ function InterviewConfig(props: {
       {/* 面试依据 */}
       <section className="iv-block">
         <h2 className="iv-block-title">② 面试依据（简历与学习方向二选一，可都选）</h2>
-
         <div className="iv-source-grid">
-          {/* 简历 */}
           <Card className="iv-source">
             <div className="iv-source-head">
               <FileText size={16} strokeWidth={1.7} className="iv-source-ico" />
@@ -364,14 +352,14 @@ function InterviewConfig(props: {
                 {props.resumeId != null ? '已选择' : '可选'}
               </Badge>
             </div>
-            {((props.resumes ?? []).length) > 0 ? (
+            {props.resumes.length > 0 ? (
               <select
                 className="iv-select"
                 value={props.resumeId ?? ''}
                 onChange={(e) => props.setResumeId(e.target.value ? Number(e.target.value) : null)}
               >
                 <option value="">不使用简历</option>
-                {(props.resumes ?? []).map(r => (
+                {props.resumes.map(r => (
                   <option key={r.id} value={r.id}>{r.originalName}</option>
                 ))}
               </select>
@@ -387,7 +375,6 @@ function InterviewConfig(props: {
             </Button>
           </Card>
 
-          {/* 学习方向 */}
           <Card className="iv-source">
             <div className="iv-source-head">
               <BookOpen size={16} strokeWidth={1.7} className="iv-source-ico" />
@@ -396,11 +383,11 @@ function InterviewConfig(props: {
                 {props.planIds.length > 0 ? `已选 ${props.planIds.length} 个` : '可选'}
               </Badge>
             </div>
-            {((props.plans ?? []).length) === 0 ? (
+            {props.plans.length === 0 ? (
               <p className="iv-source-empty">还没有学习方向，去「学习计划」创建一个</p>
             ) : (
               <div className="iv-plan-chips">
-                {(props.plans ?? []).map(p => (
+                {props.plans.map(p => (
                   <button
                     key={p.id}
                     className={'iv-plan-chip' + (props.planIds.includes(p.id) ? ' active' : '')}
@@ -420,7 +407,7 @@ function InterviewConfig(props: {
 
       {/* 难度 */}
       <section className="iv-block">
-        <h2 className="iv-block-title">③ 面试难度</h2>
+        <h2 className="iv-block-title">③ 面试难度（决定时长与追问深度）</h2>
         <div className="iv-diff-row">
           {(['JUNIOR', 'MIDDLE', 'SENIOR'] as const).map(d => (
             <button
@@ -429,26 +416,13 @@ function InterviewConfig(props: {
               onClick={() => props.setDifficulty(d)}
             >
               {DIFFICULTY_LABEL[d]}
+              <small className="iv-diff-time">{DIFFICULTY_TIME[d]}</small>
             </button>
           ))}
         </div>
-      </section>
-
-      {/* 题目数量 */}
-      <section className="iv-block">
-        <h2 className="iv-block-title">④ 题目数量</h2>
-        <div className="iv-diff-row">
-          {[3, 5, 8].map(n => (
-            <button
-              key={n}
-              className={'iv-diff' + (props.questionCount === n ? ' active' : '')}
-              onClick={() => props.setQuestionCount(n)}
-            >
-              {n} 题
-            </button>
-          ))}
-          <span className="iv-count-hint">约 {props.questionCount * 6}-{props.questionCount * 8} 分钟</span>
-        </div>
+        <p className="iv-ratio-hint">
+          初级：追问浅显、数量少 · 中级：有一定深度 · 高级：深入考察真实掌握度。超时将自动结束面试进入待评估。
+        </p>
       </section>
 
       {props.err && <div className="banner warn">{props.err}</div>}
@@ -468,92 +442,126 @@ function InterviewConfig(props: {
 
 /* ================= 面试进行 ================= */
 function InterviewRun(props: {
-  session: InterviewSession; question: CurrentQuestion; mode: InterviewMode;
+  session: InterviewSession; question: CurrentQuestion | null; mode: InterviewMode;
   answer: string; setAnswer: (s: string) => void; busy: boolean;
-  onSubmit: () => void; onQuit: () => void;
+  onSubmit: () => void; onComplete: () => void; onQuit: () => void;
+  finished: boolean; left: number;
   listening: boolean; recogText: string;
   voiceOn: boolean; onToggleVoice: () => void; onToggleListening: () => void;
 }) {
-  const { session, question, mode } = props;
-  const progress = Math.round((question.currentIndex / question.totalQuestions) * 100);
+  const { session, question, mode, finished, left } = props;
+  const urgent = left <= 60 && !finished;
+  const totalBase = session.totalQuestions;
+  const answeredBase = question ? Math.min(question.baseIndex + 1, totalBase) : totalBase;
 
   return (
     <div className="iv-run">
       {/* 顶部状态栏 */}
       <div className="iv-topbar">
-        <div className="iv-progress">
-          <div className="iv-progress-bar" style={{ width: `${progress}%` }} />
-        </div>
         <div className="iv-top-meta">
-          <span className="iv-q-count">第 {question.currentIndex + 1} / {question.totalQuestions} 题</span>
-          <Badge kind="soft">{mode === 'VOICE' ? '语音面试' : '文字面试'}</Badge>
+          <span className="iv-q-count">
+            {finished ? '面试结束' : `第 ${answeredBase} / ${totalBase} 题`}
+          </span>
           <Badge kind="soft">{DIFFICULTY_LABEL[session.difficulty]}</Badge>
-          {mode === 'VOICE' && (
+          <Badge kind="soft">{mode === 'VOICE' ? '语音面试' : '文字面试'}</Badge>
+          {/* 倒计时 */}
+          {!finished && (
+            <span className={'iv-timer' + (urgent ? ' urgent' : '')}>
+              <Timer size={14} strokeWidth={1.8} /> {fmtTime(left)}
+            </span>
+          )}
+          {mode === 'VOICE' && !finished && (
             <button className={'iv-voice-toggle' + (props.voiceOn ? ' on' : '')} onClick={props.onToggleVoice}>
               <Volume2 size={14} strokeWidth={1.8} /> {props.voiceOn ? 'AI 发声中' : 'AI 发声提问'}
             </button>
           )}
-          <button className="iv-quit" onClick={props.onQuit}>
-            <X size={14} strokeWidth={2} /> 退出
-          </button>
+          {!finished && (
+            <button className="iv-quit" onClick={props.onQuit}>
+              <X size={14} strokeWidth={2} /> 退出
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 题目卡片 */}
-      <Card className="iv-question-card">
-        <span className="eyebrow">面试官</span>
-        <div className="iv-question-text">
-          <Markdown>{question.question}</Markdown>
+      {/* 已答对话线 */}
+      {question && question.history.length > 0 && (
+        <div className="iv-thread">
+          {question.history.map((h, i) => (
+            <div key={i} className="iv-turn">
+              <div className={'iv-turn-q' + (h.followUp ? ' followup' : '')}>
+                <span className="iv-turn-tag">{h.followUp ? '追问' : '主问'}</span>
+                <Markdown>{h.question}</Markdown>
+              </div>
+              {h.answer && (
+                <div className="iv-turn-a"><Markdown>{h.answer}</Markdown></div>
+              )}
+            </div>
+          ))}
         </div>
-        {question.followUps.length > 0 && (
-          <div className="iv-followups">
-            <span className="iv-followups-label">追问提示</span>
-            {question.followUps.map((f, i) => (
-              <p key={i} className="iv-followup">· {f}</p>
-            ))}
+      )}
+
+      {finished ? (
+        /* 待评估 */
+        <Card className="iv-question-card">
+          <span className="eyebrow">面试官</span>
+          <div className="iv-question-text">
+            {left <= 0 ? '面试时间已到，本场面试结束。' : '所有问题已作答完毕，本场面试结束。'}
           </div>
-        )}
-      </Card>
-
-      {/* 作答区 */}
-      <Card className="iv-answer-card">
-        <span className="eyebrow">你的回答</span>
-
-        {mode === 'VOICE' && (
-          <div className="iv-voice-area">
-            <button
-              className={'iv-mic' + (props.listening ? ' on' : '')}
-              onClick={props.onToggleListening}
-              disabled={props.busy}
-            >
-              {props.listening ? <Square size={20} strokeWidth={2} /> : <Mic size={22} strokeWidth={1.8} />}
-            </button>
-            <span className="iv-mic-hint">
-              {props.listening ? '正在聆听…再点一次结束' : '点击开始说话（语音自动转文字）'}
-            </span>
+          <div className="iv-answer-foot" style={{ marginTop: 'var(--s-4)' }}>
+            <span className="iv-answer-hint">评估后将生成总分与逐题反馈</span>
+            <Button onClick={props.onComplete} disabled={props.busy}>
+              {props.busy ? <><Loader2 size={15} className="spin" /> 评估中…</> : '完成评估'}
+            </Button>
           </div>
-        )}
+        </Card>
+      ) : question && question.question ? (
+        <>
+          {/* 当前题目 */}
+          <Card className="iv-question-card">
+            <span className="eyebrow">面试官 · {question.followUpIndex > 0 ? `追问 ${question.followUpIndex}/${question.totalFollowUps}` : '主问题'}</span>
+            <div className="iv-question-text">
+              <Markdown>{question.question}</Markdown>
+            </div>
+          </Card>
 
-        <textarea
-          className="iv-answer"
-          placeholder={mode === 'VOICE' ? '语音识别结果会显示在这里，也可手动修改…' : '像面试一样把思路讲清楚：结论 → 理由 → 例子…'}
-          value={props.answer || props.recogText}
-          onChange={(e) => props.setAnswer(e.target.value)}
-          rows={8}
-          disabled={props.busy}
-        />
-
-        <div className="iv-answer-foot">
-          <span className="iv-answer-hint">
-            {question.currentIndex + 1 >= question.totalQuestions ? '最后一题，提交后进入评估' : '提交后进入下一题'}
-          </span>
-          <Button onClick={props.onSubmit} disabled={props.busy || (!props.answer.trim() && !props.recogText.trim())}>
-            {props.busy ? <><Loader2 size={15} className="spin" /> 处理中…</> : (
-              <><Send size={15} strokeWidth={1.8} /> {question.currentIndex + 1 >= question.totalQuestions ? '提交并评估' : '提交回答'}</>
+          {/* 作答区 */}
+          <Card className="iv-answer-card">
+            <span className="eyebrow">你的回答</span>
+            {mode === 'VOICE' && (
+              <div className="iv-voice-area">
+                <button
+                  className={'iv-mic' + (props.listening ? ' on' : '')}
+                  onClick={props.onToggleListening}
+                  disabled={props.busy}
+                >
+                  {props.listening ? <Square size={20} strokeWidth={2} /> : <Mic size={22} strokeWidth={1.8} />}
+                </button>
+                <span className="iv-mic-hint">
+                  {props.listening ? '正在聆听…再点一次结束' : '点击开始说话（语音自动转文字）'}
+                </span>
+              </div>
             )}
-          </Button>
-        </div>
-      </Card>
+            <textarea
+              className="iv-answer"
+              placeholder={mode === 'VOICE' ? '语音识别结果会显示在这里，也可手动修改…' : '像面试一样把思路讲清楚：结论 → 理由 → 例子…'}
+              value={props.answer || props.recogText}
+              onChange={(e) => props.setAnswer(e.target.value)}
+              rows={7}
+              disabled={props.busy}
+            />
+            <div className="iv-answer-foot">
+              <span className="iv-answer-hint">
+                {urgent ? '时间快到了，提交后将结束面试' : '提交后 AI 会根据你的回答继续追问'}
+              </span>
+              <Button onClick={props.onSubmit} disabled={props.busy || (!props.answer.trim() && !props.recogText.trim())}>
+                {props.busy ? <><Loader2 size={15} className="spin" /> 处理中…</> : (
+                  <><Send size={15} strokeWidth={1.8} /> 提交回答</>
+                )}
+              </Button>
+            </div>
+          </Card>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -577,7 +585,7 @@ function InterviewResult({ session, onRestart }: { session: InterviewSession; on
             <Badge kind="soft">{session.skillName}</Badge>
             <Badge kind="soft">{DIFFICULTY_LABEL[session.difficulty]}</Badge>
             <Badge kind="soft">{session.mode === 'VOICE' ? '语音面试' : '文字面试'}</Badge>
-            <Badge kind="soft">共 {session.totalQuestions} 题</Badge>
+            <Badge kind="soft">共 {session.answers.length} 轮问答</Badge>
           </div>
         </div>
         <div className="iv-score-right">
@@ -588,40 +596,36 @@ function InterviewResult({ session, onRestart }: { session: InterviewSession; on
         </div>
       </Card>
 
-      {/* 优势 / 建议 */}
       {ev && (
         <div className="iv-eval-grid">
           {ev.strength.length > 0 && (
             <Card className="iv-eval-block">
               <span className="iv-eval-title good">优势</span>
-              <ul className="iv-eval-list">
-                {ev.strength.map((s, i) => <li key={i}>{s}</li>)}
-              </ul>
+              <ul className="iv-eval-list">{ev.strength.map((s, i) => <li key={i}>{s}</li>)}</ul>
             </Card>
           )}
           {ev.improvements.length > 0 && (
             <Card className="iv-eval-block">
               <span className="iv-eval-title bad">改进建议</span>
-              <ul className="iv-eval-list">
-                {ev.improvements.map((s, i) => <li key={i}>{s}</li>)}
-              </ul>
+              <ul className="iv-eval-list">{ev.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul>
             </Card>
           )}
         </div>
       )}
 
-      {/* 逐题回顾 */}
       {session.answers.length > 0 && (
         <section className="iv-block">
-          <h2 className="iv-block-title">逐题回顾</h2>
+          <h2 className="iv-block-title">问答回顾</h2>
           <div className="iv-qa-list">
-            {session.answers.map((a, i) => (
+            {session.answers.map((a) => (
               <Card key={a.id} className="iv-qa">
                 <div className="iv-qa-head">
-                  <span className="iv-qa-no">Q{i + 1}</span>
-                  <span className="iv-qa-score" style={{ color: (a.score ?? 0) >= 60 ? 'var(--good)' : 'var(--bad)' }}>
-                    {a.score ?? '—'}<small>/100</small>
-                  </span>
+                  <span className="iv-qa-no">{a.isFollowUp ? '追问' : 'Q'}</span>
+                  {a.score != null && (
+                    <span className="iv-qa-score" style={{ color: a.score >= 60 ? 'var(--good)' : 'var(--bad)' }}>
+                      {a.score}<small>/100</small>
+                    </span>
+                  )}
                 </div>
                 <div className="iv-qa-q"><Markdown>{a.questionText}</Markdown></div>
                 {a.answerText && <div className="iv-qa-a"><span className="iv-qa-a-label">你的回答</span><Markdown>{a.answerText}</Markdown></div>}

@@ -22,6 +22,10 @@ public record InterviewSessionDTO(
         //关联学习方向 ID（逗号分隔，可空）
         String planIds,
         //评估结果（解析自 evaluation_json，未评估时为 null）
-        InterviewEvaluationResult evaluation
+        InterviewEvaluationResult evaluation,
+        //计划时长（分钟，由难度决定）
+        Integer durationMin,
+        //剩余秒数（计时展示）
+        long remainingSeconds
 ) {
 }
