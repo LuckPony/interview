@@ -284,7 +284,7 @@ bash deploy/deploy-local.sh
 # 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
 ```
 
-> 机房放行境外访问后（ICP 备案或联系服务商），推送到 `main` 将自动触发 `.github/workflows/deploy.yml` 完成部署（该流水线已修复 rsync 与 web 构建模式问题）。
+> 服务器部署统一走本地脚本（机房限制境外入站，GitHub Actions 无法直连，相关部署流水线已移除）。
 
 ```text
 Windows：%APPDATA%\interview-desktop\updater.log
