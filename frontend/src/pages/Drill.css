@@ -317,6 +317,72 @@
   padding: var(--s-4) var(--s-5);
   background: var(--paper);
 }
+.chat-input-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.chat-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink-2);
+  border-radius: var(--r-sm);
+  padding: 3px 9px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.chat-tool-btn:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+}
+.chat-tool-hint {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+/* 待发送图片预览条 */
+.chat-img-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.chat-img-thumb {
+  position: relative;
+  width: 72px;
+  height: 54px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--paper);
+}
+.chat-img-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-img-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--ink) 65%, transparent);
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+}
+.chat-img-remove:hover {
+  background: var(--danger, #c0392b);
+}
 .chat-input-textarea {
   width: 100%;
   border: 1px solid var(--line-strong);
@@ -797,6 +863,21 @@
   font-size: calc(0.875rem * var(--scale-body, 1));
   line-height: 1.6;
 }
+/* 用户消息里的图片（截图） */
+.chat-img-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.chat-img-row img {
+  max-width: min(320px, 100%);
+  max-height: 260px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  object-fit: contain;
+  background: var(--paper);
+}
 .chat-page .chat-bubble.is-stem p {
   font-size: calc(var(--fs-base) * var(--scale-stem, 1));
 }
@@ -812,7 +893,65 @@
   margin-top: var(--s-2);
 }
 
-/* —— 暂停标记：AI 回复被用户暂停，未答完的内容未保存 —— */
+/* —— 应用内弹窗（Electron 不支持 window.confirm/prompt）—— */
+.app-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 6vh, 64px) 16px;
+  background: color-mix(in oklch, var(--ink) 28%, transparent);
+  animation: app-fade 0.18s var(--ease-out) both;
+}
+@keyframes app-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.app-modal {
+  width: min(420px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+  animation: app-rise 0.2s var(--ease-out) both;
+  box-shadow: 0 24px 60px -24px rgba(35, 43, 54, 0.45);
+}
+@keyframes app-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.app-modal-title {
+  margin: 0 0 var(--s-2);
+  font-size: 1.05rem;
+}
+.app-modal-message {
+  margin: 0 0 var(--s-4);
+  color: var(--ink-2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.app-modal-input {
+  width: 100%;
+  margin-bottom: var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-base);
+  color: var(--ink);
+}
+.app-modal-input:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.app-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
 .chat-paused-note {
   margin-top: var(--s-2);
   font-size: 0.75rem;

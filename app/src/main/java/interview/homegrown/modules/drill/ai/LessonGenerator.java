@@ -94,6 +94,10 @@ public class LessonGenerator {
             5. 不要使用中文破折号（——），改用逗号或句号
             6. 用 Markdown 排版：适当用小标题/列表，段落之间用一个空行分隔，保持紧凑
             7. 结尾必须是一句完整的话
+            8. 如果 prompt 中给出了同一知识点下「其他子知识点已讲解」的内容，讲解必须聚焦当前子知识点
+               独有的部分：不得照搬或复述其他子点讲过的核心论断、讲解结构或例子，必要时换一组不同的例子与比喻；
+               即使没有给出其他子点的讲解，也要默认相邻子点讲的是相关面，做到自我区分，别把讲解写成
+               覆盖整个大概念、与其他子点重迭的泛泛综述
             """;
 
     /** 拆解概念为子知识点清单；失败返回空列表（调用方降级为「整概念讲解」）。 */
@@ -207,7 +211,7 @@ public class LessonGenerator {
      */
     public String streamLesson(Concept concept, String subPoint, String context,
                                Consumer<String> onToken, Consumer<String> onReasoning) {
-        return streamLesson(concept, subPoint, context, null, onToken, onReasoning);
+        return streamLesson(concept, subPoint, context, null, List.of(), onToken, onReasoning);
     }
 
     /**
@@ -215,6 +219,33 @@ public class LessonGenerator {
      * 避免生成与上次几乎相同的文本；生成逻辑与普通讲解完全一致。
      */
     public String streamLesson(Concept concept, String subPoint, String context, String previousText,
+                               Consumer<String> onToken, Consumer<String> onReasoning) {
+        return streamLesson(concept, subPoint, context, previousText, List.of(), onToken, onReasoning);
+    }
+
+    /** 同概念下一个兄弟子知识点的已生成讲解摘要（用于让新讲解避重）。 */
+    public record SiblingLesson(String subPoint, String summary) {}
+
+    /** 从同概念下已缓存的兄弟子点讲解中提取摘要（排除当前子点），供新讲解避重。 */
+    public List<SiblingLesson> siblingSummaries(List<interview.homegrown.modules.drill.domain.ConceptLesson> existing,
+                                                String excludeSubPoint) {
+        if (existing == null || existing.isEmpty()) return List.of();
+        List<SiblingLesson> out = new java.util.ArrayList<>();
+        for (var c : existing) {
+            if (excludeSubPoint != null && excludeSubPoint.equals(c.getSubPoint())) continue;
+            String txt = c.getLessonText();
+            if (txt == null || txt.isBlank()) continue;
+            out.add(new SiblingLesson(c.getSubPoint(), truncate(txt, 140)));
+        }
+        return out;
+    }
+
+    /**
+     * 流式讲解单个子知识点（带避重上下文）：{@code siblings} 为同概念下其他子点已生成讲解的摘要，
+     * 通过 user prompt 注入，要求本讲解只讲本子点独有的部分、避免与兄弟点重复（含例子/结构）。
+     */
+    public String streamLesson(Concept concept, String subPoint, String context, String previousText,
+                               List<SiblingLesson> siblings,
                                Consumer<String> onToken, Consumer<String> onReasoning) {
         StringBuilder user = new StringBuilder(String.format("""
                 概念：%s（主题：%s，认知层 L%d）
@@ -224,6 +255,20 @@ public class LessonGenerator {
                 %s
                 """, concept.getName(), concept.getTopic(), concept.getLayer(),
                 subPoint, contextBlock(context)));
+
+        StringBuilder siblingBlock = new StringBuilder();
+        if (siblings != null && !siblings.isEmpty()) {
+            siblingBlock.append("""
+
+                    同一知识点下，下面这些兄弟子知识点已经讲解过（你的讲解**必须避免与它们重复**，
+                    包括核心论断、讲解结构、例子；只讲当前子知识点独有的部分，例子请换一组不同的）：
+                    """);
+            for (SiblingLesson s : siblings) {
+                if (s == null || s.subPoint() == null || s.summary() == null) continue;
+                siblingBlock.append("- 「").append(s.subPoint()).append("」：").append(s.summary()).append('\n');
+            }
+            user.append(siblingBlock);
+        }
 
         if (previousText != null && !previousText.isBlank()) {
             user.append("""

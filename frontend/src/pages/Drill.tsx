@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X } from 'lucide-react';
-import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, ImagePlus, Code2 } from 'lucide-react';
+import { drill, aiSettings, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
@@ -27,6 +27,7 @@ interface ChatMsg {
   type: 'stem' | 'chat';
   reasoning?: string;
   paused?: boolean;   // AI 回复被用户「暂停」：已显示的内容保留，但未答完的回复不落库
+  images?: string[];  // 用户消息附带的图片（data URL）
   revealed?: boolean; // 该 AI 回复是「参考答案」（答案已揭示，评分只取揭示之前的回答）
 }
 
@@ -58,7 +59,7 @@ function convToMessages(conv: ConversationView): ChatMsg[] {
   ];
   for (const run of conv.runs) {
     for (const turn of run.turns) {
-      if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat' });
+      if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat', images: turn.images ?? [] });
       if (turn.tutorText) msgs.push({ id: nextMsgId(), role: 'ai', text: turn.tutorText, type: 'chat' });
     }
   }
@@ -71,7 +72,7 @@ function runTurnsToMessages(conv: ConversationView, runId: number): ChatMsg[] {
   if (!run) return [];
   const msgs: ChatMsg[] = [];
   for (const turn of run.turns) {
-    if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat' });
+    if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat', images: turn.images ?? [] });
     if (turn.tutorText) msgs.push({ id: nextMsgId(), role: 'ai', text: turn.tutorText, type: 'chat' });
   }
   return msgs;
@@ -109,6 +110,16 @@ export function Drill() {
   const [meta, setMeta] = useState<QuestionMeta | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
+  // 待发送的图片（data URL，压缩后）；当前模型支持视觉时才允许添加
+  const [images, setImages] = useState<string[]>([]);
+  const [vision, setVision] = useState<boolean | null>(null); // null=未知（未拉取设置）
+  const fileRef = useRef<HTMLInputElement>(null);
+  // 当前模型是否支持视觉：决定输入区是否显示图片上传入口
+  useEffect(() => {
+    let active = true;
+    aiSettings.get().then((s) => { if (active) setVision(s.supportsVision); }).catch(() => { if (active) setVision(false); });
+    return () => { active = false; };
+  }, []);
   const [phase, setPhase] = useState<Phase>('generating');
   const [err, setErr] = useState('');
   const [gate, setGate] = useState('');
@@ -487,51 +498,72 @@ export function Drill() {
   };
 
   /** 手动「直接通过 / 取消通过」当前子知识点（简单知识点跳过做题；可撤销）。 */
-  const toggleSubPointPass = async () => {
-    if (!teach || teach.curIdx < 0) return;
-    const sub = teach.subPoints[teach.curIdx];
-    const isDone = teach.done.includes(sub);
-    if (!isDone && !window.confirm(`确定跳过「${sub}」吗？该子知识点将被标记为已通过，无需做题。`)) {
-      return;
-    }
+  // Electron 不支持 window.confirm/prompt，确认/输入一律走应用内弹窗
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmText?: string;
+    danger?: boolean;
+    action: () => Promise<void> | void;
+  } | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+
+  const applySubPointPass = async (sub: string, passed: boolean) => {
+    if (!teach) return;
     try {
-      await drill.subPointPass(teach.conceptId, sub, !isDone);
-      const done = isDone
-        ? teach.done.filter((s) => s !== sub)
-        : teach.done.includes(sub) ? teach.done : [...teach.done, sub];
+      await drill.subPointPass(teach.conceptId, sub, passed);
+      const done = passed
+        ? teach.done.includes(sub) ? teach.done : [...teach.done, sub]
+        : teach.done.filter((s) => s !== sub);
       setTeach({ ...teach, done });
     } catch (e) {
       setErr(`操作失败：${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
-  /** 用户新增一个子知识点（写入缓存；讲解首次打开时按需生成）。 */
-  const addSubPoint = async () => {
-    if (!teach) return;
-    const name = window.prompt('新增子知识点名称（例如：异常处理的最佳实践）');
-    if (name == null) return;
-    const sp = name.trim();
-    if (!sp) return;
-    try {
-      const o = await drill.addSubPoint(teach.conceptId, sp);
-      setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
-      setErr('');
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '新增子知识点失败');
+  const toggleSubPointPass = () => {
+    if (!teach || teach.curIdx < 0) return;
+    const sub = teach.subPoints[teach.curIdx];
+    const isDone = teach.done.includes(sub);
+    if (isDone) {
+      // 取消通过：撤销操作，无需确认
+      void applySubPointPass(sub, false);
+    } else {
+      setPendingConfirm({
+        title: '跳过此子知识点？',
+        message: `确定跳过「${sub}」吗？该子知识点将被标记为已通过，无需做题。`,
+        confirmText: '跳过',
+        action: () => applySubPointPass(sub, true),
+      });
     }
   };
 
-  /** 删除一个子知识点（AI 拆的或用户自建的都行）：讲解缓存与通过记录一并清理。 */
-  const removeSubPoint = async (sp: string) => {
+  /** 用户补充一个子知识点（写入缓存；讲解首次打开时按需生成）。 */
+  const confirmAddSubPoint = async (name: string) => {
     if (!teach) return;
-    if (!window.confirm(`确定删除子知识点「${sp}」吗？它的讲解缓存与「通过」记录会一并删除。`)) return;
-    try {
-      const o = await drill.removeSubPoint(teach.conceptId, sp);
-      setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
-      setErr('');
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '删除子知识点失败');
-    }
+    const sp = name.trim();
+    if (!sp) return;
+    const o = await drill.addSubPoint(teach.conceptId, sp);
+    setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
+    setErr('');
+  };
+
+  /** 删除一个子知识点（AI 拆的或用户补充的都行）：讲解缓存与通过记录一并清理。 */
+  const confirmRemoveSubPoint = async (sp: string) => {
+    if (!teach) return;
+    const o = await drill.removeSubPoint(teach.conceptId, sp);
+    setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
+    setErr('');
+  };
+
+  const removeSubPoint = (sp: string) => {
+    setPendingConfirm({
+      title: '删除子知识点',
+      message: `确定删除子知识点「${sp}」吗？它的讲解缓存与「通过」记录会一并删除。`,
+      confirmText: '删除',
+      danger: true,
+      action: () => confirmRemoveSubPoint(sp),
+    });
   };
 
   /** 从统一工作流直接进入指定的下一个子知识点，不再先展示一整棵重复的概念选择树。 */
@@ -618,6 +650,84 @@ export function Drill() {
     startQuestion(() => drill.startTask(taskId), { kind: 'task' });
   };
 
+  const cleanErr = (msg?: string) => {
+    if (!msg) return '';
+    try { return (JSON.parse(msg) as { message?: string }).message ?? msg; } catch { return msg; }
+  };
+
+  // ===== 图片上传（截图/粘贴，仅视觉模型开放）=====
+  const MAX_IMAGES = 4;
+  const MAX_IMG_PX = 1280;
+
+  /** 压缩图片为 data URL：长边 ≤1280、JPEG 质量 0.85（PNG 保留透明）。 */
+  const compressImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, MAX_IMG_PX / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('canvas 不可用');
+          ctx.drawImage(img, 0, 0, w, h);
+          const isPng = file.type === 'image/png';
+          resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.85));
+        } catch (e) { reject(e); }
+        finally { URL.revokeObjectURL(url); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
+      img.src = url;
+    });
+
+  const addImageFiles = async (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files).filter((f) => f.type.startsWith('image/')).slice(0, MAX_IMAGES);
+    if (list.length === 0) { setErr('请选择图片文件'); return; }
+    try {
+      const dataUrls = await Promise.all(list.map(compressImage));
+      setImages((prev) => [...prev, ...dataUrls].slice(0, MAX_IMAGES));
+      setErr('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '图片处理失败');
+    }
+  };
+
+  /** 输入框粘贴：剪贴板里有截图（image）时直接附加。 */
+  const onInputPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imgs: File[] = [];
+    for (const it of Array.from(items)) {
+      if (it.type.startsWith('image/')) {
+        const f = it.getAsFile();
+        if (f) imgs.push(f);
+      }
+    }
+    if (imgs.length > 0) {
+      e.preventDefault();
+      void addImageFiles(imgs);
+    }
+  };
+
+  /** 输入框工具栏：插入 ```语言 代码块模板，光标落到块内。 */
+  const insertCodeBlock = () => {
+    const ta = document.querySelector<HTMLTextAreaElement>('.chat-input-textarea');
+    const el = ta ?? document.querySelector('textarea.chat-input-textarea');
+    const start = el?.selectionStart ?? input.length;
+    const end = el?.selectionEnd ?? input.length;
+    const block = '```语言\n\n```';
+    const next = input.slice(0, start) + block + input.slice(end);
+    setInput(next);
+    requestAnimationFrame(() => {
+      if (el) el.selectionStart = el.selectionEnd = start + '```语言\n'.length;
+      el?.focus();
+    });
+  };
+
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
   // reveal=true 为「看答案」：不需要输入内容，直接向 AI 索要完整答案；服务端会记录
   // 答案揭示边界，之后的回答不再计入评分。
@@ -627,15 +737,17 @@ export function Drill() {
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     const userText = reveal ? '我想直接看答案' : input.trim();
     if (!reveal && !userText) return;
+    const sendingImages = images;
     setInput('');
+    setImages([]);
 
     const userMsgId = nextMsgId();
     const aiMsgId = nextMsgId();
 
-    // 乐观上屏：用户消息 + AI 占位（streaming=true, text='' → 显示"思考中…"）
+    // 乐观上屏：用户消息（含图片）+ AI 占位（streaming=true, text='' → 显示"思考中…"）
     setMessages((prev) => [
       ...prev,
-      { id: userMsgId, role: 'me', text: userText, type: 'chat' },
+      { id: userMsgId, role: 'me', text: userText, type: 'chat', images: sendingImages },
       { id: aiMsgId, role: 'ai', text: '', streaming: true, type: 'chat' },
     ]);
 
@@ -667,9 +779,9 @@ export function Drill() {
         ));
         sseRef.current = null;
         if (status === 409) {
-          setGate(message || '已有未完成的作答');
+          setGate(cleanErr(message) || '已有未完成的作答');
         } else {
-          setErr(message || '回复失败');
+          setErr(cleanErr(message) || '回复失败');
         }
       },
       () => {
@@ -679,6 +791,7 @@ export function Drill() {
           mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
         ));
       },
+      sendingImages,
     );
   };
 
@@ -1041,8 +1154,8 @@ export function Drill() {
               </ul>
               <div className="teach-foot">
                 <div className="teach-foot-left">
-                  <Button variant="ghost" onClick={addSubPoint} title="自己补充一个子知识点（讲解首次打开时生成）">
-                    <Plus size={15} strokeWidth={1.6} /> 新增子知识点
+                  <Button variant="ghost" onClick={() => setPromptOpen(true)} title="AI 拆漏了或想换个粒度？自己补充一个子知识点（讲解首次打开时生成）">
+                    <Plus size={15} strokeWidth={1.6} /> 补充一下
                   </Button>
                   <Button variant="ghost" onClick={practiceWholeConcept} title="基于这个知识点整体出题：范围 = 已学内容 + 整个知识点，覆盖多个子知识点">
                     <Target size={15} strokeWidth={1.6} /> 按整个知识点出题
@@ -1117,6 +1230,30 @@ export function Drill() {
             </div>
           ) : null}
         </div>
+
+        {/* 应用内弹窗：Electron 不支持 window.confirm/prompt */}
+        {pendingConfirm && (
+          <ConfirmDialog
+            title={pendingConfirm.title}
+            message={pendingConfirm.message}
+            confirmText={pendingConfirm.confirmText}
+            danger={pendingConfirm.danger}
+            onConfirm={() => {
+              const done = pendingConfirm.action();
+              void Promise.resolve(done).then(() => setPendingConfirm(null));
+            }}
+            onClose={() => setPendingConfirm(null)}
+          />
+        )}
+        {promptOpen && (
+          <PromptDialog
+            title="补充一个子知识点"
+            placeholder="例如：异常处理的最佳实践"
+            submitText="加入"
+            onSubmit={confirmAddSubPoint}
+            onClose={() => setPromptOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -1192,6 +1329,45 @@ export function Drill() {
           ) : (
             // 对话 / 生成中：输入框 + 发送（已判分继续时提示不重新评分）
             <>
+              <div className="chat-input-tools">
+                <button type="button" className="chat-tool-btn" onClick={insertCodeBlock} title="插入代码块（```语言 包裹）">
+                  <Code2 size={14} strokeWidth={1.8} /> 代码块
+                </button>
+                {vision && (
+                  <button type="button" className="chat-tool-btn" onClick={() => fileRef.current?.click()} title="上传/粘贴截图，AI 可直接看图">
+                    <ImagePlus size={14} strokeWidth={1.8} /> 图片
+                  </button>
+                )}
+                {vision && <span className="chat-tool-hint">截图可直接 Ctrl+V 粘贴</span>}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  void addImageFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              {images.length > 0 && (
+                <div className="chat-img-preview">
+                  {images.map((src, i) => (
+                    <div className="chat-img-thumb" key={i}>
+                      <img src={src} alt={`待发送图片 ${i + 1}`} />
+                      <button
+                        type="button"
+                        className="chat-img-remove"
+                        title="移除图片"
+                        onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        <X size={12} strokeWidth={2.2} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <textarea
                 className="chat-input-textarea"
                 placeholder={
@@ -1208,6 +1384,7 @@ export function Drill() {
                 autoCorrect="off"
                 autoCapitalize="off"
                 onChange={(e) => setInput(e.target.value)}
+                onPaste={onInputPaste}
                 onCompositionStart={() => { composingRef.current = true; }}
                 onCompositionEnd={() => { composingRef.current = false; }}
                 onKeyDown={(e) => {
@@ -1400,14 +1577,128 @@ function ChatBubble({
           )}
           </>
         ) : (
-          // 用户自己的消息：原样展示、保留换行，不做 markdown 解析
-          // （避免被套上 tutor-text 的"讲解 ·"前缀与 markdown 处理，产生多余空行/格式错乱）
-          <div className="me-text">{m.text}</div>
+          // 用户自己的消息：Markdown 渲染（与 AI 同款），贴的代码自动高亮；图片原样展示
+          <div className="me-text">
+            {m.images && m.images.length > 0 && (
+              <div className="chat-img-row">
+                {m.images.map((src, i) => <img key={i} src={src} alt={`消息图片 ${i + 1}`} loading="lazy" />)}
+              </div>
+            )}
+            <Markdown>{m.text}</Markdown>
+          </div>
         )}
       </div>
       {m.role === 'me' && (
         <div className="chat-avatar chat-avatar-me"><span>我</span></div>
       )}
+    </div>
+  );
+}
+
+// —— 应用内确认弹窗（Electron 不支持 window.confirm/prompt，必须用组件弹窗）——
+function ConfirmDialog({
+  title,
+  message,
+  confirmText = '确定',
+  danger = false,
+  busy = false,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmText?: string;
+  danger?: boolean;
+  busy?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="app-modal-backdrop" onClick={onClose}>
+      <div className="app-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <h3 className="app-modal-title">{title}</h3>
+        <p className="app-modal-message">{message}</p>
+        <div className="app-modal-actions">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy}>
+            {busy ? '处理中…' : confirmText}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// —— 应用内输入弹窗（Electron 不支持 window.prompt）——
+function PromptDialog({
+  title,
+  placeholder,
+  initial = '',
+  submitText = '确定',
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  placeholder?: string;
+  initial?: string;
+  submitText?: string;
+  onSubmit: (value: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const submit = async () => {
+    const v = value.trim();
+    if (!v) { setErr('不能为空'); return; }
+    setBusy(true);
+    setErr('');
+    try {
+      await onSubmit(v);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '操作失败');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="app-modal-backdrop" onClick={onClose}>
+      <div className="app-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <h3 className="app-modal-title">{title}</h3>
+        {err && <div className="banner info">{err}</div>}
+        <input
+          ref={inputRef}
+          className="app-modal-input"
+          value={value}
+          placeholder={placeholder}
+          disabled={busy}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter' && !busy) { e.preventDefault(); void submit(); }
+            if (e.key === 'Escape') onClose();
+          }}
+        />
+        <div className="app-modal-actions">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
+          <Button onClick={submit} disabled={busy || !value.trim()}>
+            {busy ? '处理中…' : submitText}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

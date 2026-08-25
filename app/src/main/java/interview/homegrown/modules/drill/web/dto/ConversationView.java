@@ -33,7 +33,8 @@ public record ConversationView(
             double rawScore,
             Boolean passed,
             String byConceptJson,
-            String tutorText
+            String tutorText,
+            List<String> images
     ) {
     }
 }

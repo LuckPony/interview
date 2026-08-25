@@ -241,6 +241,7 @@ export interface ConversationTurn {
   passed: boolean | null;
   byConceptJson: string | null; // 解析为 ByConcept[]
   tutorText: string | null; // 教学讲解：LLM 老师式讲解，帮用户理解这道题
+  images?: string[] | null; // 本轮用户消息附带的图片（data URL）
 }
 
 export interface ConversationRun {

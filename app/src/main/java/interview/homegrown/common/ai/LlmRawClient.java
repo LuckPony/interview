@@ -205,6 +205,17 @@ public class LlmRawClient {
      */
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
                        boolean fallbackToReasoning, Consumer<String> onReasoning) {
+        stream(system, user, null, onToken, onError, fallbackToReasoning, onReasoning);
+    }
+
+    /**
+     * 流式请求（可带图片）：视觉模型时把用户消息拼成 OpenAI 兼容的
+     * {@code content: [{type:text},{type:image_url,image_url:{url:"data:image/..."}}]}；
+     * images 为空时与旧行为一致（content 为纯字符串）。
+     */
+    public void stream(String system, String user, List<String> images,
+                       Consumer<String> onToken, Consumer<Throwable> onError,
+                       boolean fallbackToReasoning, Consumer<String> onReasoning) {
         if (!available()) {
             notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
@@ -212,9 +223,20 @@ public class LlmRawClient {
         try {
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("model", cfg().model());
+            Object content;
+            if (images == null || images.isEmpty()) {
+                content = user;
+            } else {
+                List<Map<String, Object>> parts = new java.util.ArrayList<>();
+                parts.add(Map.of("type", "text", "text", user));
+                for (String img : images) {
+                    parts.add(Map.of("type", "image_url", "image_url", Map.of("url", img)));
+                }
+                content = parts;
+            }
             body.put("messages", List.of(
                     Map.of("role", "system", "content", system),
-                    Map.of("role", "user", "content", user)));
+                    Map.of("role", "user", "content", content)));
             body.put("temperature", 0.7);
             // 思考模式：保持开启（模型更聪明），但 max_tokens 和超时要给足，
             // 否则 reasoning_content 会吃掉额度截断回答 / 思考+回答超时。
