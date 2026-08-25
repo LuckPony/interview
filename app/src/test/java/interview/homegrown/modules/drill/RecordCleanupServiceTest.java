@@ -14,10 +14,12 @@ import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.DrillTurnRepository;
 import interview.homegrown.modules.drill.repository.GradeResultRepository;
 import interview.homegrown.modules.drill.service.RecordCleanupService;
+import interview.homegrown.infrastructure.redis.TestRedisConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestRedisConfig.class)
 class RecordCleanupServiceTest {
 
     @Autowired

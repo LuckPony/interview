@@ -1,10 +1,12 @@
 package interview.homegrown;
 
+import interview.homegrown.infrastructure.redis.TestRedisConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Import;
 
 import javax.sql.DataSource;
 
@@ -12,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 
 @SpringBootTest
+@Import(TestRedisConfig.class)
 class HomegrownApplicationTests {
 
 	@Autowired

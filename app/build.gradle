@@ -61,6 +61,11 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
+    // ===== Redis：spring-data-redis + Lettuce =====
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // 单元测试 mock RedisConnectionFactory 用（spring-boot-starter-test 未包含 Mockito 时）
+    testImplementation 'org.mockito:mockito-core'
+
     // ===== 注册登录：邮箱验证 =====
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
