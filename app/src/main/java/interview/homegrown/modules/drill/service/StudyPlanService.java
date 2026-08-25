@@ -14,6 +14,7 @@ import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
+import interview.homegrown.modules.drill.repository.SubPointPassRepository;
 import interview.homegrown.modules.drill.web.dto.ChatMessage;
 import interview.homegrown.modules.drill.web.dto.IntakeResponse;
 import interview.homegrown.modules.drill.web.dto.PlanConceptView;
@@ -113,6 +114,7 @@ public class StudyPlanService {
     private final LlmRawClient rawClient;
     private final ConceptChunkRepository conceptChunkRepo;
     private final WebEnrichmentService webEnrichmentService;
+    private final SubPointPassRepository subPointPassRepo;
 
     public StudyPlanService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                             MasteryRepository masteryRepo, DrillRunRepository runRepo,
@@ -120,7 +122,8 @@ public class StudyPlanService {
                             CorpusRepository corpusRepo,
                             CorpusService corpusService, StructuredOutputInvoker invoker,
                             LlmRawClient rawClient, ConceptChunkRepository conceptChunkRepo,
-                            WebEnrichmentService webEnrichmentService) {
+                            WebEnrichmentService webEnrichmentService,
+                            SubPointPassRepository subPointPassRepo) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
@@ -133,6 +136,7 @@ public class StudyPlanService {
         this.rawClient = rawClient;
         this.conceptChunkRepo = conceptChunkRepo;
         this.webEnrichmentService = webEnrichmentService;
+        this.subPointPassRepo = subPointPassRepo;
     }
 
     /** 计划的粒度提示：只做保护性校验，不把用户窄目标强行扩展到无关领域。 */
@@ -424,6 +428,10 @@ public class StudyPlanService {
                         }
                     }
                 }));
+        // 手动「直接通过」的子知识点同样算达标（挂在用户点击通过的那个知识点下）
+        subPointPassRepo.findByUserId(userId).forEach(p ->
+                passedSubPoints.computeIfAbsent(p.getConceptId(), ignored -> new ArrayList<>())
+                        .add(p.getSubPoint()));
         List<PlanConceptView> concepts = conceptRepo.findByStudyPlanId(plan.getId()).stream()
                 .map(c -> {
                     List<String> subPoints = lessonGenerator.outlineFromJson(c.getLessonOutline());

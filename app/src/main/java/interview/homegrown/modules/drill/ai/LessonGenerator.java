@@ -19,7 +19,8 @@ import java.util.regex.Pattern;
  * <p>解决两件事：
  * <ol>
  *   <li><b>拆解</b>：一个 concept（如「Python 基础语法」）往往包含多个子知识点，
- *       一整段讲解会讲不全。故先把 concept 拆成 3-8 个子知识点（{@link #decompose}），
+ *       一整段讲解会讲不全。故先把 concept 拆成若干个子知识点（数量由内容决定、
+ *       不凑数、语义不重复，{@link #decompose}），
  *       结果缓存在 {@code concept.lesson_outline}。</li>
  *   <li><b>逐子点讲解</b>：对单个子知识点流式生成一段 200-400 字的聚焦讲解（{@link #streamLesson}），
  *       结果按 (concept_id, sub_point) 缓存在 {@code concept_lesson} 表。</li>
@@ -67,10 +68,14 @@ public class LessonGenerator {
             你是一位经验丰富的技术老师，正在为一位学习者规划一个知识点的学习路径。
             你的任务是把一个知识点拆解成若干个子知识点，方便「先逐个讲解、再逐个考察」。
             要求：
-            1. 拆成 3-8 个子知识点，粒度要细到「能在一段 200-400 字的讲解里讲透一个」
-            2. 每个子知识点是一个精炼的名词短语（10-20 字），不要编号、不要解释、不要 Markdown
-            3. 子知识点要覆盖这个概念的全部主要内容，彼此不重叠
-            4. 顺序按「从基础到进阶」排列
+            1. 数量由知识点本身的内容决定，不强求凑数：内容少的知识点拆 2-3 个即可，
+               内容丰富、层级复杂的知识点可以多拆（没有数量上限）；但绝不为了凑数量
+               硬拆出凑数子点，也不允许出现内容重复或几乎一样的子点。
+            2. 每个子知识点必须与其他子知识点**内容明显不同、互不重叠**：如果两个候选子点
+               讲的是同一件事（哪怕说法不同），只保留一个；任何两个子点的讲解重点不得相近、
+               不得互为子集、不得只是换个说法。
+            3. 每个子知识点是一个精炼的名词短语（8-18 字），不要编号、不要解释、不要 Markdown
+            4. 子知识点要覆盖这个概念的主要核心内容，顺序按「从基础到进阶」排列
             5. 只输出 JSON，严格遵循格式说明
             """;
 
@@ -111,11 +116,69 @@ public class LessonGenerator {
                     .map(this::cleanSubPoint)
                     .filter(s -> !s.isEmpty())
                     .distinct()
-                    .toList();
+                    .collect(java.util.stream.Collectors.collectingAndThen(
+                            java.util.stream.Collectors.toList(), LessonGenerator::dedupeSimilar));
         } catch (Exception e) {
             log.warn("知识点拆解失败 (concept={}): {}", concept.getId(), e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 语义去重：拆解模型有时会输出「内容几乎一样、只是说法不同」的子知识点
+     * （如「列表推导式」与「列表推导式的用法」）。这里用字符二元组 Jaccard 相似度
+     * + 包含关系过滤近似重复项，保留第一个。公开供新增子知识点时做重复校验。
+     */
+    public static List<String> dedupeSimilar(List<String> items) {
+        List<String> result = new java.util.ArrayList<>();
+        for (String raw : items) {
+            String cur = raw.trim();
+            if (cur.isEmpty()) continue;
+            boolean dup = false;
+            for (String kept : result) {
+                if (similar(cur, kept)) { dup = true; break; }
+            }
+            if (!dup) result.add(cur);
+        }
+        return result;
+    }
+
+    private static boolean similar(String a, String b) {
+        String ka = normKey(a), kb = normKey(b);
+        if (ka.isEmpty() || kb.isEmpty()) return false;
+        if (jaccardBigrams(ka, kb) >= 0.72) return true;
+        String shorter = ka.length() <= kb.length() ? ka : kb;
+        String longer = ka.length() <= kb.length() ? kb : ka;
+        // 短词 >= 4 字符且被长词完整包含：视为重复（避免误伤「排序/堆排序」这类粒度差异）
+        return shorter.length() >= 4 && longer.contains(shorter);
+    }
+
+    /** 归一化比较键：小写、去空白与常见标点。 */
+    private static String normKey(String s) {
+        return s.toLowerCase().replaceAll("[\\s，。、；：（）()【】\\[\\]·~`!！?？,.;:\"'']", "");
+    }
+
+    /** 字符二元组 Jaccard 相似度。 */
+    private static double jaccardBigrams(String a, String b) {
+        java.util.Set<String> ga = bigrams(a), gb = bigrams(b);
+        if (ga.isEmpty() || gb.isEmpty()) return 0;
+        java.util.Set<String> inter = new java.util.HashSet<>(ga);
+        inter.retainAll(gb);
+        java.util.Set<String> union = new java.util.HashSet<>(ga);
+        union.addAll(gb);
+        return (double) inter.size() / union.size();
+    }
+
+    private static java.util.Set<String> bigrams(String s) {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        if (s.length() < 2) {
+            set.add(s);
+            return set;
+        }
+        for (int i = 0; i < s.length() - 1; i++) {
+            set.add(s.substring(i, i + 2));
+        }
+        return set;
     }
 
     /** 序列化子知识点清单（缓存进 concept.lesson_outline）。 */

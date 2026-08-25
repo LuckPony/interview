@@ -11,6 +11,7 @@ import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.GradeResultRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
+import interview.homegrown.modules.drill.repository.SubPointPassRepository;
 import interview.homegrown.modules.drill.web.dto.LearningNextView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,12 +39,14 @@ public class LearningWorkflowService {
     private final QuestionBankRepository questionRepo;
     private final LessonGenerator lessonGenerator;
     private final ProgressContextService progressContext;
+    private final SubPointPassRepository subPointPassRepo;
 
     public LearningWorkflowService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                                    DrillRunRepository runRepo, GradeResultRepository gradeRepo,
                                    QuestionBankRepository questionRepo,
                                    LessonGenerator lessonGenerator,
-                                   ProgressContextService progressContext) {
+                                   ProgressContextService progressContext,
+                                   SubPointPassRepository subPointPassRepo) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.runRepo = runRepo;
@@ -51,6 +54,7 @@ public class LearningWorkflowService {
         this.questionRepo = questionRepo;
         this.lessonGenerator = lessonGenerator;
         this.progressContext = progressContext;
+        this.subPointPassRepo = subPointPassRepo;
     }
 
     @Transactional
@@ -66,6 +70,9 @@ public class LearningWorkflowService {
         Set<String> passedKeys = runRepo.findPassedFocusedRuns(userId, DrillRunStatus.GRADED, PASS_LINE).stream()
                 .map(r -> primaryConceptId(r) + "\u0000" + r.getFocusSubPoint())
                 .collect(Collectors.toSet());
+        // 手动「直接通过」的子知识点同样视为达标
+        subPointPassRepo.findByUserId(userId)
+                .forEach(p -> passedKeys.add(p.getConceptId() + "\u0000" + p.getSubPoint()));
 
         for (int layer : all.stream().map(Concept::getLayer).distinct().sorted().toList()) {
             List<Concept> layerConcepts = all.stream().filter(c -> c.getLayer() == layer).toList();

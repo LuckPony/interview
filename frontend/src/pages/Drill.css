@@ -327,6 +327,11 @@
   line-height: 1.65;
   resize: vertical;
   transition: border-color 0.3s var(--ease-out);
+  /* 回答常含代码：等宽字体 + 禁用自动纠错，粘贴/手写代码时缩进与大小写不被破坏 */
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .chat-input-textarea:focus {
   outline: none;
@@ -807,6 +812,14 @@
   margin-top: var(--s-2);
 }
 
+/* —— 暂停标记：AI 回复被用户暂停，未答完的内容未保存 —— */
+.chat-paused-note {
+  margin-top: var(--s-2);
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
 /* —— 答案揭示分隔线：从此处开始是参考答案，此后的回答不再计入评分 —— */
 .chat-reveal-divider {
   display: flex;
@@ -899,6 +912,37 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+}
+.teach-sub-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.teach-sub-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.teach-sub-item:hover .teach-sub-del,
+.teach-sub-del:focus-visible {
+  opacity: 1;
+}
+.teach-sub-del:hover {
+  color: var(--danger, #d64545);
+  background: var(--cinnabar-wash);
 }
 .teach-sub {
   position: relative;
