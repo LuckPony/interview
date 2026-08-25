@@ -1,85 +1,63 @@
 package interview.homegrown.infrastructure.redis;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 进程内缓存服务（替代 Redis，单机自包含）。
+ * Redis 缓存服务（spring-data-redis + Lettuce）。
  *
- * <p>保留原 RedisService 的方法签名，调用方（InterviewSessionService 等）无需改动；
- * 实现改为 ConcurrentHashMap + 过期时间戳。单机/桌面场景下会话题目缓存的语义与
- * 原 Redis 24h TTL 等价（应用重启即失效，与单次面试会话的生命周期一致）。</p>
+ * <p>2026-08 由进程内缓存重构为真实 Redis：保留原方法签名，调用方（InterviewSessionService 等）
+ * 无需改动。字符串直接存、读 JSON 等场景推荐使用；跨实例部署时运行时可正确共享，
+ * 不再存在单机缓存"串台"问题。</p>
+ *
+ * <p>连接配置见 {@code application.yml} 的 {@code spring.data.redis.*}，由 Spring Boot
+ * 自动装配 {@link StringRedisTemplate}（Lettuce 连接工厂）。</p>
  */
 @Service
 public class RedisService {
 
-    private static final long NO_EXPIRE = Long.MAX_VALUE;
+    private final StringRedisTemplate redis;
 
-    private final Map<String, Entry> store = new ConcurrentHashMap<>();
-
-    private record Entry(String value, long expireAtMillis) {
+    public RedisService(StringRedisTemplate redis) {
+        this.redis = redis;
     }
 
     /** 设置键值对（带过期时间）。 */
     public void set(String key, String value, Duration timeout) {
-        store.put(key, new Entry(value, System.currentTimeMillis() + timeout.toMillis()));
+        redis.opsForValue().set(key, value, timeout);
     }
 
     /** 设置键值对（不过期）。 */
     public void set(String key, String value) {
-        store.put(key, new Entry(value, NO_EXPIRE));
+        redis.opsForValue().set(key, value);
     }
 
-    /** 获取值；已过期返回空并清理。 */
+    /** 获取值；键不存在或已过期返回空。 */
     public Optional<String> get(String key) {
-        Entry e = store.get(key);
-        if (e == null) {
-            return Optional.empty();
-        }
-        if (e.expireAtMillis() < System.currentTimeMillis()) {
-            store.remove(key);
-            return Optional.empty();
-        }
-        return Optional.ofNullable(e.value());
+        return Optional.ofNullable(redis.opsForValue().get(key));
     }
 
     /** 删除键。 */
     public boolean delete(String key) {
-        return store.remove(key) != null;
+        return Boolean.TRUE.equals(redis.delete(key));
     }
 
     /** 判断是否存在（未过期）。 */
     public boolean hasKey(String key) {
-        return get(key).isPresent();
+        return Boolean.TRUE.equals(redis.hasKey(key));
     }
 
-    /** 原子自增（计数场景）。 */
+    /** 原子自增（计数场景），返回自增后的值。 */
     public Long increment(String key) {
-        Entry e = store.compute(key, (k, old) -> {
-            long base = 0L;
-            if (old != null && old.expireAtMillis() >= System.currentTimeMillis()) {
-                try {
-                    base = Long.parseLong(old.value());
-                } catch (NumberFormatException ignored) {
-                    // 非数字值视为 0
-                }
-            }
-            return new Entry(String.valueOf(base + 1), NO_EXPIRE);
-        });
-        return Long.parseLong(e.value());
+        Long value = redis.opsForValue().increment(key);
+        return value == null ? 1L : value;
     }
 
     /** 设置过期时间。 */
     public boolean expire(String key, Duration timeout) {
-        Entry e = store.get(key);
-        if (e == null) {
-            return false;
-        }
-        store.put(key, new Entry(e.value(), System.currentTimeMillis() + timeout.toMillis()));
-        return true;
+        return Boolean.TRUE.equals(redis.expire(key, timeout));
     }
 }

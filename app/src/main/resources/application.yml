@@ -23,7 +23,7 @@ spring:
       # 本地开发默认访问云端 Redis
       # Docker 部署时由 SPRING_DATA_REDIS_HOST=redis 覆盖
       host: ${SPRING_DATA_REDIS_HOST:103.236.92.40}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
+      port: ${SPRING_DATA_REDIS_PORT:31442}
       timeout: 3000ms
 
       lettuce:
