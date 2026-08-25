@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, ImagePlus, Code2 } from 'lucide-react';
+import CodeMirror from '@uiw/react-codemirror';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { languages } from '@codemirror/language-data';
+import { keymap, EditorView } from '@codemirror/view';
 import { drill, aiSettings, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
@@ -82,8 +86,6 @@ export function Drill() {
   const location = useLocation();
   const navigate = useNavigate();
   const restoreRef = useRef<string | null>(null);
-  // IME 组合态锁：拼音选词 / 输入法激活期间的回车一律放行（不提交）
-  const composingRef = useRef(false);
   // 出题去重锁：防止连续点击时重复打后端生成题
   const genLockRef = useRef(false);
   // 当前活跃 SSE 流引用（卸载 / 换题时 cancel）
@@ -114,6 +116,7 @@ export function Drill() {
   const [images, setImages] = useState<string[]>([]);
   const [vision, setVision] = useState<boolean | null>(null); // null=未知（未拉取设置）
   const fileRef = useRef<HTMLInputElement>(null);
+  const editorViewRef = useRef<EditorView | null>(null); // CodeMirror 实例（光标定位/插入代码块用）
   // 当前模型是否支持视觉：决定输入区是否显示图片上传入口
   useEffect(() => {
     let active = true;
@@ -696,36 +699,20 @@ export function Drill() {
     }
   };
 
-  /** 输入框粘贴：剪贴板里有截图（image）时直接附加。 */
-  const onInputPaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    const imgs: File[] = [];
-    for (const it of Array.from(items)) {
-      if (it.type.startsWith('image/')) {
-        const f = it.getAsFile();
-        if (f) imgs.push(f);
-      }
-    }
-    if (imgs.length > 0) {
-      e.preventDefault();
-      void addImageFiles(imgs);
-    }
-  };
-
   /** 输入框工具栏：插入 ```语言 代码块模板，光标落到块内。 */
   const insertCodeBlock = () => {
-    const ta = document.querySelector<HTMLTextAreaElement>('.chat-input-textarea');
-    const el = ta ?? document.querySelector('textarea.chat-input-textarea');
-    const start = el?.selectionStart ?? input.length;
-    const end = el?.selectionEnd ?? input.length;
+    const view = editorViewRef.current;
     const block = '```语言\n\n```';
-    const next = input.slice(0, start) + block + input.slice(end);
-    setInput(next);
-    requestAnimationFrame(() => {
-      if (el) el.selectionStart = el.selectionEnd = start + '```语言\n'.length;
-      el?.focus();
-    });
+    const cursorOffset = '```语言\n'.length;
+    if (view) {
+      const { from } = view.state.selection.main;
+      // 在光标处插入代码块模板，并把光标放到块内（`` 与 ``` 之间的大写“语言”占位之后）
+      view.dispatch({ changes: { from, insert: block }, selection: { anchor: from + cursorOffset } });
+      view.focus();
+    } else {
+      // 兜底：编辑器未挂载时退化为整段追加
+      setInput((prev) => prev + block);
+    }
   };
 
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
@@ -794,6 +781,86 @@ export function Drill() {
       sendingImages,
     );
   };
+
+  // —— CodeMirror 输入框配置 ——
+  // keymap / paste handler 里要拿到「最新」的 sendAnswer 与 addImageFiles，
+  // 但 extensions 只在挂载时创建一次（避免每次渲染重建导致光标跳动）。
+  const sendRef = useRef(sendAnswer);
+  const addImagesRef = useRef(addImageFiles);
+  useEffect(() => { sendRef.current = sendAnswer; });
+  useEffect(() => { addImagesRef.current = addImageFiles; });
+
+  const cmExtensions = useMemo(() => [
+    // Markdown 模式：外层按 markdown 高亮；```代码块 内自动按语言 data 里匹配的语言高亮
+    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    // Ctrl/Cmd+Enter 发送（Enter 本身是换行，写代码不误发）；composition 时不拦截
+    keymap.of([{
+      key: 'Mod-Enter',
+      preventDefault: true,
+      run: (view) => {
+        if (view.composing) return false;
+        sendRef.current(false);
+        return true;
+      },
+    }]),
+    // 粘贴截图：剪贴板有图片则直接附加为待发送图片
+    EditorView.domEventHandlers({
+      paste: (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return false;
+        const imgs: File[] = [];
+        for (const it of Array.from(items)) {
+          if (it.type.startsWith('image/')) {
+            const f = it.getAsFile();
+            if (f) imgs.push(f);
+          }
+        }
+        if (imgs.length > 0) {
+          e.preventDefault();
+          void addImagesRef.current(imgs);
+          return true;
+        }
+        return false;
+      },
+    }),
+    // 配色：与应用浅色纸面风格一致（继承 app 的 CSS 变量）
+    EditorView.theme({
+      '&': {
+        backgroundColor: 'var(--paper)',
+        fontSize: '0.9rem',
+      },
+      '.cm-scroller': {
+        fontFamily: 'var(--font-mono)',
+        caretColor: 'var(--cinnabar)',
+        lineHeight: '1.6',
+        maxHeight: '180px',
+      },
+      '&.cm-focused': { outline: 'none' },
+      '.cm-content': { padding: 'var(--s-2) var(--s-3)' },
+      '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--cinnabar)' },
+      '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+        backgroundColor: 'rgba(114, 88, 68, 0.22)',
+      },
+      '.cm-gutters': {
+        backgroundColor: 'transparent',
+        color: 'var(--ink-faint)',
+        border: 'none',
+      },
+      '.cm-activeLine': { backgroundColor: 'rgba(114, 88, 68, 0.05)' },
+      '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--cinnabar)' },
+      '.cm-selectionMatch': { backgroundColor: 'rgba(114, 88, 68, 0.12)' },
+      '.cm-tooltip': {
+        backgroundColor: 'var(--paper)',
+        border: '1px solid var(--line-strong)',
+        borderRadius: 'var(--r-sm)',
+        boxShadow: '0 10px 28px rgba(35,43,54,0.16)',
+      },
+      '.cm-tooltip-autocomplete ul li[aria-selected]': {
+        backgroundColor: 'color-mix(in oklch, var(--cinnabar) 18%, transparent)',
+        color: 'var(--ink)',
+      },
+    }, { dark: false }),
+  ], []);
 
   // ===== 暂停 AI 回复：取消当前 SSE，未答完的回复保留在界面但不落库 =====
   const pauseReply = () => {
@@ -1368,8 +1435,9 @@ export function Drill() {
                   ))}
                 </div>
               )}
-              <textarea
-                className="chat-input-textarea"
+              <CodeMirror
+                className="chat-input-cm"
+                value={input}
                 placeholder={
                   phase === 'generating'
                     ? '题目生成中…'
@@ -1377,36 +1445,12 @@ export function Drill() {
                       ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
                       : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问（最多 4 个小问，也可能不追问）。回车换行，Ctrl/⌘+回车发送；想直接看答案可点「看答案」。'
                 }
-                value={input}
-                disabled={phase === 'generating'}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                onChange={(e) => setInput(e.target.value)}
-                onPaste={onInputPaste}
-                onCompositionStart={() => { composingRef.current = true; }}
-                onCompositionEnd={() => { composingRef.current = false; }}
-                onKeyDown={(e) => {
-                  if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    // Ctrl/⌘+回车 发送；回车本身是换行，方便粘贴/编写代码
-                    e.preventDefault();
-                    sendAnswer(false);
-                  } else if (e.key === 'Tab') {
-                    // Tab 插入两个空格缩进（代码输入友好），保持光标位置
-                    e.preventDefault();
-                    const el = e.currentTarget;
-                    const start = el.selectionStart ?? input.length;
-                    const end = el.selectionEnd ?? input.length;
-                    const next = input.slice(0, start) + '  ' + input.slice(end);
-                    setInput(next);
-                    requestAnimationFrame(() => {
-                      el.selectionStart = el.selectionEnd = start + 2;
-                    });
-                  }
-                }}
-                rows={7}
+                editable={phase !== 'generating'}
+                extensions={cmExtensions}
+                autoFocus
+                onCreateEditor={(view) => { editorViewRef.current = view; }}
+                onChange={(val) => setInput(val)}
+                height="180px"
               />
               <div className="chat-input-foot">
                 <div className="chat-input-actions">
