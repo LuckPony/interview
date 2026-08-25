@@ -136,7 +136,8 @@ public class HistoryService {
                             t.getRawScore() == null ? 0 : t.getRawScore().doubleValue(),
                             t.getPassed(),
                             t.getByConceptJson(),
-                            t.getTutorText()))
+                            t.getTutorText(),
+                            parseImages(t.getImageJson())))
                     .toList();
             runViews.add(new ConversationView.ConversationRunView(
                     run.getId(),
@@ -195,5 +196,19 @@ public class HistoryService {
                 note.isPresent(),
                 conceptIds
         );
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper IMAGE_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** 解析 turn.image_json（data URL 列表）；空/坏数据返回空列表。 */
+    private static List<String> parseImages(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return IMAGE_JSON.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }

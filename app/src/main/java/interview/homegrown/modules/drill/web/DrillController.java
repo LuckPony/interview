@@ -64,6 +64,7 @@ public class DrillController {
     private final ConceptRepository conceptRepo;
     private final ConceptLessonRepository conceptLessonRepo;
     private final SubPointPassRepository subPointPassRepo;
+    private final interview.homegrown.common.ai.AiSettingsService aiSettings;
     private final TutorGenerator tutorGenerator;
     private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
@@ -80,6 +81,7 @@ public class DrillController {
                            DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
                            ConceptLessonRepository conceptLessonRepo,
                            SubPointPassRepository subPointPassRepo,
+                           interview.homegrown.common.ai.AiSettingsService aiSettings,
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
@@ -100,6 +102,7 @@ public class DrillController {
         this.conceptRepo = conceptRepo;
         this.conceptLessonRepo = conceptLessonRepo;
         this.subPointPassRepo = subPointPassRepo;
+        this.aiSettings = aiSettings;
         this.tutorGenerator = tutorGenerator;
         this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
@@ -500,8 +503,12 @@ public class DrillController {
                             .getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 } else {
+                    // 讲解避重：把同概念下其他子点已生成讲解的摘要注入 prompt，让本讲解只讲自己独有的部分、
+                    // 避免与兄弟子点重复（含例子/结构）。这是本轮生成时才需要，缓存命中直接读缓存。
+                    final List<LessonGenerator.SiblingLesson> siblings =
+                            lessonGenerator.siblingSummaries(conceptLessonRepo.findByConceptId(conceptId), sub);
                     final StringBuilder buf = new StringBuilder();
-                    String full = lessonGenerator.streamLesson(concept, sub, context, previousText,
+                    String full = lessonGenerator.streamLesson(concept, sub, context, previousText, siblings,
                             token -> {
                                 buf.append(token);
                                 try {
@@ -905,6 +912,17 @@ public class DrillController {
         QuestionBank q = questionBankRepo.findById(run.getQuestionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
 
+        // 图片校验：当前模型必须支持视觉，否则明确报错（前端虽按能力隐藏上传入口，后端仍需兜底）
+        List<String> images = req.images();
+        if (!images.isEmpty() && !aiSettings.supportsVision()) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "当前模型不支持图片（请切换到支持视觉的模型，如 deepseek-v4-flash-vision-exp / qwen-vl-max）");
+        }
+        int MAX_IMAGES = 4;
+        if (images.size() > MAX_IMAGES) {
+            throw new ResponseStatusException(BAD_REQUEST, "一次最多附带 " + MAX_IMAGES + " 张图片");
+        }
+
         // 保存用户回答为新 turn（round 递增）
         List<DrillTurn> existing = turnRepo.findByRunIdOrderByRoundAsc(runId);
         int nextRound = existing.isEmpty() ? 0 : existing.getLast().getRound() + 1;
@@ -913,6 +931,9 @@ public class DrillController {
         turn.setRound(nextRound);
         turn.setStem(q.getStem());
         turn.setRawAnswer(req.rawAnswer());
+        if (!images.isEmpty()) {
+            turn.setImageJson(jsonImages(images));
+        }
         turnRepo.save(turn);
 
         // 首次对话：run READY -> ANSWERING
@@ -950,6 +971,7 @@ public class DrillController {
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
+        final List<String> fImages = images;
 
         StreamingResponseBody body = out -> {
             // 客户端已断开（用户点「暂停」或离开页面）：AI 尚未送达的回复不落库。
@@ -963,6 +985,7 @@ public class DrillController {
                     out.flush();
                 }
                 String full = tutorGenerator.streamChat(stem, pointsJson, followups, allTurns, context,
+                        fImages,
                         token -> {
                             try {
                                 out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
@@ -1388,6 +1411,16 @@ public class DrillController {
                     .getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (Exception ignored) {
+        }
+    }
+
+    /** 把图片 data URL 列表序列化为 JSON 字符串（存 drill_turn.image_json）。 */
+    private String jsonImages(List<String> images) {
+        try {
+            return objectMapper.writeValueAsString(images);
+        } catch (Exception e) {
+            log.warn("序列化图片列表失败: {}", e.getMessage());
+            return null;
         }
     }
 

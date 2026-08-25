@@ -55,6 +55,10 @@ public class DrillTurn {
     @Column(columnDefinition = "text")
     private String tutorText;
 
+    /** 本轮用户消息附带的图片（JSON 数组，data URL 形式；仅视觉模型可用）。 */
+    @Column(name = "image_json", columnDefinition = "text")
+    private String imageJson;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 }

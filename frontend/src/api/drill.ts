@@ -302,6 +302,7 @@ export function chatStream(
   onDone: () => void,
   onError: (status?: number, message?: string) => void,
   onReveal?: () => void,
+  images?: string[],
 ): TutorStream {
   const token = getToken();
   const url = `${API_BASE_SSE}/api/drill/${runId}/chat`;
@@ -311,7 +312,7 @@ export function chatStream(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ rawAnswer, reveal }),
+    body: JSON.stringify({ rawAnswer, reveal, images: images ?? [] }),
   }, { onToken, onReasoning, onDone: () => onDone(), onError, onReveal });
 }
 
@@ -592,6 +593,7 @@ export interface AiSettingsView {
   model: string;
   hasApiKey: boolean;
   temperature: number;
+  supportsVision: boolean; // 当前模型是否支持图片输入（决定聊天输入区是否显示上传）
 }
 export const aiSettings = {
   get: () => apiFetch<AiSettingsView>('/settings/ai'),

@@ -28,7 +28,9 @@ public class AiSettingsController {
                 "model", c.model(),
                 // 不回显 key 的任何片段（连掩码都不给），只告诉前端「有没有配置」
                 "hasApiKey", c.apiKey() != null && !c.apiKey().isBlank(),
-                "temperature", c.temperature());
+                "temperature", c.temperature(),
+                // 当前模型是否支持图片输入（决定聊天输入区是否显示图片上传）
+                "supportsVision", settings.supportsVision());
     }
 
     @PostMapping

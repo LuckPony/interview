@@ -81,11 +81,30 @@ public class AiSettingsService {
         }
     }
 
-    /** 当前登录用户 id（JwtAuthFilter 写入 principal）；未登录返回 null。 */
+    /** 当前用户 id（JwtAuthFilter 写入 principal）；未登录返回 null。 */
     public Long currentUserId() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof Long userId) return userId;
         return null;
+    }
+
+    /**
+     * 当前生效模型是否支持图片输入（视觉能力）。
+     * 启发式按模型名判断：常见视觉模型名含 vision / qwen-vl / glm-4v / gpt-4o / gpt-4.1 / claude / gemini。
+     * 启发式可能误判，但发送图片时后端还会再校验一次，不支持则明确报错提示。
+     */
+    public boolean supportsVision() {
+        AiConfig cfg = currentProviderForRequest();
+        String model = cfg.model() == null ? "" : cfg.model().toLowerCase();
+        String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase();
+        String probe = provider + " " + model;
+        return probe.contains("vision")
+                || probe.contains("qwen-vl")
+                || probe.contains("glm-4v")
+                || probe.contains("gpt-4o")
+                || probe.contains("gpt-4.1")
+                || probe.contains("claude")
+                || probe.contains("gemini");
     }
 
     private AiConfig loadFromDb(Long userId) {
