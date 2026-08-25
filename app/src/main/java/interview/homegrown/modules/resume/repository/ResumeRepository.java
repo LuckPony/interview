@@ -12,6 +12,9 @@ public interface  ResumeRepository extends JpaRepository<ResumeEntity, Long> {
     //按内容哈希查简历（用于去重，限定同用户）
     Optional<ResumeEntity> findByUserIdAndContentHash(Long userId, String contentHash);
 
+    //按内容哈希查简历（样例测试用；业务上去重限定同用户）
+    Optional<ResumeEntity> findByContentHash(String contentHash);
+
     //当前用户的简历（按创建时间倒序）
     List<ResumeEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
 

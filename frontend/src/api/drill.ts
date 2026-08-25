@@ -354,6 +354,25 @@ export const drill = {
   outline: (conceptId: number) =>
     apiFetch<OutlineView>(`/drill/${conceptId}/outline`, { method: 'POST' }),
 
+  // 手动「直接通过 / 取消通过」某个子知识点（简单知识点跳过做题）
+  subPointPass: (conceptId: number, subPoint: string, passed: boolean) =>
+    apiFetch<{ ok: boolean }>(`/drill/${conceptId}/sub-point-pass`, {
+      method: 'POST',
+      body: JSON.stringify({ subPoint, passed }),
+    }),
+
+  // 用户新增 / 删除子知识点（返回更新后的清单；删除时讲解缓存与通过记录一并清理）
+  addSubPoint: (conceptId: number, subPoint: string) =>
+    apiFetch<OutlineView>(`/drill/${conceptId}/sub-points`, {
+      method: 'POST',
+      body: JSON.stringify({ subPoint }),
+    }),
+  removeSubPoint: (conceptId: number, subPoint: string) =>
+    apiFetch<OutlineView>(`/drill/${conceptId}/sub-points/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ subPoint }),
+    }),
+
   learningNext: (planId: number) =>
     apiFetch<LearningNextView>(`/drill/learning-next/${planId}`),
 

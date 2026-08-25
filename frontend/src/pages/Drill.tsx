@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X } from 'lucide-react';
 import { drill, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
@@ -26,6 +26,7 @@ interface ChatMsg {
   streaming?: boolean;
   type: 'stem' | 'chat';
   reasoning?: string;
+  paused?: boolean;   // AI 回复被用户「暂停」：已显示的内容保留，但未答完的回复不落库
   revealed?: boolean; // 该 AI 回复是「参考答案」（答案已揭示，评分只取揭示之前的回答）
 }
 
@@ -485,6 +486,54 @@ export function Drill() {
     navigate(`/drill/teach/${teach.conceptId}/${idx}`);
   };
 
+  /** 手动「直接通过 / 取消通过」当前子知识点（简单知识点跳过做题；可撤销）。 */
+  const toggleSubPointPass = async () => {
+    if (!teach || teach.curIdx < 0) return;
+    const sub = teach.subPoints[teach.curIdx];
+    const isDone = teach.done.includes(sub);
+    if (!isDone && !window.confirm(`确定跳过「${sub}」吗？该子知识点将被标记为已通过，无需做题。`)) {
+      return;
+    }
+    try {
+      await drill.subPointPass(teach.conceptId, sub, !isDone);
+      const done = isDone
+        ? teach.done.filter((s) => s !== sub)
+        : teach.done.includes(sub) ? teach.done : [...teach.done, sub];
+      setTeach({ ...teach, done });
+    } catch (e) {
+      setErr(`操作失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  /** 用户新增一个子知识点（写入缓存；讲解首次打开时按需生成）。 */
+  const addSubPoint = async () => {
+    if (!teach) return;
+    const name = window.prompt('新增子知识点名称（例如：异常处理的最佳实践）');
+    if (name == null) return;
+    const sp = name.trim();
+    if (!sp) return;
+    try {
+      const o = await drill.addSubPoint(teach.conceptId, sp);
+      setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
+      setErr('');
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '新增子知识点失败');
+    }
+  };
+
+  /** 删除一个子知识点（AI 拆的或用户自建的都行）：讲解缓存与通过记录一并清理。 */
+  const removeSubPoint = async (sp: string) => {
+    if (!teach) return;
+    if (!window.confirm(`确定删除子知识点「${sp}」吗？它的讲解缓存与「通过」记录会一并删除。`)) return;
+    try {
+      const o = await drill.removeSubPoint(teach.conceptId, sp);
+      setTeach({ ...teach, subPoints: o.subPoints, done: o.completedSubPoints ?? [] });
+      setErr('');
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : '删除子知识点失败');
+    }
+  };
+
   /** 从统一工作流直接进入指定的下一个子知识点，不再先展示一整棵重复的概念选择树。 */
   const enterTeachAt = (conceptId: number, planId?: number, taskId?: number, subIdx?: number) => {
     const qs = new URLSearchParams();
@@ -574,6 +623,8 @@ export function Drill() {
   // 答案揭示边界，之后的回答不再计入评分。
   const sendAnswer = (reveal = false) => {
     if (!meta || phase !== 'chatting') return;
+    // 防御：若仍有未结束的流（异常情况下），先取消再发新消息，避免旧流残留
+    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     const userText = reveal ? '我想直接看答案' : input.trim();
     if (!reveal && !userText) return;
     setInput('');
@@ -629,6 +680,14 @@ export function Drill() {
         ));
       },
     );
+  };
+
+  // ===== 暂停 AI 回复：取消当前 SSE，未答完的回复保留在界面但不落库 =====
+  const pauseReply = () => {
+    if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
+    setMessages((prev) => prev.map((mm) =>
+      mm.streaming ? { ...mm, streaming: false, paused: true } : mm,
+    ));
   };
 
   // ===== 结束并评分：基于整轮对话一次性判分 =====
@@ -955,12 +1014,12 @@ export function Drill() {
             // 清单页：展示子知识点列表
             <div className="card teach-card">
               <h2 className="teach-title">这个概念包含 {t.subPoints.length} 个子知识点</h2>
-              <p className="teach-hint">逐个点击：先听讲解、再做题，直到全部学完。</p>
+              <p className="teach-hint">逐个点击：先听讲解、再做题，直到全部学完。拆得不合适可以自己增删。</p>
               <ul className="teach-outline">
                 {t.subPoints.map((sp, i) => {
                   const isDone = t.done.includes(sp);
                   return (
-                    <li key={`${sp}-${i}`}>
+                    <li key={`${sp}-${i}`} className="teach-sub-item">
                       <button
                         className={'teach-sub' + (isDone ? ' is-done' : '')}
                         onClick={() => openSubPoint(i)}
@@ -969,12 +1028,22 @@ export function Drill() {
                         <span className="teach-sub-name">{sp}</span>
                         {isDone && <span className="teach-sub-check">✓</span>}
                       </button>
+                      <button
+                        className="teach-sub-del"
+                        onClick={() => removeSubPoint(sp)}
+                        title={`删除子知识点「${sp}」（讲解缓存与通过记录一并清理）`}
+                      >
+                        <X size={13} strokeWidth={1.8} />
+                      </button>
                     </li>
                   );
                 })}
               </ul>
               <div className="teach-foot">
                 <div className="teach-foot-left">
+                  <Button variant="ghost" onClick={addSubPoint} title="自己补充一个子知识点（讲解首次打开时生成）">
+                    <Plus size={15} strokeWidth={1.6} /> 新增子知识点
+                  </Button>
                   <Button variant="ghost" onClick={practiceWholeConcept} title="基于这个知识点整体出题：范围 = 已学内容 + 整个知识点，覆盖多个子知识点">
                     <Target size={15} strokeWidth={1.6} /> 按整个知识点出题
                   </Button>
@@ -1028,6 +1097,18 @@ export function Drill() {
                   >
                     <RefreshCw size={14} strokeWidth={1.8} className={lessonBusy ? 'spin' : ''} /> 换种描述
                   </Button>
+                  <Button
+                    variant={t.done.includes(t.subPoints[t.curIdx]) ? 'primary' : 'ghost'}
+                    onClick={toggleSubPointPass}
+                    disabled={lessonBusy}
+                    title={
+                      t.done.includes(t.subPoints[t.curIdx])
+                        ? '该子知识点已标记通过；点击取消通过，恢复为待学习'
+                        : '这个子知识点很简单，可以直接标记为已通过，跳过做题'
+                    }
+                  >
+                    {t.done.includes(t.subPoints[t.curIdx]) ? '取消通过' : '直接通过'}
+                  </Button>
                 </div>
                 <Button onClick={startSubQuiz} disabled={lessonBusy}>
                   开始做题 <ChevronRight size={16} strokeWidth={1.6} />
@@ -1042,6 +1123,8 @@ export function Drill() {
 
   // ===== Learn（聊天式 SSE 练习）=====
   const canSend = phase === 'chatting' && input.trim().length > 0;
+  // AI 正在流式回复中：显示「暂停」而不是发送（回车=换行，Ctrl/⌘+回车=发送）
+  const aiStreaming = messages.some((m) => m.streaming);
   // 至少有一轮用户对话才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮
   const canFinish =
     phase === 'chatting' &&
@@ -1115,22 +1198,38 @@ export function Drill() {
                   phase === 'generating'
                     ? '题目生成中…'
                     : resumedGraded
-                      ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。'
-                      : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问（最多 4 个小问，也可能不追问）。想直接看答案可点「看答案」。'
+                      ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
+                      : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问（最多 4 个小问，也可能不追问）。回车换行，Ctrl/⌘+回车发送；想直接看答案可点「看答案」。'
                 }
                 value={input}
                 disabled={phase === 'generating'}
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
                 onChange={(e) => setInput(e.target.value)}
                 onCompositionStart={() => { composingRef.current = true; }}
                 onCompositionEnd={() => { composingRef.current = false; }}
                 onKeyDown={(e) => {
                   if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    // Ctrl/⌘+回车 发送；回车本身是换行，方便粘贴/编写代码
                     e.preventDefault();
                     sendAnswer(false);
+                  } else if (e.key === 'Tab') {
+                    // Tab 插入两个空格缩进（代码输入友好），保持光标位置
+                    e.preventDefault();
+                    const el = e.currentTarget;
+                    const start = el.selectionStart ?? input.length;
+                    const end = el.selectionEnd ?? input.length;
+                    const next = input.slice(0, start) + '  ' + input.slice(end);
+                    setInput(next);
+                    requestAnimationFrame(() => {
+                      el.selectionStart = el.selectionEnd = start + 2;
+                    });
                   }
                 }}
-                rows={5}
+                rows={7}
               />
               <div className="chat-input-foot">
                 <div className="chat-input-actions">
@@ -1147,7 +1246,7 @@ export function Drill() {
                     <Button
                       variant="ghost"
                       onClick={finishAndGrade}
-                      disabled={phase !== 'chatting'}
+                      disabled={phase !== 'chatting' || aiStreaming}
                     >
                       结束并评分
                     </Button>
@@ -1156,14 +1255,21 @@ export function Drill() {
                     <Button
                       variant="ghost"
                       onClick={() => sendAnswer(true)}
+                      disabled={aiStreaming}
                       title="直接看参考答案（此后的回答不再计入评分）"
                     >
                       看答案
                     </Button>
                   )}
-                  <Button onClick={() => sendAnswer(false)} disabled={!canSend}>
-                    {phase === 'generating' ? '等待题目' : '发送'}
-                  </Button>
+                  {aiStreaming ? (
+                    <Button variant="danger" onClick={pauseReply} title="暂停 AI 回复：未答完的内容不会保存">
+                      暂停
+                    </Button>
+                  ) : (
+                    <Button onClick={() => sendAnswer(false)} disabled={!canSend}>
+                      {phase === 'generating' ? '等待题目' : '发送'}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -1289,6 +1395,9 @@ function ChatBubble({
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </div>
+          {m.paused && (
+            <div className="chat-paused-note">⏸ 已暂停：未答完的回复未保存，可继续提问</div>
+          )}
           </>
         ) : (
           // 用户自己的消息：原样展示、保留换行，不做 markdown 解析

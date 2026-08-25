@@ -63,6 +63,7 @@ public class DrillController {
     private final DrillTurnRepository turnRepo;
     private final ConceptRepository conceptRepo;
     private final ConceptLessonRepository conceptLessonRepo;
+    private final SubPointPassRepository subPointPassRepo;
     private final TutorGenerator tutorGenerator;
     private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
@@ -78,6 +79,7 @@ public class DrillController {
                            DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
                            DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
                            ConceptLessonRepository conceptLessonRepo,
+                           SubPointPassRepository subPointPassRepo,
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
@@ -97,6 +99,7 @@ public class DrillController {
         this.turnRepo = turnRepo;
         this.conceptRepo = conceptRepo;
         this.conceptLessonRepo = conceptLessonRepo;
+        this.subPointPassRepo = subPointPassRepo;
         this.tutorGenerator = tutorGenerator;
         this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
@@ -357,14 +360,103 @@ public class DrillController {
                 conceptRepo.save(concept);
             }
         }
-        List<String> completedSubPoints = runRepo
+        return outlineView(uid, conceptId, concept, subPoints, cached);
+    }
+
+    /** 用户新增一个子知识点：写入 lesson_outline 缓存，讲解首次打开时按需生成。 */
+    @PostMapping("/{conceptId}/sub-points")
+    public OutlineView addSubPoint(@PathVariable Long conceptId,
+                                   @RequestBody SubPointEditRequest req) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        String sp = req.subPoint() == null ? "" : req.subPoint().trim();
+        if (sp.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "子知识点不能为空");
+        }
+        List<String> subs = new java.util.ArrayList<>(lessonGenerator.outlineFromJson(concept.getLessonOutline()));
+        if (subs.stream().anyMatch(s -> s.trim().equalsIgnoreCase(sp))) {
+            throw new ResponseStatusException(BAD_REQUEST, "该子知识点已存在");
+        }
+        // 语义重复校验：与已有子点「内容几乎一样」也不允许（如「列表推导式」vs「列表推导式的用法」）
+        java.util.List<String> probe = new java.util.ArrayList<>(subs);
+        probe.add(sp);
+        if (LessonGenerator.dedupeSimilar(probe).size() != probe.size()) {
+            throw new ResponseStatusException(BAD_REQUEST, "该子知识点与已有子知识点内容重复，请换个说法");
+        }
+        subs.add(sp);
+        saveOutline(concept, subs);
+        return outlineView(uid, conceptId, concept, subs, true);
+    }
+
+    /** 删除一个子知识点：从 outline 移除，并同步清理讲解缓存与「直接通过」记录。 */
+    @PostMapping("/{conceptId}/sub-points/remove")
+    public OutlineView removeSubPoint(@PathVariable Long conceptId,
+                                      @RequestBody SubPointEditRequest req) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        String sp = req.subPoint() == null ? "" : req.subPoint().trim();
+        List<String> subs = new java.util.ArrayList<>(lessonGenerator.outlineFromJson(concept.getLessonOutline()));
+        boolean removed = subs.removeIf(s -> s.trim().equalsIgnoreCase(sp));
+        if (!removed) {
+            throw new ResponseStatusException(BAD_REQUEST, "子知识点不存在");
+        }
+        saveOutline(concept, subs);
+        conceptLessonRepo.deleteByConceptIdAndSubPoint(conceptId, sp);
+        subPointPassRepo.deleteByUserIdAndConceptIdAndSubPoint(uid, conceptId, sp);
+        return outlineView(uid, conceptId, concept, subs, true);
+    }
+
+    private void saveOutline(Concept concept, List<String> subPoints) {
+        String json = lessonGenerator.outlineToJson(subPoints);
+        if (json != null) {
+            concept.setLessonOutline(json);
+            conceptRepo.save(concept);
+        }
+    }
+
+    /** 组装 OutlineView：手动「直接通过」与判分通过（≥及格线）的练习并集为达标子点。 */
+    private OutlineView outlineView(Long uid, Long conceptId, Concept concept,
+                                    List<String> subPoints, boolean cached) {
+        List<String> completed = new java.util.ArrayList<>(runRepo
                 .findPassedFocusedRuns(uid, DrillRunStatus.GRADED, PASS_LINE).stream()
                 .filter(r -> questionContainsConcept(r.getQuestionId(), conceptId))
                 .map(DrillRun::getFocusSubPoint)
                 .filter(java.util.Objects::nonNull)
                 .distinct()
-                .toList();
-        return new OutlineView(conceptId, concept.getName(), concept.getTopic(), subPoints, completedSubPoints, cached);
+                .toList());
+        subPointPassRepo.findByUserId(uid).stream()
+                .filter(p -> conceptId.equals(p.getConceptId()))
+                .map(SubPointPass::getSubPoint)
+                .filter(s -> !completed.contains(s))
+                .forEach(completed::add);
+        return new OutlineView(conceptId, concept.getName(), concept.getTopic(),
+                subPoints, completed, cached);
+    }
+
+    /** 手动「直接通过 / 取消通过」某个子知识点（简单知识点跳过做题）。 */
+    @PostMapping("/{conceptId}/sub-point-pass")
+    public Map<String, Object> subPointPass(@PathVariable Long conceptId,
+                                            @RequestBody SubPointPassRequest req) {
+        Long uid = currentUserId();
+        conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        if (req.subPoint() == null || req.subPoint().isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "子知识点不能为空");
+        }
+        if (Boolean.TRUE.equals(req.passed())) {
+            if (subPointPassRepo.findByUserIdAndConceptIdAndSubPoint(uid, conceptId, req.subPoint()).isEmpty()) {
+                SubPointPass p = new SubPointPass();
+                p.setUserId(uid);
+                p.setConceptId(conceptId);
+                p.setSubPoint(req.subPoint());
+                subPointPassRepo.save(p);
+            }
+        } else {
+            subPointPassRepo.deleteByUserIdAndConceptIdAndSubPoint(uid, conceptId, req.subPoint());
+        }
+        return Map.of("ok", true);
     }
 
     /** 子知识点讲解 SSE 流（缓存 concept_lesson；无缓存则流式生成后写回）。
@@ -860,6 +952,10 @@ public class DrillController {
         final String context = contextOf(uid, run.getQuestionId());
 
         StreamingResponseBody body = out -> {
+            // 客户端已断开（用户点「暂停」或离开页面）：AI 尚未送达的回复不落库。
+            // 流式生成无法中途打断，但跳过 tutorText 写入即可保证「暂停后未答完的内容」不进数据库。
+            java.util.concurrent.atomic.AtomicBoolean clientGone =
+                    new java.util.concurrent.atomic.AtomicBoolean(false);
             try {
                 // 揭示边界触发：先推 event:reveal，前端在聊天线程里渲染“参考答案”分隔线
                 if (fReveal && isPreGraded) {
@@ -873,14 +969,16 @@ public class DrillController {
                                         .getBytes(StandardCharsets.UTF_8));
                                 out.flush();
                             } catch (Exception e) {
-                                log.debug("chat SSE token 推送异常（已吞）: {}", e.getMessage());
+                                clientGone.set(true);
+                                log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
                             }
                         },
                         r -> sseReasoning(out, r),
                         fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
 
                 // 完整文本只写回 turn。AI 可以停止追问并提示用户点击按钮，但不得替用户结束或触发评分。
-                if (full != null) {
+                // 客户端已断开（暂停/离开）时跳过：该轮 AI 回复视为未完成，不进入对话历史与评分依据。
+                if (full != null && !clientGone.get()) {
                     fTurn.setTutorText(full.trim());
                     turnRepo.save(fTurn);
                 }
@@ -1307,6 +1405,10 @@ public class DrillController {
                               List<String> completedSubPoints, boolean cached) {}
 
     public record StartPlanRequest(Long planId, String mode, Integer layer, Long conceptId) {}
+
+    public record SubPointPassRequest(String subPoint, Boolean passed) {}
+
+    public record SubPointEditRequest(String subPoint) {}
 
 
     public record RestartRequest(Long runId) {}
