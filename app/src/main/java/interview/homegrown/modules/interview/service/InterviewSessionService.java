@@ -16,6 +16,7 @@ import interview.homegrown.modules.drill.repository.ConceptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -383,6 +384,18 @@ public class InterviewSessionService {
 
     public InterviewSessionDTO getSession(String sessionId, Long userId) {
         return toDetailDTO(requireOwned(sessionId, userId));
+    }
+
+    /** 删除面试会话（级联删除问答记录、题目缓存与 Redis 运行时数据）。 */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteSession(String sessionId, Long userId) {
+        requireOwned(sessionId, userId);
+        answerRepository.deleteBySessionId(sessionId);
+        questionRepo.deleteBySessionId(sessionId);
+        redisService.delete(QA_KEY + sessionId);
+        redisService.delete(FINISHED_KEY + sessionId);
+        sessionRepository.deleteById(sessionId);
+        log.info("面试会话已删除: sessionId={}, userId={}", sessionId, userId);
     }
 
     //===================== 私有方法 =====================

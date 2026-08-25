@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, Type, ArrowRight, Clock, CalendarDays } from 'lucide-react';
+import { Mic, Type, ArrowRight, Clock, CalendarDays, X } from 'lucide-react';
 import { interviewApi, type InterviewListItem } from '../api/interview';
 import { Card, Badge, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
@@ -32,10 +32,26 @@ export function InterviewHistory() {
   const navigate = useNavigate();
   const [list, setList] = useState<InterviewListItem[] | null>(null);
   const [err, setErr] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     interviewApi.list().then(setList).catch((e) => setErr(msg(e)));
   }, []);
+
+  /** 删除面试记录：二次确认后调用后端并乐观更新列表 */
+  const del = async (id: string) => {
+    if (!window.confirm('是否确认要删除这条面试记录？删除后不可恢复。')) return;
+    setDeletingId(id);
+    setErr('');
+    try {
+      await interviewApi.delete(id);
+      setList((prev) => (prev ?? []).filter((x) => x.id !== id));
+    } catch (e) {
+      setErr(msg(e));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="page">
@@ -66,6 +82,14 @@ export function InterviewHistory() {
                   ? navigate(`/rehearsal?resume=${it.id}`)
                   : navigate(`/rehearsal/history/${it.id}`)}
               >
+                <button
+                  className="ih-delete-btn"
+                  title="删除这条面试记录"
+                  disabled={deletingId === it.id}
+                  onClick={(e) => { e.stopPropagation(); del(it.id); }}
+                >
+                  <X size={14} strokeWidth={2} />
+                </button>
                 <div className="ih-left">
                   <div className="ih-title-row">
                     <span className="ih-title">{it.skillName}</span>

@@ -131,6 +131,10 @@ export const interviewApi = {
   detail(sessionId: string): Promise<InterviewSession> {
     return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/session/${sessionId}`));
   },
+
+  delete(sessionId: string): Promise<void> {
+    return apiFetch<void>(`/interviews/sessions/${sessionId}`, { method: 'DELETE' });
+  },
 };
 
 // ============ 简历 ============
