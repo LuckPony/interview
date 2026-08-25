@@ -12,6 +12,7 @@ import {
   History,
   Settings,
   LogOut,
+  Code2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -35,6 +36,7 @@ const NAV: NavItem[] = [
   { to: '/notes', label: '内化复盘', icon: NotebookPen },
   { to: '/history', label: '问答记录', icon: History },
   { to: '/settings', label: '设置', icon: Settings },
+  { to: '/project', label: '项目学习', icon: Code2 },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

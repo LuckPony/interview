@@ -38,6 +38,10 @@ public class StudyPlan {
     @Column(name = "corpus_id")
     private Long corpusId;
 
+    /** 由「项目学习」导入生成时，关联 project_import.id。可空。 */
+    @Column(name = "project_import_id")
+    private Long projectImportId;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 
