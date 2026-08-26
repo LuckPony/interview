@@ -109,7 +109,9 @@ public class GradeGenerator {
             conversationBlock = "\n\n说明：本题无对话实录，所有评分点均视为已被考到，只判 HIT/PARTIAL/MISS，不得判 NA。";
         } else {
             conversationBlock = "\n\n对话实录（用于核验学生对主问的回答，可帮助理解上下文）。"
-                    + "注意：老师的追问不会扩大量化评分范围；任何无法从 stem 直接推出的评分点仍必须判 NA：\n"
+                    + "评分只依据标注为「首次独立作答」的学生消息；标注为「追问后的修正/复述，不计分」的后续消息"
+                    + "只能用于判断老师是否已经泄底（若老师已给出答案，其后的回答判 NA），"
+                    + "绝不得当作独立作答来给 HIT。任何无法从 stem 直接推出的评分点仍必须判 NA：\n"
                     + conversation;
         }
 
