@@ -1,6 +1,7 @@
 package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import interview.homegrown.common.ai.StructuredOutputInvoker;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
 import interview.homegrown.modules.drill.ai.QuestionGenerator;
 import interview.homegrown.modules.drill.domain.Concept;
@@ -62,13 +63,15 @@ public class TransferTestService {
     private final QuestionGenerator questionGenerator;
     private final GradingService gradingService;
     private final ProgressContextService progressContext;
+    private final StructuredOutputInvoker structuredInvoker;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
 
     public TransferTestService(DrillRunRepository runRepo, QuestionBankRepository qbRepo,
                                ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                                QuestionGenerator questionGenerator, GradingService gradingService,
-                               ProgressContextService progressContext, ObjectMapper objectMapper) {
+                               ProgressContextService progressContext, StructuredOutputInvoker structuredInvoker,
+                               ObjectMapper objectMapper) {
         this.runRepo = runRepo;
         this.qbRepo = qbRepo;
         this.conceptRepo = conceptRepo;
@@ -76,6 +79,7 @@ public class TransferTestService {
         this.questionGenerator = questionGenerator;
         this.gradingService = gradingService;
         this.progressContext = progressContext;
+        this.structuredInvoker = structuredInvoker;
         this.objectMapper = objectMapper;
     }
 
@@ -89,7 +93,79 @@ public class TransferTestService {
         DrillRun run = requireTransferable(userId, runId);
         QuestionBank q = qbRepo.findById(run.getQuestionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+        return generate(userId, run, q);
+    }
 
+    /**
+     * 自动迁移测试：判分讲解结束后由前端自动调用。
+     * 先做资格硬校验（未通过 / 未达上限 / 未看答案 / 非 DONE / 非综合检测），
+     * 再让 LLM 结合讲解后用户的理解情况做一次结构化决策，只有判定"值得再考"才出迁移题。
+     *
+     * @return 若 AI 判定需要迁移测试，返回新题视图；若判定不需要（或硬性不满足），返回 null，
+     *         前端据此不展示迁移题、直接继续后续流程。
+     */
+    @Transactional
+    public TransferView autoStartIfApplicable(Long userId, Long runId) {
+        DrillRun run = runRepo.findByUserIdAndId(userId, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        // 硬性不满足 → 无需 LLM 决策，直接跳过
+        String skipReason = skipReason(run);
+        if (skipReason != null) {
+            log.debug("auto-transfer 跳过 runId={}: {}", runId, skipReason);
+            return null;
+        }
+        QuestionBank q = qbRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+
+        String base = run.getFirstGrade() == null ? "AGAIN" : run.getFirstGrade();
+        TransferDecision decision = structuredInvoker.invoke(DECIDE_SYSTEM_PROMPT, decidePrompt(run, q, base),
+                TransferDecision.class, null);
+        if (decision == null || !decision.shouldTransferTest()) {
+            log.debug("auto-transfer 判定不需要 runId={}: {}", runId, decision == null ? "null" : decision.reason());
+            return null;
+        }
+        return generate(userId, run, q);
+    }
+
+    /** 硬性资格不满足的原因；满足则返回 null（可继续）。 */
+    private String skipReason(DrillRun run) {
+        if (run.getStatus() != DrillRunStatus.GRADED) return "尚未判分";
+        if (run.getPhase() == DrillPhase.DONE) return "练习已结束";
+        if (run.getTransferCount() >= run.getTransferMax()) return "迁移测试已达上限";
+        if (run.getAnswerRevealedRound() != null) return "已看答案，不再追问";
+        String base = run.getFirstGrade();
+        if (base != null && (base.equals("GOOD") || base.equals("EASY"))) return "基础作答已通过";
+        DrillPurpose purpose = run.getPurpose();
+        if (purpose == DrillPurpose.CONCEPT_ASSESSMENT || purpose == DrillPurpose.LEVEL_ASSESSMENT) {
+            return "综合检测不提供迁移测试";
+        }
+        return null;
+    }
+
+    /** LLM 决策提示词：结合讲解后用户的理解情况判断是否值得再考一次迁移题。 */
+    private String decidePrompt(DrillRun run, QuestionBank q, String base) {
+        return "当前知识点基础作答档位：" + base
+                + "（AGAIN=几乎没掌握，HARD=接近但未通过）。"
+                + "该学生首次作答得分与讲解情况已反映在进阶流程中。"
+                + "请判断：经过这道题的教学讲解后，是否有必要再出一道「结合已掌握知识点的新题」"
+                + "来考察他能否迁移运用？"
+                + "如果学生基础薄弱（AGAIN）或首次作答与讲解后仍明显不理解，则不应再考，避免无效追问；"
+                + "如果学生接近掌握（HARD）且讲解有助理解，则值得再考一次巩固。"
+                + "请只输出 JSON：{\"shouldTransferTest\": true/false, \"reason\": \"一句话理由\"}。";
+    }
+
+    private static final String DECIDE_SYSTEM_PROMPT = """
+            你是一位有经验的技术导师，正在判断是否该出一道"迁移测试题"来巩固学生的学习。
+            迁移测试 = 结合学生已掌握的知识点（ANCHOR），就当前未通过的知识点出一道新题，
+            考察他能否把新知识与已有知识体系联系起来（对比、串联、应用）。
+            判断依据：基础档位（AGAIN=几乎没掌握 / HARD=接近但未通过）。
+            若接近掌握且讲解有帮助 → 值得再考；若基础薄弱、讲了也难理解 → 不考，避免无效追问。
+            结论用 JSON 表达：{"shouldTransferTest":boolean,"reason":"一句话理由"}。
+            """;
+
+    /** 生成迁移测试题并暂存到 run（start 与 autoStartIfApplicable 共用）。 */
+    private TransferView generate(Long userId, DrillRun run, QuestionBank q) {
+        Long runId = run.getId();
         // 当前概念（PRIMARY）→ 已掌握概念（ANCHOR，mastery >= 2）→ 组合成新题
         Long primaryId = q.getConceptIds() != null && q.getConceptIds().length > 0
                 ? q.getConceptIds()[0].longValue()
@@ -214,5 +290,9 @@ public class TransferTestService {
 
     /** 迁移测试题视图：题干 + 本轮序号 + 上限（前端据此决定是否还能再追一轮）。 */
     public record TransferView(Long runId, String stem, int transferCount, int transferMax) {
+    }
+
+    /** AI 自动迁移测试决策：是否值得再考一次 + 理由。 */
+    public record TransferDecision(boolean shouldTransferTest, String reason) {
     }
 }

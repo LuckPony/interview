@@ -1068,6 +1068,17 @@ public class DrillController {
     }
 
     /**
+     * 自动迁移测试：判分讲解结束后由前端自动调用，AI 自主评判是否再考一道迁移题。
+     * 若 AI 判定值得再考 → 返回迁移题视图（前端据此展示新题）；判定不需要或硬性不满足 → 返回 null。
+     */
+    @PostMapping("/{runId}/auto-transfer")
+    public ResponseEntity<?> autoTransfer(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        TransferTestService.TransferView view = transferTestService.autoStartIfApplicable(uid, runId);
+        return view == null ? ResponseEntity.ok(Map.of("skipped", true)) : ResponseEntity.ok(view);
+    }
+
+    /**
      * 放弃本次作答（三阶段练习：未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
      * 让 run 置 GRADED、物理闸门放行下一题——否则看答案后既不能评分也无法推进。
      */

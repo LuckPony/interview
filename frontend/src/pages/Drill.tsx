@@ -101,6 +101,8 @@ export function Drill() {
   const restoreRef = useRef<string | null>(null);
   // 出题去重锁：防止连续点击时重复打后端生成题
   const genLockRef = useRef(false);
+  // 自动迁移测试防重锁：同一 run 讲解结束后只触发一次 AI 评判，避免重复出题
+  const autoTransferLock = useRef(false);
   // 当前活跃 SSE 流引用（卸载 / 换题时 cancel）
   const sseRef = useRef<TutorStream | null>(null);
   // 题干打字机定时器（卸载 / 换题时清理）
@@ -807,6 +809,8 @@ export function Drill() {
           ));
           sseRef.current = null;
           setPhase('graded');
+          // 三阶段练习：讲解流结束，让 AI 自主评判是否再考一道迁移题
+          void maybeAutoTransfer();
         },
         (status?: number, message?: string) => {
           setMessages((prev) => prev.map((mm) =>
@@ -986,39 +990,36 @@ export function Drill() {
   // 答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。看答案后不再追问。
   // 最多能考几轮由后端按回答质量动态决定：答得好但差一点(≥50分)→最多3轮，
   // 部分理解(≥30分)→最多2轮，几乎没答对(<30分)→本轮即止。
-  const transferExhausted = transferResult != null
-    ? (transferResult.transferExhausted ?? false)
-    : (transfer != null && transfer.transferCount >= transfer.transferMax);
-  const passedAfterTransfer = transferResult != null &&
-    (transferResult.grade === 'GOOD' || transferResult.grade === 'EASY');
-  const canTransfer =
-    threePhase &&
-    phase === 'graded' &&
-    grade != null &&
-    !revealed &&
-    !transferExhausted &&
-    !passedAfterTransfer &&
-    (grade.grade === 'AGAIN' || grade.grade === 'HARD');
+  // 是否再考由 AI 自主评判（不再显示手动按钮），见 maybeAutoTransfer。
 
-  const startTransfer = async () => {
-    if (!meta || phase !== 'graded' || transferBusy) return;
-    setErr('');
-    setTransferBusy(true);
+  // ===== 三阶段练习：阶段3 迁移测试（AI 自动评判） =====
+  // 判分讲解结束后由 AI 自主决定是否再考一道迁移题，不再展示手动按钮。
+  // 展示迁移题（AI 已判定值得再考，或用户在讲解后由系统自动触发）。
+  const showTransfer = (tv: TransferView) => {
+    setTransfer(tv);
+    setTransferResult(null);
+    // 迁移测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
+    setMessages((prev) => [
+      ...prev,
+      { id: nextMsgId(), role: 'ai', text: `【迁移测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
+    ]);
+    setPhase('transfer');
+  };
+
+  // AI 自动评判：讲解流结束后调用。返回迁移题则展示并进入作答，返回 skipped 则继续。
+  const maybeAutoTransfer = async () => {
+    if (!meta || autoTransferLock.current || !threePhase) return;
+    autoTransferLock.current = true;
     try {
-      const tv = await drill.transfer(meta.runId);
-      setTransfer(tv);
-      setTransferResult(null);
-      // 迁移测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), role: 'ai', text: `【迁移测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
-      ]);
-      setPhase('transfer');
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setGate(e.message);
-      else setErr(e instanceof ApiError ? e.message : '迁移测试出题失败');
+      const r = await drill.autoTransfer(meta.runId);
+      if (r && typeof r === 'object' && 'stem' in r) {
+        showTransfer(r);
+      }
+      // r.skipped → AI/后端判定不需要迁移测试，保持 graded 状态即可
+    } catch {
+      // 自动迁移测试失败不阻塞主流程：保持 graded，用户可继续问答/下一题
     } finally {
-      setTransferBusy(false);
+      autoTransferLock.current = false;
     }
   };
 
@@ -1045,6 +1046,10 @@ export function Drill() {
           : mm,
       ));
       setPhase('graded');
+      // 答错且未达动态上限：让 AI 再次评判是否值得再考一道迁移题
+      if (!(g.grade === 'GOOD' || g.grade === 'EASY') && !g.transferExhausted) {
+        void maybeAutoTransfer();
+      }
     } catch (e) {
       setMessages((prev) => prev.map((mm) =>
         mm.id === aiMsgId ? { ...mm, streaming: false, text: '（迁移测试判分失败）' } : mm,
@@ -1233,7 +1238,9 @@ export function Drill() {
   }
 
   // ===== Home（选方向）=====
-  if (view === 'home') {
+  // 浏览模式优先于 home：从问答记录点进已结束的题时，路由仍是 /drill（view=home），
+  // 需让 browse 视图先于 home 渲染，否则会退回方向选择页而看不到对话历史。
+  if (view === 'home' && !browseMode) {
     return (
       <Plans
         plans={plans}
@@ -1643,14 +1650,6 @@ export function Drill() {
                   {phase === 'graded' && hasLowGrade && (
                     <Button variant="ghost" onClick={openNote}>
                       <NotebookPen size={16} strokeWidth={1.6} /> 写内化笔记
-                    </Button>
-                  )}
-                  {phase === 'graded' && canTransfer && (
-                    <Button variant="primary" onClick={startTransfer} disabled={transferBusy}>
-                      <Target size={16} strokeWidth={1.6} />
-                      {transfer == null
-                        ? '迁移测试：结合已掌握知识点再考一次'
-                        : '再考一轮（结合讲解后再试）'}
                     </Button>
                   )}
                   {phase === 'graded' && (
