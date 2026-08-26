@@ -124,6 +124,10 @@ export function Interview() {
         if (s.status === 'COMPLETED') { sessionStorage.removeItem(SESSION_KEY); return; }
         setSession(s);
         setPhase('interview');
+        if (s.status === 'PENDING_EVALUATION') {
+          // 待评估 → 显示面试结束界面（含"完成评估"按钮），不拉 currentQuestion
+          return;
+        }
         await refreshQuestion(resumeId);
       } catch { /* 会话不存在/过期，忽略 */ }
     })();

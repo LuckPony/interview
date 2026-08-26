@@ -78,7 +78,7 @@ export function InterviewHistory() {
               <Card
                 key={it.id}
                 className="ih-item"
-                onClick={() => it.status === 'IN_PROGRESS'
+                onClick={() => it.status === 'IN_PROGRESS' || it.status === 'PENDING_EVALUATION'
                   ? navigate(`/rehearsal?resume=${it.id}`)
                   : navigate(`/rehearsal/history/${it.id}`)}
               >
@@ -106,9 +106,15 @@ export function InterviewHistory() {
                     <span className="ih-meta-item">
                       <Clock size={12} strokeWidth={1.8} /> {it.answeredCount}/{it.totalQuestions} 题
                     </span>
-                    <Badge kind={it.status === 'COMPLETED' ? 'good' : it.status === 'IN_PROGRESS' ? 'warn' : 'soft'}>
-                      {it.status === 'COMPLETED' ? '已完成' : it.status === 'IN_PROGRESS' ? '进行中' : '已退出'}
-                    </Badge>
+                    {it.status === 'COMPLETED' ? (
+                      <Badge kind="good">已完成</Badge>
+                    ) : it.status === 'IN_PROGRESS' ? (
+                      <Badge kind="warn">进行中</Badge>
+                    ) : it.status === 'PENDING_EVALUATION' ? (
+                      <Badge kind="accent">待评估</Badge>
+                    ) : (
+                      <Badge kind="soft">已退出</Badge>
+                    )}
                   </div>
                 </div>
 
