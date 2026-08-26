@@ -245,6 +245,11 @@ export function Drill() {
             subPoints: o.subPoints, curIdx: sub,
             done: o.completedSubPoints ?? [], planId: planQ, taskId: taskQ,
           });
+          // 直达某个子知识点（如练习首页点子知识点 / 工作流进入下一子点）：
+          // 首次进入也要自动播放该子点讲解，否则会停在空白讲解页。
+          if (sub >= 0 && sub < o.subPoints.length) {
+            playSubLesson(cid, o.subPoints[sub]);
+          }
         } catch (e) {
           if (teachRouteRef.current?.cid !== cid) return;
           setErr(e instanceof ApiError ? e.message : '拆解失败');
@@ -524,6 +529,41 @@ export function Drill() {
   const startByConcept = (conceptId: number) => {
     if (teachFirst) enterTeach(conceptId);
     else directStart(conceptId);
+  };
+
+  // 练习首页直接点某个子知识点（子知识点直通）：
+  // 开「先讲解再练习」→ 直达该子点讲解页（讲完再做题）；关 → 直接出该子点的题。
+  const pickSubPoint = (conceptId: number, subPoint: string, subIndex: number, planId?: number) => {
+    if (teachFirst) {
+      enterTeachAt(conceptId, planId, undefined, subIndex);
+    } else {
+      startQuestion(
+        () => drill.start(conceptId, subPoint),
+        { kind: 'teach', conceptId, subIndex, planId },
+      );
+    }
+  };
+
+  // 子知识点直通的「下一题」：从 subIndex 之后找下一个未完成的子点继续练（跳过已通过的）。
+  // 该知识点子点全部处理完 → 有方向交回工作流（综合检测等），否则退回按整个知识点出题。
+  const nextSubPointDirect = async (conceptId: number, subIndex: number, planId?: number) => {
+    try {
+      const o = await drill.outline(conceptId);
+      const done = new Set(o.completedSubPoints ?? []);
+      const nextIdx = o.subPoints.findIndex((s, i) => i > subIndex && !done.has(s));
+      if (nextIdx >= 0) {
+        startQuestion(
+          () => drill.start(conceptId, o.subPoints[nextIdx]),
+          { kind: 'teach', conceptId, subIndex: nextIdx, planId },
+        );
+      } else if (planId != null) {
+        startWorkflow(planId);
+      } else {
+        directStart(conceptId);
+      }
+    } catch {
+      directStart(conceptId);
+    }
   };
 
   // 点某个子知识点：跳子路由（讲解页），由路由 effect 播放讲解
@@ -1113,7 +1153,11 @@ export function Drill() {
         startByConcept(ctx.conceptId);
         break;
       case 'teach': {
-        if (!teach) { directStart(ctx.conceptId); break; }
+        if (!teach) {
+          // 从练习首页直接点子知识点（无 teach 状态）：练完自动接同知识点下一个未完成的子点
+          void nextSubPointDirect(ctx.conceptId, ctx.subIndex, ctx.planId);
+          break;
+        }
         const curSub = teach.subPoints[ctx.subIndex] ?? '';
         // 子知识点只有达到统一及格线才标记“达标”；低分仍保留在清单中供重新练习。
         const passed = grade != null && grade.rawScore >= 60;
@@ -1245,6 +1289,7 @@ export function Drill() {
       <Plans
         plans={plans}
         onPick={startByConcept}
+        onPickSub={pickSubPoint}
         onContinue={(id) => startWorkflow(id)}
         onReview={(id) => startByPlan(id, 'review')}
         onFree={startFree}

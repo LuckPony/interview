@@ -167,6 +167,14 @@
   gap: var(--s-2);
   margin-top: var(--s-1);
 }
+.plan-concepts.current-learning {
+  display: block;
+}
+.current-subpoints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
 .concept-chip {
   display: inline-flex;
   align-items: center;
@@ -185,6 +193,47 @@
   border-color: var(--cinnabar);
   background: var(--cinnabar-wash);
   transform: translateY(-1px);
+}
+.current-concept-chip {
+  align-self: flex-start;
+  font-weight: 700;
+}
+/* 子知识点直通：练习首页把子知识点作为最小练习单位，逐一点开即练 */
+.subpoint-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.subpoint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 6px 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition: all 0.3s var(--ease-out);
+}
+.subpoint-chip:hover {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+  transform: translateY(-1px);
+}
+.subpoint-chip.is-passed {
+  color: var(--good);
+  border-color: color-mix(in oklch, var(--good) 40%, var(--line));
+  background: var(--good-wash);
+}
+.subpoint-chip.is-next {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+  font-weight: 700;
 }
 .chip-done {
   color: var(--good);
