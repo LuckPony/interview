@@ -109,6 +109,9 @@ export function Drill() {
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 聊天面板底部哨兵：整页滚动时，新消息 / 评分出现后把最新内容与输入框滚进视野
   const endRef = useRef<HTMLDivElement>(null);
+  // 是否自动跟随流式内容滚到底：默认跟随；用户向上滚动即暂停跟随，
+  // 滚回接近底部时恢复跟随（经典 AI 聊天行为）。
+  const followRef = useRef(true);
 
   // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题)。view 由路由派生（见上方）。
   const [plans, setPlans] = useState<PlanView[]>([]);
@@ -296,9 +299,30 @@ export function Drill() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // —— 新消息 / 评分出现时，把聊天面板底部（最新气泡 + 输入框）滚进视野 ——
+  // —— 监听滚动容器：用户在底部附近→保持跟随；向上滚动→暂停跟随；滚回底部→恢复跟随 ——
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    if (view !== 'learn') return;
+    const scroller = document.querySelector<HTMLElement>('.main');
+    if (!scroller) return;
+    const onScroll = () => {
+      // 距底部 < 80px 视为「在底部」，恢复自动跟随；否则用户主动上翻，暂停跟随
+      const nearBottom =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+      followRef.current = nearBottom;
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [view]);
+
+  // —— 新消息 / 评分出现时：仅当处于「跟随」状态才把聊天面板底部滚进视野 ——
+  useEffect(() => {
+    if (!followRef.current) return;
+    const scroller = document.querySelector<HTMLElement>('.main');
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      endRef.current?.scrollIntoView({ block: 'end' });
+    }
   }, [messages, grade]);
 
   // —— 卸载时关 SSE 流 + 清打字机 ——
@@ -422,6 +446,8 @@ export function Drill() {
     setCardSaved(false);
     setPhase('generating');
     setBrowseQid(null);
+    // 新题目：恢复自动跟随，并立即滚到底，避免残留上一题「暂停跟随」的状态
+    followRef.current = true;
     // 进入做题页：从知识点页/首页进入 → 压历史（返回可回到来源页）；
     // 已是做题页（下一题）→ replace，避免每一题都堆积一条历史
     if (view === 'learn') navigate('/drill/learn', { replace: true });
