@@ -508,6 +508,7 @@
   gap: var(--s-3);
 }
 .ih-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -595,6 +596,38 @@
   color: var(--cinnabar);
   transform: translateX(3px);
 }
+
+/* —— 删除按钮（小叉号，卡片右上角） —— */
+.ih-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s var(--ease-out), color 0.18s, background 0.18s, border-color 0.18s;
+  z-index: 1;
+}
+.ih-item:hover .ih-delete-btn {
+  opacity: 1;
+}
+.ih-delete-btn:hover {
+  color: var(--bad);
+  background: var(--bad-wash);
+  border-color: color-mix(in oklch, var(--bad) 30%, transparent);
+}
+.ih-delete-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .ih-back {
   display: flex;
   width: fit-content;
@@ -608,7 +641,6 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   padding: 5px 14px;
-  margin-bottom: var(--s-3);
   cursor: pointer;
   transition: color 0.18s, border-color 0.18s, background 0.18s;
 }

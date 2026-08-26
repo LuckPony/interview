@@ -80,4 +80,11 @@ class InterviewController {
         return Result.success(sessionService.getSession(sessionId, uid()));
     }
 
+    @DeleteMapping("/sessions/{sessionId}")
+    @Operation(summary = "删除面试会话", description = "删除面试会话及其问答记录，不可恢复")
+    public Result<Void> deleteSession(@PathVariable String sessionId){
+        sessionService.deleteSession(sessionId, uid());
+        return Result.success();
+    }
+
 }

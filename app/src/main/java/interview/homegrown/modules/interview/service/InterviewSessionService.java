@@ -16,6 +16,7 @@ import interview.homegrown.modules.drill.repository.ConceptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -166,6 +167,9 @@ public class InterviewSessionService {
         if (session.getStatus() == InterviewStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "该场面试已完成评估");
         }
+
+        // 超时未持久化的会话 → 自动转为待评估，保证 DB 状态最终一致
+        reconcileStatus(session);
 
         boolean finished = isFinished(sessionId);
         List<QAItem> qa = readQa(sessionId);
@@ -369,9 +373,24 @@ public class InterviewSessionService {
 
     //====================== 查询 ==================
 
+    /**
+     * 调和超时会话：DB 状态为 IN_PROGRESS 但实际已超时的，自动转为 PENDING_EVALUATION。
+     * 在 listSessions / getSession / getCurrentQuestion 等读路径调用。
+     */
+    private void reconcileStatus(InterviewSessionEntity session) {
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) return;
+        if (!isTimeout(session)) return;
+        // 超时 → 设 Redis 完成标记 + DB 状态改为待评估
+        redisService.set(FINISHED_KEY + session.getId(), "true");
+        session.setStatus(InterviewStatus.PENDING_EVALUATION);
+        persistenceService.save(session);
+        log.info("面试会话超时自动转为待评估: sessionId={}", session.getId());
+    }
+
     public List<InterviewListItemDTO> listSessions(Long userId) {
         return sessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(s -> {
+                    reconcileStatus(s);
                     int answered = answerRepository.findBySessionIdOrderById(s.getId()).size();
                     return new InterviewListItemDTO(
                             s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
@@ -382,7 +401,21 @@ public class InterviewSessionService {
     }
 
     public InterviewSessionDTO getSession(String sessionId, Long userId) {
-        return toDetailDTO(requireOwned(sessionId, userId));
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
+        reconcileStatus(session);
+        return toDetailDTO(session);
+    }
+
+    /** 删除面试会话（级联删除问答记录、题目缓存与 Redis 运行时数据）。 */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteSession(String sessionId, Long userId) {
+        requireOwned(sessionId, userId);
+        answerRepository.deleteBySessionId(sessionId);
+        questionRepo.deleteBySessionId(sessionId);
+        redisService.delete(QA_KEY + sessionId);
+        redisService.delete(FINISHED_KEY + sessionId);
+        sessionRepository.deleteById(sessionId);
+        log.info("面试会话已删除: sessionId={}, userId={}", sessionId, userId);
     }
 
     //===================== 私有方法 =====================
