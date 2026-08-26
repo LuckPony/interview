@@ -1,0 +1,182 @@
+/* ============================================================
+   项目学习（PROJECT）：导入项目 → AI 分析业务模块 → 学习计划
+   风格对齐设计令牌（tokens.css）+ 现有页面卡片
+   ============================================================ */
+
+.page.project-page { max-width: 880px; }
+
+/* —— 页面入场 —— */
+.page.project-page .page-head,
+.page.project-page .project-import-card,
+.page.project-page .project-card {
+  animation: project-rise 0.5s var(--ease-out) both;
+}
+.page.project-page .project-import-card { animation-delay: 0.05s; }
+.page.project-page .project-card:nth-child(2) { animation-delay: 0.1s; }
+@keyframes project-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* —— 导入区 —— */
+.project-import-card { margin-bottom: var(--s-4); }
+.project-import-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.project-path-row {
+  display: flex;
+  gap: var(--s-2);
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+.project-path-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55em 0.9em;
+  border: 1px solid var(--line-1);
+  border-radius: 10px;
+  background: var(--bg-1);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.project-path-input:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.project-err {
+  margin-top: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--cinnabar-deep);
+}
+
+/* —— 空态 —— */
+.project-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-8) var(--s-4);
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* —— 项目列表 —— */
+.project-list { display: flex; flex-direction: column; gap: var(--s-4); }
+.project-card { padding: var(--s-4) var(--s-5); }
+.project-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.project-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+.project-actions { display: flex; align-items: center; gap: var(--s-3); }
+.project-anim {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+/* —— 技术栈 —— */
+.project-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.project-tech-tag {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  color: var(--ink-2);
+}
+
+/* —— 业务域 —— */
+.project-domains {
+  margin-top: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.project-domain {
+  border: 1px solid var(--line-1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.project-domain-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: transparent;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.project-domain-head:hover { background: var(--bg-1); }
+.project-domain-name { font-weight: 650; }
+.project-domain-count {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+.project-domain-overview {
+  padding: 0 var(--s-4) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+/* —— 子知识点 —— */
+.project-subpoints {
+  border-top: 1px dashed var(--line-1);
+  padding: var(--s-3) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.project-subpoint-name { font-weight: 600; font-size: var(--fs-sm); }
+.project-subpoint-desc {
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.project-subpoint-files {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.project-file-tag {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  color: var(--ink-soft);
+}
+
+/* —— 动画 —— */
+.spin { animation: project-spin 1s linear infinite; }
+@keyframes project-spin { to { transform: rotate(360deg); } }

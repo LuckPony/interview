@@ -383,6 +383,33 @@
 .chat-img-remove:hover {
   background: var(--danger, #c0392b);
 }
+/* CodeMirror 代码输入框（替换原 textarea） */
+.chat-input-cm {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--paper);
+  transition: border-color 0.15s;
+}
+.chat-input-cm:focus-within {
+  border-color: var(--cinnabar);
+}
+.chat-input-cm .cm-editor {
+  background: var(--paper);
+}
+.chat-input-cm .cm-editor.cm-focused {
+  outline: none;
+}
+.chat-input-cm .cm-placeholder {
+  color: var(--ink-faint);
+}
+.chat-input-cm .cm-line {
+  padding-left: var(--s-1);
+}
+/* 聊天输入框用不上代码折叠，隐藏折叠槽以保持整洁 */
+.chat-input-cm .cm-foldGutter {
+  display: none;
+}
 .chat-input-textarea {
   width: 100%;
   border: 1px solid var(--line-strong);

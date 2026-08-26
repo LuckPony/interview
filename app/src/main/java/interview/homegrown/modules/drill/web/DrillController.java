@@ -71,6 +71,8 @@ public class DrillController {
     private final DailyPlanService dailyPlanService;
     private final LearningWorkflowService learningWorkflowService;
     private final ReviewService reviewService;
+    private final TransferTestService transferTestService;
+    private final interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
                            AnswerService answerService, ProfileService profileService,
@@ -85,7 +87,8 @@ public class DrillController {
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
-                           ReviewService reviewService) {
+                           ReviewService reviewService, TransferTestService transferTestService,
+                           interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
@@ -109,6 +112,8 @@ public class DrillController {
         this.dailyPlanService = dailyPlanService;
         this.learningWorkflowService = learningWorkflowService;
         this.reviewService = reviewService;
+        this.transferTestService = transferTestService;
+        this.chatCaptureService = chatCaptureService;
     }
 
     // ------------------------------------------------------------ LEARN
@@ -159,7 +164,12 @@ public class DrillController {
         };
         Integer targetLayer = "layer".equals(mode) ? req.layer() : null;
         Long targetConcept = null;
-        QuestionView view = openRun(uid, task, req.planId(), targetLayer, targetConcept, null);
+        // 需求1：复习也基于子知识点——复习时聚焦该概念下「还没通过」的子点，
+        // 让复习精准补漏（已全部通过则退回概念级复习）。
+        String reviewFocus = "review".equals(mode)
+                ? selectionService.pickReviewSubPoint(uid, task.conceptIds().get(0))
+                : null;
+        QuestionView view = openRun(uid, task, req.planId(), targetLayer, targetConcept, reviewFocus);
         DrillPurpose purpose = "review".equals(mode) ? DrillPurpose.REVIEW : DrillPurpose.FREE_PRACTICE;
         tagRun(view.runId(), purpose, req.planId(), req.conceptId(), req.layer());
         return view;
@@ -590,7 +600,8 @@ public class DrillController {
         // 记录开 run 前的活跃 run：只有本次真正开了新 run（而非恢复了旧的活跃作答）才消费任务，
         // 否则用户手头挂着别的未完成作答时（即使会被搁置）任务永远不置 DONE，导致已学的题反复出现。
         Set<Long> activeBefore = activeLearnIds(uid);
-        QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId());
+        // 需求1：复习任务聚焦子点——开 run 时把任务的子点带给 run（后续判分/子点通过判定用）
+        QuestionView view = openRunOnQuestion(uid, t.getQuestionId(), t.getPlanId(), t.getSubPoint());
         if (!activeBefore.contains(view.runId())) {
             dailyPlanService.markDone(taskId);
         }
@@ -946,10 +957,12 @@ public class DrillController {
         // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
         // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
         // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
+        // 判分后（GRADED）看答案同样记录边界：三阶段流程里「看答案后不再迁移测试追问」。
         boolean reveal = Boolean.TRUE.equals(req.reveal());
         boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
                 || run.getStatus() == DrillRunStatus.ANSWERING;
-        if (reveal && isPreGraded && run.getAnswerRevealedRound() == null) {
+        boolean notFinished = run.getPhase() != DrillPhase.DONE;
+        if (reveal && notFinished && run.getAnswerRevealedRound() == null) {
             run.setAnswerRevealedRound(nextRound);
             runRepo.save(run);
         }
@@ -980,7 +993,7 @@ public class DrillController {
                     new java.util.concurrent.atomic.AtomicBoolean(false);
             try {
                 // 揭示边界触发：先推 event:reveal，前端在聊天线程里渲染“参考答案”分隔线
-                if (fReveal && isPreGraded) {
+                if (fReveal && notFinished) {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
@@ -1035,6 +1048,61 @@ public class DrillController {
     public GradeView finish(@PathVariable Long runId) {
         Long uid = currentUserId();
         return answerService.finish(uid, runId);
+    }
+
+    /**
+     * 迁移测试（阶段3）：判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题考察。
+     * 返回迁移测试题 stem；用户作答后调 {@code POST /{runId}/transfer-answer} 判分。
+     */
+    @PostMapping("/{runId}/transfer")
+    public TransferTestService.TransferView transfer(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        return transferTestService.start(uid, runId);
+    }
+
+    /** 迁移测试作答判分：答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。 */
+    @PostMapping("/{runId}/transfer-answer")
+    public GradeView transferAnswer(@PathVariable Long runId, @RequestBody ChatRequest req) {
+        Long uid = currentUserId();
+        return transferTestService.answer(uid, runId, req.rawAnswer());
+    }
+
+    /**
+     * 放弃本次作答（三阶段练习：未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
+     * 让 run 置 GRADED、物理闸门放行下一题——否则看答案后既不能评分也无法推进。
+     */
+    @PostMapping("/{runId}/abandon")
+    public GradeView abandon(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        return answerService.abandon(uid, runId);
+    }
+
+    /**
+     * 把本次练习对话提取为知识卡片（需求：无论是否通过，都能沉淀）。
+     * 复用知识模块的对话沉淀逻辑（LLM 提炼 question/answer/tags + 关联概念），
+     * 对话来源 = 题干 + 全部轮次的学生回答与 AI 讲解。
+     */
+    @PostMapping("/{runId}/card")
+    public interview.homegrown.modules.knowledge.domain.KnowledgeCard extractCard(@PathVariable Long runId) {
+        Long uid = currentUserId();
+        DrillRun run = runRepo.findByUserIdAndId(uid, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        QuestionBank q = questionBankRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+        List<DrillTurn> turns = turnRepo.findByRunIdOrderByRoundAsc(runId);
+
+        List<interview.homegrown.modules.knowledge.service.ChatCaptureService.Message> messages =
+                new java.util.ArrayList<>();
+        messages.add(new interview.homegrown.modules.knowledge.service.ChatCaptureService.Message("ai", q.getStem()));
+        for (DrillTurn t : turns) {
+            if (t.getRawAnswer() != null && !t.getRawAnswer().isBlank()) {
+                messages.add(new interview.homegrown.modules.knowledge.service.ChatCaptureService.Message("user", t.getRawAnswer()));
+            }
+            if (t.getTutorText() != null && !t.getTutorText().isBlank()) {
+                messages.add(new interview.homegrown.modules.knowledge.service.ChatCaptureService.Message("ai", t.getTutorText()));
+            }
+        }
+        return chatCaptureService.capture(uid, messages);
     }
 
     // -------------------------------------------------------- REHEARSAL

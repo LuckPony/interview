@@ -38,9 +38,10 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
     Optional<DrillRun> findByUserIdAndId(Long userId, Long id);
 
-    /** 用户已通过评分的「先教后考」run；只有达到及格线的子知识点才算达标。 */
+    /** 用户已通过评分的「先教后考」run；只有达到及格线的子知识点才算达标。
+     * distinct：同一 run 可能有多条 GradeResult（阶段1 + 迁移测试通过），避免重复返回。 */
     @Query("""
-            select r
+            select distinct r
             from DrillRun r, GradeResult g
             where g.runId = r.id
               and r.userId = :userId

@@ -12,6 +12,7 @@ public record DailyTaskView(
         String status,        // PENDING / READY / DONE
         Long questionId,
         String stem,          // 预生成题干（未生成时为 null）
-        String probeType
+        String probeType,
+        String subPoint       // 复习任务聚焦的子知识点（null = 概念级）
 ) {
 }

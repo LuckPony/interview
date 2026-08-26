@@ -146,7 +146,8 @@ public class StructuredOutputInvoker {
     /**
      * 从模型原始输出中清洗出 JSON：
      * - 去掉 ```json ... ``` / ``` ... ``` 代码围栏（推理模型常用）
-     * - 截取第一个 '{' 到最后一个 '}' 之间内容，容忍前后多余的说明文字
+     * - 顶层是数组（trim 后以 '[' 开头）：截第一个 '[' 到最后一个 ']'
+     * - 否则按对象（第一个 '{' 到最后一个 '}'）
      * 目的：让 BeanOutputConverter 首轮即可解析成功，避免解析失败触发重试
      * （每次重试都会让推理模型再跑一遍推理，深度推理模型会把耗时翻倍）。
      */
@@ -160,9 +161,15 @@ public class StructuredOutputInvoker {
             if (fence >= 0) t = t.substring(0, fence);
             t = t.trim();
         }
-        int s = t.indexOf('{');
-        int e = t.lastIndexOf('}');
-        if (s >= 0 && e > s) t = t.substring(s, e + 1);
+        // 顶层数组：直接截 '[' ... ']'
+        if (t.startsWith("[")) {
+            int ae = t.lastIndexOf(']');
+            if (ae > 0) return t.substring(0, ae + 1);
+        } else {
+            int bs = t.indexOf('{');
+            int be = t.lastIndexOf('}');
+            if (bs >= 0 && be > bs) return t.substring(bs, be + 1);
+        }
         return t;
     }
 

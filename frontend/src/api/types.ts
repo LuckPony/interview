@@ -56,6 +56,7 @@ export interface GradeView {
   rawScore: number;
   grade: string; // EASY / GOOD / HARD / MISSING
   byConceptJson: string; // JSON 字符串 -> 解析为 ByConcept[]
+  transferExhausted?: boolean; // 迁移测试判分后是否已达轮数上限（无需再考）
 }
 
 export interface RehearsalView {
@@ -122,6 +123,8 @@ export interface DailyTaskView {
   questionId: number | null;
   stem: string | null;
   probeType: string | null;
+  /** 复习任务聚焦的子知识点（null = 概念级复习） */
+  subPoint: string | null;
 }
 
 export interface ConceptProfile {
@@ -307,4 +310,12 @@ export interface KnowledgeCard {
     dueAt: string | null;
     reviewCount: number;
     createdAt: string;
+}
+
+/** 迁移测试题视图（阶段3）：结合已掌握知识点出的新题，答对可降级通过（封顶 GOOD）。 */
+export interface TransferView {
+    runId: number;
+    stem: string;
+    transferCount: number;
+    transferMax: number;
 }

@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language-data": "^6.5.2",
+    "@uiw/react-codemirror": "^4.25.11",
     "antd": "^6.6.1",
     "dayjs": "^1.11.23",
     "lucide-react": "^0.439.0",

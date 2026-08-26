@@ -84,7 +84,7 @@ export function Plans({
         ) : (
           <span className="today-task-target">
             <RotateCcw size={14} />
-            {subPoints.length > 0 ? `复习 ${subPoints.length} 个子知识点` : '复习该知识点的关键内容'}
+            {t.subPoint ? <>聚焦复习：<b>{t.subPoint}</b></> : '复习该知识点的关键内容'}
           </span>
         )}
         {subPoints.length > 0 && (

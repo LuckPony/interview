@@ -24,6 +24,8 @@ import type {
   LearningNextView,
   KnowledgePointsView,
   OutlineView,
+  KnowledgeCard,
+  TransferView,
 } from './types';
 
 export interface Timing {
@@ -469,6 +471,23 @@ export const drill = {
   // 结束对话并评分：基于整轮对话一次性评分（不再逐答即判）
   finish: (runId: number) =>
     apiFetch<GradeView>(`/drill/${runId}/finish`, { method: 'POST' }),
+
+  // 三阶段练习：迁移测试（阶段3）—— 结合已掌握知识点出新题考察；答对降级通过（封顶 GOOD），答错不降级
+  transfer: (runId: number) =>
+    apiFetch<TransferView>(`/drill/${runId}/transfer`, { method: 'POST' }),
+  transferAnswer: (runId: number, rawAnswer: string) =>
+    apiFetch<GradeView>(`/drill/${runId}/transfer-answer`, {
+      method: 'POST',
+      body: JSON.stringify({ rawAnswer }),
+    }),
+
+  // 放弃本次作答（看答案后不再作答，按 AGAIN 结算闭环，放行下一题）
+  abandon: (runId: number) =>
+    apiFetch<GradeView>(`/drill/${runId}/abandon`, { method: 'POST' }),
+
+  // 无论是否通过，把本次练习对话提取为知识卡片（复用对话沉淀）
+  extractCard: (runId: number) =>
+    apiFetch<KnowledgeCard>(`/drill/${runId}/card`, { method: 'POST' }),
 
   note: (runId: number, req: NoteRequest) =>
     apiFetch<NoteView>(`/drill/${runId}/note`, { method: 'POST', body: JSON.stringify(req) }),
