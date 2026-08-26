@@ -175,7 +175,7 @@ public class DailyPlanService {
                     t.getKind(), t.getConceptId(),
                     c == null ? "概念" : c.getName(),
                     c == null ? 0 : c.getLayer(),
-                    t.getStatus(), t.getQuestionId(), stem, probe));
+                    t.getStatus(), t.getQuestionId(), stem, probe, t.getSubPoint()));
         }
         return views;
     }
@@ -210,9 +210,7 @@ public class DailyPlanService {
         DailyTask t = requireTask(userId, taskId);
         if (t.getQuestionId() == null) {
             SelectedTask sel = selectionService.pickFor(userId, t.getConceptId());
-            String ref = corpusService.referenceForConcept(t.getConceptId());
-            String context = progressContext.contextFor(t.getUserId(), sel.conceptIds());
-            QuestionBank qb = questionService.generate(sel, context == null ? ref : context);
+            QuestionBank qb = questionService.generate(sel, taskContext(t));
             t.setQuestionId(qb.getId());
             t.setStatus(DailyTask.STATUS_READY);
             taskRepo.save(t);
@@ -220,26 +218,40 @@ public class DailyPlanService {
         return t.getQuestionId() != null;
     }
 
+    /** 出题上下文：学生进度/概念要点 + 复习任务聚焦的子点约束（与 openRun 的 focus 语义一致）。 */
+    private String taskContext(DailyTask t) {
+        String context = progressContext.contextFor(t.getUserId(), List.of(t.getConceptId()));
+        String ref = corpusService.referenceForConcept(t.getConceptId());
+        String base = (context == null || context.isBlank()) ? ref : context;
+        if (t.getSubPoint() == null || t.getSubPoint().isBlank()) return base;
+        return (base == null ? "" : base + "\n\n")
+                + "本次练习聚焦的子知识点：「" + t.getSubPoint() + "」。题目必须围绕这个子知识点展开，"
+                + "不要考这个概念下的其它子知识点。";
+    }
+
     // ------------------------------------------------------------ 内部
 
     private List<DailyTask> planTasks(Long userId, StudyPlan plan, LocalDate today) {
         List<DailyTask> out = new ArrayList<>();
         for (Concept c : pickReview(userId, plan.getId(), REVIEW_CAP)) {
-            out.add(newTask(userId, plan.getId(), today, DailyTask.KIND_REVIEW, c.getId()));
+            // 需求1：复习也基于子知识点——每日复习任务聚焦该概念下「还没通过」的子点（null = 概念级）
+            String sub = selectionService.pickReviewSubPoint(userId, c.getId());
+            out.add(newTask(userId, plan.getId(), today, DailyTask.KIND_REVIEW, c.getId(), sub));
         }
         for (Concept c : pickNew(userId, plan.getId(), NEW_PER_PLAN)) {
-            out.add(newTask(userId, plan.getId(), today, DailyTask.KIND_NEW, c.getId()));
+            out.add(newTask(userId, plan.getId(), today, DailyTask.KIND_NEW, c.getId(), null));
         }
         return out;
     }
 
-    private DailyTask newTask(Long userId, Long planId, LocalDate today, String kind, Long conceptId) {
+    private DailyTask newTask(Long userId, Long planId, LocalDate today, String kind, Long conceptId, String subPoint) {
         DailyTask t = new DailyTask();
         t.setUserId(userId);
         t.setPlanId(planId);
         t.setTaskDate(today);
         t.setKind(kind);
         t.setConceptId(conceptId);
+        t.setSubPoint(subPoint);
         return t;
     }
 
@@ -346,9 +358,7 @@ public class DailyPlanService {
                 DailyTask t = taskRepo.findById(taskId).orElse(null);
                 if (t == null || t.getQuestionId() != null) return;
                 SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
-                String ref = corpusService.referenceForConcept(t.getConceptId());
-                String context = progressContext.contextFor(t.getUserId(), sel.conceptIds());
-                QuestionBank qb = questionService.generate(sel, context == null ? ref : context);
+                QuestionBank qb = questionService.generate(sel, taskContext(t));
                 t.setQuestionId(qb.getId());
                 t.setStatus(DailyTask.STATUS_READY);
                 taskRepo.save(t);

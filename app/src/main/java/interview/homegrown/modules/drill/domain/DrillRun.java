@@ -3,7 +3,9 @@ package interview.homegrown.modules.drill.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -74,6 +76,40 @@ public class DrillRun {
      */
     @Column(name = "focus_sub_point", length = 300)
     private String focusSubPoint;
+
+    // ---------------------------------------------------- 三阶段练习（独立作答 → 讲解 → 迁移测试）
+    // 阶段1 submit 判分锁定 first_grade（基础档位），阶段3 迁移测试答对可「降级通过」升级（封顶 GOOD）。
+
+    /** 当前阶段：FIRST_ANSWER（待独立作答）/ TUTORING（讲解中）/ TRANSFER_TEST（迁移测试中）/ DONE（已结束） */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private DrillPhase phase = DrillPhase.FIRST_ANSWER;
+
+    /** 阶段1锁定的基础档位（AGAIN/HARD/GOOD/EASY）。null=尚未独立判分。 */
+    @Column(name = "first_grade", length = 10)
+    private String firstGrade;
+
+    /** 已完成的迁移测试轮数（防无限追问）。 */
+    @Column(name = "transfer_count", nullable = false)
+    private int transferCount = 0;
+
+    /** 迁移测试轮数上限（默认 2）。 */
+    @Column(name = "transfer_max", nullable = false)
+    private int transferMax = 2;
+
+    /** 迁移测试题题干（结合已掌握知识点生成，不落 question_bank）。 */
+    @Column(name = "transfer_stem", columnDefinition = "text")
+    private String transferStem;
+
+    /** 迁移测试题评分点（GeneratedQuestion JSON）。 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "transfer_points", columnDefinition = "jsonb")
+    private String transferPointsJson;
+
+    /** 迁移测试题概念 id 顺序（index 0 = PRIMARY 当前概念）。 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "transfer_concept_ids", columnDefinition = "jsonb")
+    private String transferConceptIdsJson;
 
     /** 学习工作流用途；综合检测仍复用普通聊天和评分，只额外记录统计口径。 */
     @Enumerated(EnumType.STRING)

@@ -1,12 +1,20 @@
 package interview.homegrown.modules.drill.service;
 
+import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.domain.Concept;
+import interview.homegrown.modules.drill.domain.DrillRun;
+import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.Mastery;
 import interview.homegrown.modules.drill.domain.SelectedTask;
+import interview.homegrown.modules.drill.domain.SubPointPass;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
+import interview.homegrown.modules.drill.repository.QuestionBankRepository;
+import interview.homegrown.modules.drill.repository.SubPointPassRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -15,6 +23,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static interview.homegrown.modules.drill.grader.GradeScale.PASS_LINE;
 
 /**
  * 选题闸门（纯确定性，零 LLM）。
@@ -28,12 +38,22 @@ public class SelectionService {
     private final ConceptRepository conceptRepo;
     private final MasteryRepository masteryRepo;
     private final CombinationPolicy combinationPolicy;
+    private final LessonGenerator lessonGenerator;
+    private final DrillRunRepository runRepo;
+    private final SubPointPassRepository subPointPassRepo;
+    private final QuestionBankRepository qbRepo;
 
     public SelectionService(ConceptRepository conceptRepo, MasteryRepository masteryRepo,
-                            CombinationPolicy combinationPolicy) {
+                            CombinationPolicy combinationPolicy, LessonGenerator lessonGenerator,
+                            DrillRunRepository runRepo, SubPointPassRepository subPointPassRepo,
+                            QuestionBankRepository qbRepo) {
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
         this.combinationPolicy = combinationPolicy;
+        this.lessonGenerator = lessonGenerator;
+        this.runRepo = runRepo;
+        this.subPointPassRepo = subPointPassRepo;
+        this.qbRepo = qbRepo;
     }
 
     public SelectedTask pickNext(Long userId) {
@@ -123,6 +143,36 @@ public class SelectionService {
         Map<Long, Mastery> byConcept = layerMastered.stream()
                 .collect(Collectors.toMap(Mastery::getConceptId, Function.identity(), (a, b) -> a));
         return combinationPolicy.build(primary, layerConcepts, byConcept);
+    }
+
+    /**
+     * 复习聚焦（需求1：复习也基于子知识点）：取该概念下第一个「未通过」的子知识点
+     * （判分通过 ∪ 手动直通 之外）。概念没有拆子点或全部通过 → 返回 null（概念级复习）。
+     * 方向级复习（start-plan review）与每日任务复习（REVIEW）共用。
+     */
+    public String pickReviewSubPoint(Long userId, Long conceptId) {
+        Concept concept = conceptRepo.findById(conceptId).orElse(null);
+        if (concept == null) return null;
+        List<String> subs = lessonGenerator.outlineFromJson(concept.getLessonOutline());
+        if (subs.isEmpty()) return null;
+        Set<String> passedKeys = runRepo
+                .findPassedFocusedRuns(userId, DrillRunStatus.GRADED, PASS_LINE).stream()
+                .filter(r -> questionContainsConcept(r.getQuestionId(), conceptId))
+                .map(DrillRun::getFocusSubPoint)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        subPointPassRepo.findByUserId(userId).stream()
+                .filter(p -> conceptId.equals(p.getConceptId()))
+                .map(SubPointPass::getSubPoint)
+                .forEach(passedKeys::add);
+        return subs.stream().filter(s -> !passedKeys.contains(s)).findFirst().orElse(null);
+    }
+
+    private boolean questionContainsConcept(Long questionId, Long conceptId) {
+        return qbRepo.findById(questionId)
+                .map(q -> q.getConceptIds() != null
+                        && java.util.Arrays.stream(q.getConceptIds()).anyMatch(cid -> conceptId.equals(cid.longValue())))
+                .orElse(false);
     }
 
     private Concept pickPrimary(List<Concept> all, List<Mastery> mastered, Set<Long> doneIds) {

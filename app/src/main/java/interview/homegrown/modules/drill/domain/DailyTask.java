@@ -47,6 +47,9 @@ public class DailyTask {
     @Column(nullable = false)
     private Long conceptId;
 
+    /** 复习任务聚焦的子知识点（null = 概念级复习）；出题/开 run 时限定到该子点 */
+    private String subPoint;
+
     @Column(nullable = false)
     private String status = STATUS_PENDING;
 
