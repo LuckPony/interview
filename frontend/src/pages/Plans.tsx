@@ -9,6 +9,7 @@ import type { PlanView, DailyTaskView } from '../api/types';
 export function Plans({
   plans,
   onPick,
+  onPickSub,
   onContinue,
   onReview,
   onFree,
@@ -19,6 +20,8 @@ export function Plans({
 }: {
   plans: PlanView[];
   onPick: (conceptId: number) => void;
+  /** 点击某个子知识点直接开练（子知识点直通）：概念 + 子点名 + 子点序号 + 所属方向 */
+  onPickSub?: (conceptId: number, subPoint: string, subIndex: number, planId?: number) => void;
   onContinue: (planId: number) => void;
   onReview: (planId: number) => void;
   onFree?: () => void;
@@ -210,12 +213,43 @@ export function Plans({
                       const done = c.completedSubPoints ?? [];
                       return sub.length === 0 || done.length < sub.length;
                     });
-                  return pending ? (
-                    <button className="concept-chip" onClick={() => onPick(pending.id)}>
-                      <span className="chip-name">正在学习：{pending.name}</span>
-                      <Tag>L{pending.layer}</Tag>
-                    </button>
-                  ) : <span className="eyebrow">子知识点已完成，继续学习将进入综合检测</span>;
+                  if (!pending) return <span className="eyebrow">子知识点已完成，继续学习将进入综合检测</span>;
+                  const doneSet = new Set(pending.completedSubPoints ?? []);
+                  const subs = pending.subPoints ?? [];
+                  const nextIdx = subs.findIndex((s) => !doneSet.has(s));
+                  return (
+                    <div className="current-subpoints">
+                      <button
+                        className="concept-chip current-concept-chip"
+                        onClick={() => onPick(pending.id)}
+                        title={`进入「${pending.name}」的完整教考流程（先看全部子知识点）`}
+                      >
+                        <span className="chip-name">正在学习：{pending.name}</span>
+                        <Tag>L{pending.layer}</Tag>
+                      </button>
+                      {subs.length === 0 ? (
+                        <span className="eyebrow">点上面的知识点，进入后会自动拆解成子知识点再逐个练习</span>
+                      ) : (
+                        <div className="subpoint-chips">
+                          {subs.map((sp, i) => {
+                            const passed = doneSet.has(sp);
+                            const isNext = i === nextIdx;
+                            return (
+                              <button
+                                key={`${sp}-${i}`}
+                                className={'subpoint-chip' + (passed ? ' is-passed' : '') + (isNext ? ' is-next' : '')}
+                                onClick={() => onPickSub?.(pending.id, sp, i, p.id)}
+                                title={passed ? `重新练习子知识点「${sp}」` : `练习子知识点「${sp}」`}
+                              >
+                                {passed && <span aria-hidden>✓</span>}
+                                {sp}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
                 })()}
               </div>
             </Card>

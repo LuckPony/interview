@@ -108,6 +108,10 @@ public class GraderText implements Grader {
         List<ConceptScore> conceptScores = new ArrayList<>();
         List<PointVerdict> allVerdicts = new ArrayList<>();
 
+        // 评分点按概念分组 → 取每组自己的 points（含 weight），供加权计分时按点文本对齐。
+        Map<Integer, GeneratedQuestion.ConceptPoints> groupsByIndex = gq.normalizedGroups().stream()
+                .collect(Collectors.toMap(g -> g.conceptIndex, g -> g, (a, b) -> a));
+
         for (GradeOutput.ConceptGrade cg : out.normalizedGroups()) {
             int idx = clampIndex(cg.conceptIndex, conceptIds.length);
             Long cid = conceptIdAt(conceptIds, idx);
@@ -121,12 +125,16 @@ public class GraderText implements Grader {
             byConcepts.add(new ByConcept(cid, role.name(), verdicts,
                     nullToEmpty(cg.extraCorrect), nullToEmpty(cg.factualErrors)));
 
-            BigDecimal sub = GradeScale.score(verdicts);
+            // 该概念分组的评分点（含 weight）：加权计分；未匹配到权重则退化为等权
+            GeneratedQuestion.ConceptPoints cpg = groupsByIndex.get(cg.conceptIndex);
+            List<GeneratedQuestion.Point> conceptPoints = (cpg == null || cpg.points == null)
+                    ? List.of() : cpg.points;
+            BigDecimal sub = GradeScale.scoreWeighted(verdicts, conceptPoints);
             conceptScores.add(new ConceptScore(cid, role, sub, GradeScale.toGrade(sub, timed)));
             allVerdicts.addAll(verdicts);
         }
 
-        BigDecimal rawScore = GradeScale.score(allVerdicts);
+        BigDecimal rawScore = GradeScale.scoreWeighted(allVerdicts, gq.allPoints());
         Grade grade = GradeScale.toGrade(rawScore, timed);
         return new GraderOutput(serialize(byConcepts), rawScore, grade, conceptScores);
     }

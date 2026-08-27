@@ -137,7 +137,8 @@ public class GradingService {
      * 延迟评分：基于整轮对话（多轮 chat 的全部用户消息）一次性判分。
      * <p>
      * 与 {@link #grade} 的区别：turns 已由 /chat 端点逐轮创建，这里不新建 turn，
-     * 而是把所有用户回答拼接成 combined answer 交给 grader，然后把判分结果写回 round=0 的 turn。
+     * 而是取「首次独立作答」作为评分正文交给 grader，追问/修正只进对话实录供判分器参考，
+     * 最后把判分结果写回 round=0 的 turn。
      *
      * <p><b>评分基准只取「显式点击看答案之前」的回答</b>：答案揭示属于不可逆操作，不能依赖关键词猜测用户意图。
      * 诸如“怎么实现”“直接把列表转为集合就行”既可能出现在索要答案中，也可能只是正常作答。
@@ -178,26 +179,22 @@ public class GradingService {
             if (preRevealHasAnswer) gradeTurns = preReveal;
         }
 
-        // 把所有用户回答拼接成 combined answer 供 grader 判分。
-        // 聊天不限轮数，若整段对话过长，判分 LLM 会撑爆上下文 → 500；
-        // 这里保留最近 MAX 字符（近期内容对判分最相关），避免因长对话而崩溃。
+        // —— 评分正文只取「第一次独立作答」 ——
+        // 追问后的修正/复述只进入 conversation 供判分器参考（判断老师是否泄底、哪些点被实际考到），
+        // 不进入评分正文。否则老师纠正后学生照着复述出正确版本，会被判 HIT 把分数刷成满分，失去考察意义。
+        // gradeTurns 已按 round 升序，findFirst 即第一次作答。
         int MAX_COMBINED = 8000;
-        StringBuilder combined = new StringBuilder();
-        for (DrillTurn t : gradeTurns) {
-            if (t.getRawAnswer() != null && !t.getRawAnswer().isBlank()) {
-                if (!combined.isEmpty()) combined.append("\n\n");
-                combined.append(t.getRawAnswer());
-            }
-        }
-        if (combined.isEmpty()) {
+        String rawAnswer = gradeTurns.stream()
+                .filter(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank())
+                .map(DrillTurn::getRawAnswer)
+                .findFirst()
+                .orElse(null);
+        if (rawAnswer == null || rawAnswer.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
         }
-        if (combined.length() > MAX_COMBINED) {
-            combined = new StringBuilder(
-                    combined.substring(combined.length() - MAX_COMBINED))
-                    .insert(0, "…（对话过长，仅保留最近部分）\n\n");
+        if (rawAnswer.length() > MAX_COMBINED) {
+            rawAnswer = rawAnswer.substring(0, MAX_COMBINED) + "…（作答过长，仅保留开头）";
         }
-        String rawAnswer = combined.toString();
 
         boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
 
@@ -388,14 +385,19 @@ public class GradingService {
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
     private String buildConversation(List<DrillTurn> turns) {
         StringBuilder sb = new StringBuilder();
+        boolean firstAnswerSeen = false;
         for (DrillTurn t : turns) {
+            String ans = t.getRawAnswer();
+            if (ans != null && !ans.isBlank()) {
+                // 明确区分「首次独立作答」与「后续追问/修正」：后续修正不进入评分正文，
+                // 这里标注出来，避免判分器把老师纠正后的复述当成独立作答采信。
+                String label = firstAnswerSeen ? "学生（追问后的修正/复述，不计分）" : "学生（首次独立作答，计分）";
+                firstAnswerSeen = true;
+                sb.append(label).append("：").append(truncate(ans, 400)).append("\n");
+            }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
                 sb.append("老师：").append(truncate(tutor, 400)).append("\n");
-            }
-            String ans = t.getRawAnswer();
-            if (ans != null && !ans.isBlank()) {
-                sb.append("学生：").append(truncate(ans, 400)).append("\n");
             }
         }
         return sb.toString();

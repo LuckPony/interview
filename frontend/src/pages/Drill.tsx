@@ -5,7 +5,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
-import { drill, aiSettings, chatStream, submitStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
+import { drill, aiSettings, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
@@ -101,12 +101,19 @@ export function Drill() {
   const restoreRef = useRef<string | null>(null);
   // 出题去重锁：防止连续点击时重复打后端生成题
   const genLockRef = useRef(false);
+  // 自动迁移测试防重锁：同一 run 讲解结束后只触发一次 AI 评判，避免重复出题
+  const autoTransferLock = useRef(false);
   // 当前活跃 SSE 流引用（卸载 / 换题时 cancel）
   const sseRef = useRef<TutorStream | null>(null);
   // 题干打字机定时器（卸载 / 换题时清理）
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 聊天面板底部哨兵：整页滚动时，新消息 / 评分出现后把最新内容与输入框滚进视野
   const endRef = useRef<HTMLDivElement>(null);
+  // 是否自动跟随流式内容滚到底：默认跟随；用户向上滚动即暂停跟随，
+  // 滚回接近底部时恢复跟随（经典 AI 聊天行为）。
+  const followRef = useRef(true);
+  // 本轮是否真实作答过（reveal「看答案」不算作答）：看答案后据此区分「结束并评分」与「放弃下一题」。
+  const hasAnsweredRef = useRef(false);
 
   // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题)。view 由路由派生（见上方）。
   const [plans, setPlans] = useState<PlanView[]>([]);
@@ -243,6 +250,11 @@ export function Drill() {
             subPoints: o.subPoints, curIdx: sub,
             done: o.completedSubPoints ?? [], planId: planQ, taskId: taskQ,
           });
+          // 直达某个子知识点（如练习首页点子知识点 / 工作流进入下一子点）：
+          // 首次进入也要自动播放该子点讲解，否则会停在空白讲解页。
+          if (sub >= 0 && sub < o.subPoints.length) {
+            playSubLesson(cid, o.subPoints[sub]);
+          }
         } catch (e) {
           if (teachRouteRef.current?.cid !== cid) return;
           setErr(e instanceof ApiError ? e.message : '拆解失败');
@@ -289,9 +301,30 @@ export function Drill() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // —— 新消息 / 评分出现时，把聊天面板底部（最新气泡 + 输入框）滚进视野 ——
+  // —— 监听滚动容器：用户在底部附近→保持跟随；向上滚动→暂停跟随；滚回底部→恢复跟随 ——
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    if (view !== 'learn') return;
+    const scroller = document.querySelector<HTMLElement>('.main');
+    if (!scroller) return;
+    const onScroll = () => {
+      // 距底部 < 80px 视为「在底部」，恢复自动跟随；否则用户主动上翻，暂停跟随
+      const nearBottom =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+      followRef.current = nearBottom;
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [view]);
+
+  // —— 新消息 / 评分出现时：仅当处于「跟随」状态才把聊天面板底部滚进视野 ——
+  useEffect(() => {
+    if (!followRef.current) return;
+    const scroller = document.querySelector<HTMLElement>('.main');
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      endRef.current?.scrollIntoView({ block: 'end' });
+    }
   }, [messages, grade]);
 
   // —— 卸载时关 SSE 流 + 清打字机 ——
@@ -415,6 +448,9 @@ export function Drill() {
     setCardSaved(false);
     setPhase('generating');
     setBrowseQid(null);
+    // 新题目：恢复自动跟随、重置作答标记，避免残留上一题的状态
+    followRef.current = true;
+    hasAnsweredRef.current = false;
     // 进入做题页：从知识点页/首页进入 → 压历史（返回可回到来源页）；
     // 已是做题页（下一题）→ replace，避免每一题都堆积一条历史
     if (view === 'learn') navigate('/drill/learn', { replace: true });
@@ -522,6 +558,41 @@ export function Drill() {
   const startByConcept = (conceptId: number) => {
     if (teachFirst) enterTeach(conceptId);
     else directStart(conceptId);
+  };
+
+  // 练习首页直接点某个子知识点（子知识点直通）：
+  // 开「先讲解再练习」→ 直达该子点讲解页（讲完再做题）；关 → 直接出该子点的题。
+  const pickSubPoint = (conceptId: number, subPoint: string, subIndex: number, planId?: number) => {
+    if (teachFirst) {
+      enterTeachAt(conceptId, planId, undefined, subIndex);
+    } else {
+      startQuestion(
+        () => drill.start(conceptId, subPoint),
+        { kind: 'teach', conceptId, subIndex, planId },
+      );
+    }
+  };
+
+  // 子知识点直通的「下一题」：从 subIndex 之后找下一个未完成的子点继续练（跳过已通过的）。
+  // 该知识点子点全部处理完 → 有方向交回工作流（综合检测等），否则退回按整个知识点出题。
+  const nextSubPointDirect = async (conceptId: number, subIndex: number, planId?: number) => {
+    try {
+      const o = await drill.outline(conceptId);
+      const done = new Set(o.completedSubPoints ?? []);
+      const nextIdx = o.subPoints.findIndex((s, i) => i > subIndex && !done.has(s));
+      if (nextIdx >= 0) {
+        startQuestion(
+          () => drill.start(conceptId, o.subPoints[nextIdx]),
+          { kind: 'teach', conceptId, subIndex: nextIdx, planId },
+        );
+      } else if (planId != null) {
+        startWorkflow(planId);
+      } else {
+        directStart(conceptId);
+      }
+    } catch {
+      directStart(conceptId);
+    }
   };
 
   // 点某个子知识点：跳子路由（讲解页），由路由 effect 播放讲解
@@ -748,10 +819,7 @@ export function Drill() {
   // ===== 对话 SSE：用户发消息（作答或追问）→ 「思考中…」→ AI 逐 token 回复 → done =====
   // reveal=true 为「看答案」：不需要输入内容，直接向 AI 索要完整答案；服务端会记录
   // 答案揭示边界，之后的回答不再计入评分。
-  // 三阶段练习（阶段1 独立作答即判分 + 阶段3 迁移测试）是否启用。
-  // 综合检测（assessment）不启用：它本身就是全知识点的综合考察，保持旧流程。
-  const threePhase = ctx?.kind !== 'assessment';
-
+  // 评分权交给用户：AI 只负责追问/讲解（chat），判分由用户点「结束并评分」（finish）触发。
   const sendAnswer = (reveal = false) => {
     // 迁移测试阶段作答（非看答案）：走独立判分通道（答对升级，答错不降）
     if (phase === 'transfer' && !reveal) { sendTransferAnswer(); return; }
@@ -776,54 +844,8 @@ export function Drill() {
       { id: aiMsgId, role: 'ai', text: '', streaming: true, type: 'chat' },
     ]);
 
-    // —— 三阶段练习（阶段1）：第一个独立回答即判分 ——
-    // 出题后用户的第一条作答走 submit（判分锁定基础档位 + AI 讲解流），
-    // 而不是聊天追问——避免 AI 引导出的答案混入评分（评分只认用户独立作答）。
-    // 综合检测（assessment）仍走旧流程：多轮对话后统一 finish 判分。
-    const isFirstAnswer =
-      threePhase &&
-      !reveal &&
-      !resumedGraded &&
-      grade == null &&
-      phase === 'chatting';
-
-    if (isFirstAnswer) {
-      sseRef.current = submitStream(
-        meta.runId,
-        userText,
-        timingOn ? { timing: 'ON', activeSeconds: seconds } : { timing: 'OFF', activeSeconds: seconds },
-        (g) => {
-          // event:grade —— 判分锁定基础档位，显示判分面板；讲解流继续推
-          setGrade(g);
-        },
-        (token) => {
-          setMessages((prev) => prev.map((mm) =>
-            mm.id === aiMsgId ? { ...mm, text: mm.text + token } : mm,
-          ));
-        },
-        () => {
-          setMessages((prev) => prev.map((mm) =>
-            mm.id === aiMsgId ? { ...mm, streaming: false } : mm,
-          ));
-          sseRef.current = null;
-          setPhase('graded');
-        },
-        (status?: number, message?: string) => {
-          setMessages((prev) => prev.map((mm) =>
-            mm.id === aiMsgId
-              ? { ...mm, streaming: false, text: mm.text || '（判分失败）' }
-              : mm,
-          ));
-          sseRef.current = null;
-          if (status === 409) {
-            setGate(cleanErr(message) || '已有未完成的作答');
-          } else {
-            setErr(cleanErr(message) || '判分失败');
-          }
-        },
-      );
-      return;
-    }
+    // 记录用户是否真实作答过（reveal 不算作答）：看答案后用于区分「可评分」与「放弃」。
+    if (!reveal && !resumedGraded) hasAnsweredRef.current = true;
 
     sseRef.current = chatStream(
       meta.runId,
@@ -974,6 +996,8 @@ export function Drill() {
         drill.completeTask(ctx.taskId).catch(() => {});
       }
       setPhase('graded');
+      // 判分后：基础档位未通过时，让 AI 自主评判是否再考一道迁移题（阶段3）
+      void maybeAutoTransfer();
     } catch (e) {
       setPhase('chatting');
       if (e instanceof ApiError && e.status === 409) setGate(e.message);
@@ -986,39 +1010,36 @@ export function Drill() {
   // 答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。看答案后不再追问。
   // 最多能考几轮由后端按回答质量动态决定：答得好但差一点(≥50分)→最多3轮，
   // 部分理解(≥30分)→最多2轮，几乎没答对(<30分)→本轮即止。
-  const transferExhausted = transferResult != null
-    ? (transferResult.transferExhausted ?? false)
-    : (transfer != null && transfer.transferCount >= transfer.transferMax);
-  const passedAfterTransfer = transferResult != null &&
-    (transferResult.grade === 'GOOD' || transferResult.grade === 'EASY');
-  const canTransfer =
-    threePhase &&
-    phase === 'graded' &&
-    grade != null &&
-    !revealed &&
-    !transferExhausted &&
-    !passedAfterTransfer &&
-    (grade.grade === 'AGAIN' || grade.grade === 'HARD');
+  // 是否再考由 AI 自主评判（不再显示手动按钮），见 maybeAutoTransfer。
 
-  const startTransfer = async () => {
-    if (!meta || phase !== 'graded' || transferBusy) return;
-    setErr('');
-    setTransferBusy(true);
+  // ===== 三阶段练习：阶段3 迁移测试（AI 自动评判） =====
+  // 判分讲解结束后由 AI 自主决定是否再考一道迁移题，不再展示手动按钮。
+  // 展示迁移题（AI 已判定值得再考，或用户在讲解后由系统自动触发）。
+  const showTransfer = (tv: TransferView) => {
+    setTransfer(tv);
+    setTransferResult(null);
+    // 迁移测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
+    setMessages((prev) => [
+      ...prev,
+      { id: nextMsgId(), role: 'ai', text: `【迁移测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
+    ]);
+    setPhase('transfer');
+  };
+
+  // AI 自动评判：判分后调用。返回迁移题则展示并进入作答，返回 skipped 则继续。
+  const maybeAutoTransfer = async () => {
+    if (!meta || autoTransferLock.current) return;
+    autoTransferLock.current = true;
     try {
-      const tv = await drill.transfer(meta.runId);
-      setTransfer(tv);
-      setTransferResult(null);
-      // 迁移测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), role: 'ai', text: `【迁移测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
-      ]);
-      setPhase('transfer');
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setGate(e.message);
-      else setErr(e instanceof ApiError ? e.message : '迁移测试出题失败');
+      const r = await drill.autoTransfer(meta.runId);
+      if (r && typeof r === 'object' && 'stem' in r) {
+        showTransfer(r);
+      }
+      // r.skipped → AI/后端判定不需要迁移测试，保持 graded 状态即可
+    } catch {
+      // 自动迁移测试失败不阻塞主流程：保持 graded，用户可继续问答/下一题
     } finally {
-      setTransferBusy(false);
+      autoTransferLock.current = false;
     }
   };
 
@@ -1045,6 +1066,10 @@ export function Drill() {
           : mm,
       ));
       setPhase('graded');
+      // 答错且未达动态上限：让 AI 再次评判是否值得再考一道迁移题
+      if (!(g.grade === 'GOOD' || g.grade === 'EASY') && !g.transferExhausted) {
+        void maybeAutoTransfer();
+      }
     } catch (e) {
       setMessages((prev) => prev.map((mm) =>
         mm.id === aiMsgId ? { ...mm, streaming: false, text: '（迁移测试判分失败）' } : mm,
@@ -1108,7 +1133,11 @@ export function Drill() {
         startByConcept(ctx.conceptId);
         break;
       case 'teach': {
-        if (!teach) { directStart(ctx.conceptId); break; }
+        if (!teach) {
+          // 从练习首页直接点子知识点（无 teach 状态）：练完自动接同知识点下一个未完成的子点
+          void nextSubPointDirect(ctx.conceptId, ctx.subIndex, ctx.planId);
+          break;
+        }
         const curSub = teach.subPoints[ctx.subIndex] ?? '';
         // 子知识点只有达到统一及格线才标记“达标”；低分仍保留在清单中供重新练习。
         const passed = grade != null && grade.rawScore >= 60;
@@ -1233,11 +1262,14 @@ export function Drill() {
   }
 
   // ===== Home（选方向）=====
-  if (view === 'home') {
+  // 浏览模式优先于 home：从问答记录点进已结束的题时，路由仍是 /drill（view=home），
+  // 需让 browse 视图先于 home 渲染，否则会退回方向选择页而看不到对话历史。
+  if (view === 'home' && !browseMode) {
     return (
       <Plans
         plans={plans}
         onPick={startByConcept}
+        onPickSub={pickSubPoint}
         onContinue={(id) => startWorkflow(id)}
         onReview={(id) => startByPlan(id, 'review')}
         onFree={startFree}
@@ -1515,12 +1547,10 @@ export function Drill() {
     (phase === 'chatting' || phase === 'transfer' || phase === 'graded') &&
     input.trim().length > 0 &&
     !aiStreaming;
-  // 至少有一轮用户对话才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮。
-  // 三阶段练习（第一答即判）不需要「结束并评分」——只有综合检测（assessment，多轮后统一判分）保留。
+  // 至少有一轮用户真实作答才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮。
   const canFinish =
-    !threePhase &&
     phase === 'chatting' &&
-    messages.some((m) => m.type === 'chat' && m.role === 'me') &&
+    hasAnsweredRef.current &&
     !resumedGraded;
   const hasLowGrade = grade != null && grade.rawScore < 60;
 
@@ -1622,7 +1652,7 @@ export function Drill() {
                         ? '已判分：可继续向 AI 提问（教学讲解，不再评分），或点「迁移测试」再考一轮。回车换行，Ctrl/⌘+回车发送。'
                         : resumedGraded
                           ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
-                          : '先独立回答主问题（第一答即判分，评分只看你的独立作答）；AI 讲解后可继续追问。回车换行，Ctrl/⌘+回车发送；想直接看答案可点「看答案」。'
+                          : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问。答完可点「结束并评分」，想直接看答案可点「看答案」。回车换行，Ctrl/⌘+回车发送。'
                 }
                 editable={phase !== 'generating'}
                 extensions={cmExtensions}
@@ -1643,14 +1673,6 @@ export function Drill() {
                   {phase === 'graded' && hasLowGrade && (
                     <Button variant="ghost" onClick={openNote}>
                       <NotebookPen size={16} strokeWidth={1.6} /> 写内化笔记
-                    </Button>
-                  )}
-                  {phase === 'graded' && canTransfer && (
-                    <Button variant="primary" onClick={startTransfer} disabled={transferBusy}>
-                      <Target size={16} strokeWidth={1.6} />
-                      {transfer == null
-                        ? '迁移测试：结合已掌握知识点再考一次'
-                        : '再考一轮（结合讲解后再试）'}
                     </Button>
                   )}
                   {phase === 'graded' && (
@@ -1690,7 +1712,7 @@ export function Drill() {
                       看答案
                     </Button>
                   )}
-                  {phase === 'chatting' && revealed && !threePhase && canFinish && (
+                  {phase === 'chatting' && revealed && canFinish && (
                     <Button
                       variant="ghost"
                       onClick={finishAndGrade}
@@ -1700,18 +1722,18 @@ export function Drill() {
                       结束并评分
                     </Button>
                   )}
-                  {phase === 'chatting' && revealed && threePhase && (
+                  {phase === 'chatting' && revealed && !hasAnsweredRef.current && (
                     <Button
                       variant="ghost"
                       onClick={async () => {
-                        // 看答案后放弃：按 AGAIN 结算闭环，放行下一题
+                        // 未作答即看答案：按 AGAIN 结算闭环，放行下一题
                         if (meta) {
                           try { await drill.abandon(meta.runId); } catch { /* 忽略：仍尝试下一题 */ }
                         }
                         goNext();
                       }}
                       disabled={aiStreaming}
-                      title="已看答案，本题不再评分，直接下一题"
+                      title="未作答即看答案，本题不再评分，直接下一题"
                     >
                       下一题
                     </Button>

@@ -66,7 +66,39 @@ function Seg<T extends string | number>({
   );
 }
 
-/** 外观设置：主题模式 + 多处字号。存本机 localStorage，改完立即生效、无需保存。 */
+/** 颜色选择（带「恢复默认」）。空值 = 跟随主题默认。 */
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div className="field">
+      <span className="field-label">{label}</span>
+      <div className="color-field">
+        <input
+          type="color"
+          className="color-input"
+          value={value ?? '#888888'}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={label}
+        />
+        <span className="color-value">{value ?? '跟随主题'}</span>
+        {value && (
+          <button type="button" className="seg-btn" onClick={() => onChange(null)}>
+            恢复默认
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 外观设置：主题模式 + 多处字号 + 聊天气泡颜色。存本机 localStorage，改完立即生效、无需保存。 */
 function AppearanceCard() {
   const { prefs, update } = useAppearance();
   return (
@@ -102,7 +134,17 @@ function AppearanceCard() {
         options={SCALE3_OPTS}
         onChange={(v) => update({ codeScale: v })}
       />
-      <p className="settings-note">主题与字号只保存在本机浏览器，改完立即生效。</p>
+      <ColorField
+        label="AI 聊天气泡颜色"
+        value={prefs.aiBubbleColor}
+        onChange={(v) => update({ aiBubbleColor: v })}
+      />
+      <ColorField
+        label="用户聊天气泡颜色"
+        value={prefs.meBubbleColor}
+        onChange={(v) => update({ meBubbleColor: v })}
+      />
+      <p className="settings-note">主题、字号与气泡颜色只保存在本机浏览器，改完立即生效。</p>
     </Card>
   );
 }

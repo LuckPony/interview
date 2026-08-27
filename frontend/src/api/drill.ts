@@ -475,6 +475,9 @@ export const drill = {
   // 三阶段练习：迁移测试（阶段3）—— 结合已掌握知识点出新题考察；答对降级通过（封顶 GOOD），答错不降级
   transfer: (runId: number) =>
     apiFetch<TransferView>(`/drill/${runId}/transfer`, { method: 'POST' }),
+  // 自动迁移测试：AI 自主评判是否再考一道迁移题；返回新题视图或 {skipped:true}（不需要）
+  autoTransfer: (runId: number) =>
+    apiFetch<TransferView | { skipped: boolean }>(`/drill/${runId}/auto-transfer`, { method: 'POST' }),
   transferAnswer: (runId: number, rawAnswer: string) =>
     apiFetch<GradeView>(`/drill/${runId}/transfer-answer`, {
       method: 'POST',

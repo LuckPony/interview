@@ -1,10 +1,13 @@
 package interview.homegrown.modules.drill.grader;
 
+import interview.homegrown.modules.drill.ai.GeneratedQuestion;
 import interview.homegrown.modules.drill.domain.Grade;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 分数计算与档位映射，所有 Grader 共用一套，避免各实现各算一套导致画像不可比。
@@ -32,6 +35,40 @@ public final class GradeScale {
         }
         if (scored == 0) return BigDecimal.ZERO; // 全部未考察（理论不会：主问必考）
         return BigDecimal.valueOf(sum / scored * 100).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * 加权命中率：每个评分点按出题时给的 weight（1-3，越核心越大）加权。
+     * HIT=weight，PARTIAL=0.5*weight，MISS=0，再除以总权重 — 核心大点占比更大，
+     * "踩准核心点 + 漏少数次要点"不被等权平均稀释。NA 不计入。
+     *
+     * @param weightedPoints 出题结构的评分点（含 weight），用于与结果按点文本匹配；匹配不到或权重
+     *                       &lt;=0 时退化为 weight=1（等权），保证向后兼容。
+     */
+    public static BigDecimal scoreWeighted(List<PointVerdict> results,
+                                           List<GeneratedQuestion.Point> weightedPoints) {
+        if (results == null || results.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Map<String, Double> weightByPoint = new HashMap<>();
+        if (weightedPoints != null) {
+            for (GeneratedQuestion.Point p : weightedPoints) {
+                if (p.text() != null && p.weight() > 0) {
+                    weightByPoint.putIfAbsent(p.text().trim(), p.weight());
+                }
+            }
+        }
+        double weightedSum = 0;
+        double totalWeight = 0;
+        for (PointVerdict r : results) {
+            if (isNotApplicable(r.verdict())) continue; // 未考察：不计入分子分母
+            Double w = r.point() == null ? null : weightByPoint.get(r.point().trim());
+            double weight = (w == null || w <= 0) ? 1.0 : w; // 未匹配到权重 → 等权兜底
+            weightedSum += weightOf(r.verdict()) * weight;
+            totalWeight += weight;
+        }
+        if (totalWeight == 0) return BigDecimal.ZERO;
+        return BigDecimal.valueOf(weightedSum / totalWeight * 100).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static boolean isNotApplicable(String verdict) {

@@ -42,8 +42,9 @@
 }
 
 .chat-bubble {
+  box-sizing: border-box;   /* 气泡在 fit-content/max-width 下按含 padding 计算，避免内容撑破折行边界 */
   width: fit-content;
-  min-width: 0;
+  min-width: 0;             /* flex 子项允许收窄，否则超长内容不折行 */
   max-width: min(76%, 920px);
   padding: var(--s-3) var(--s-4);
   border-radius: 16px;
@@ -63,14 +64,14 @@
   margin: 0;
 }
 .chat-bubble-ai {
-  background: var(--paper-2);
+  background: var(--bubble-ai, var(--paper-2));
   border: 1px solid var(--line);
-  color: var(--ink);
+  color: var(--bubble-ai-fg, var(--ink));
   border-bottom-left-radius: 4px;
 }
 .chat-bubble-me {
-  background: var(--cinnabar-deep);
-  color: var(--on-accent);
+  background: var(--bubble-me, var(--cinnabar-deep));
+  color: var(--bubble-me-fg, var(--on-accent));
   border-bottom-right-radius: 4px;
 }
 /* 用户自己的消息：原样展示、保留换行，不做 markdown 解析（避免 tutor-text 的"讲解 ·"前缀与多余空行） */

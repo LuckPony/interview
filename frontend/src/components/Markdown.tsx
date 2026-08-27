@@ -180,6 +180,11 @@ const components: Components = {
   a: ({ node, ...props }) => (
     <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
   ),
+  // 长表格包一层横向滚动容器（.md-table-wrap），避免撑破聊天气泡。
+  // 只对顶级 table 包裹，套住整个表；内层仍由 browser 渲染。
+  table: ({ node, ...props }) => (
+    <div className="md-table-wrap"><table {...props} /></div>
+  ),
   // react-markdown 默认用 <pre> 包裹代码块；我们的 code 组件已自管结构（高亮 div / 原生 pre），
   // 拆掉外层 pre 避免套出两层方框（.md pre 的背景/边框会再裹一层）。
   pre: ({ children }) => <>{children}</>,

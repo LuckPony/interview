@@ -11,6 +11,8 @@
   color: var(--ink);
   white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;   /* 长文本/长单词在气泡内强制折行，不横向溢出 */
+  min-width: 0;              /* flex 子项允许收窄 */
 }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
@@ -116,11 +118,23 @@
   margin: 0.7em 0;
   width: 100%;
   font-size: 0.9em;
+  /* 长表格不折行：横向滚动而不是撑破气泡。外层包 div（react-markdown 的 table 外包了
+     .md-table-wrap）负责滚动，这里只保证单元格内容本身可断行避免溢出。 */
 }
+.md-table-wrap {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  margin: 0.7em 0;
+  -webkit-overflow-scrolling: touch;
+}
+.md-table-wrap table { margin: 0; }
 .md th, .md td {
   border: 1px solid var(--line);
   padding: 6px 10px;
   text-align: left;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .md th { background: var(--paper-3); font-family: var(--font-sans); }
 
