@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, ImagePlus, Code2, Check, FileText } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, MessageCircle, ImagePlus, Code2 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
-import { drill, aiSettings, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
+import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
+import { CasualNoteDialog } from '../components/CasualNoteDialog';
 import { ApiError } from '../api/client';
 import { PROBE_LABEL } from '../lib/labels';
-import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, TransferView } from '../api/types';
+import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, TransferView, LessonQaMessageView } from '../api/types';
 import { ConversationStream, VerdictPanel } from '../components/ConversationStream';
 import { Markdown } from '../components/Markdown';
 import { Plans } from './Plans';
@@ -112,6 +113,8 @@ export function Drill() {
   // 是否自动跟随流式内容滚到底：默认跟随；用户向上滚动即暂停跟随，
   // 滚回接近底部时恢复跟随（经典 AI 聊天行为）。
   const followRef = useRef(true);
+  // 答疑线程是否处于「跟随底部」：上翻暂停、滚回底部恢复（与练习聊天一致）。
+  const qaFollowRef = useRef(true);
   // 本轮是否真实作答过（reveal「看答案」不算作答）：看答案后据此区分「结束并评分」与「放弃下一题」。
   const hasAnsweredRef = useRef(false);
 
@@ -161,9 +164,6 @@ export function Drill() {
   const [transferBusy, setTransferBusy] = useState(false);
   // 已看答案（reveal）：看答案后不再追问，隐藏迁移测试入口
   const [revealed, setRevealed] = useState(false);
-  // 知识卡片提取状态（需求：无论是否通过都能沉淀对话）
-  const [cardBusy, setCardBusy] = useState(false);
-  const [cardSaved, setCardSaved] = useState(false);
 
   // 当前对话是否挂在一条已判分(GRADED)的 run 上继续（历史记录「继续对话」= 用户向 AI 提问，
   // 不重新评分，故隐藏「结束并评分」）
@@ -171,6 +171,7 @@ export function Drill() {
 
   // —— 内化笔记弹窗 ——
   const [noteRunId, setNoteRunId] = useState<number | null>(null);
+  const [showCasualNote, setShowCasualNote] = useState(false);
   const [noteStem, setNoteStem] = useState('');
 
   // —— 先教后考：知识点拆解 + 子知识点讲解 ——
@@ -189,6 +190,20 @@ export function Drill() {
   const [lessonReasoning, setLessonReasoning] = useState('');
   const [lessonBusy, setLessonBusy] = useState(false);
   const [outlineBusy, setOutlineBusy] = useState(false);
+  // —— 讲解页答疑（当前用户私有；不判分、不进 run、不反哺讲解正文）——
+  const [qaOpen, setQaOpen] = useState(false);                    // 答疑面板是否展开
+  const [qaMessages, setQaMessages] = useState<LessonQaMessageView[]>([]);
+  const [qaLoading, setQaLoading] = useState(false);              // 拉取历史中
+  const [qaQuestion, setQaQuestion] = useState('');               // 输入框
+  const [qaBusy, setQaBusy] = useState(false);                    // AI 回答中
+  const [qaReasoning, setQaReasoning] = useState('');             // 当前 AI 思考过程
+  const [qaStreamingId, setQaStreamingId] = useState<number | null>(null); // 正在流式回复的临时气泡 id
+  const [qaSelecting, setQaSelecting] = useState(false);          // 是否处于「多选删除」模式
+  const [qaSelected, setQaSelected] = useState<Set<number>>(new Set());
+  const [qaAnchor, setQaAnchor] = useState<string | null>(null);   // 选中讲解片段 → 作为提问上下文
+  const qaSseRef = useRef<TutorStream | null>(null);
+  const qaThreadRef = useRef<HTMLDivElement>(null);
+  const qaTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [teachFirst, setTeachFirst] = useState<boolean>(() => {
     try { return localStorage.getItem(TEACH_FIRST_KEY) !== '0'; } catch { return true; }
   });
@@ -225,7 +240,7 @@ export function Drill() {
 
   // —— 路由 → teach 状态同步：进入/切换知识点拉 outline；切换子点播放讲解 ——
   useEffect(() => {
-    if (view !== 'teach') { teachRouteRef.current = null; return; }
+    if (view !== 'teach') { teachRouteRef.current = null; resetQaPanel(); return; }
     const cid = routeTeachCid;
     if (cid == null || Number.isNaN(cid)) { navigate('/drill', { replace: true }); return; }
     const sub = routeSubIdx ?? -1;
@@ -235,6 +250,7 @@ export function Drill() {
       teachRouteRef.current = { cid, sub };
       if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
       if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+      resetQaPanel();
       setOutlineBusy(true);
       setErr('');
       setLessonText('');
@@ -275,6 +291,7 @@ export function Drill() {
       setTeach({ ...teach, curIdx: -1 });
     } else if (sub < teach.subPoints.length) {
       setTeach({ ...teach, curIdx: sub });
+      resetQaPanel();
       playSubLesson(cid, teach.subPoints[sub]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -330,6 +347,7 @@ export function Drill() {
   // —— 卸载时关 SSE 流 + 清打字机 ——
   useEffect(() => () => {
     if (sseRef.current) sseRef.current.cancel();
+    if (qaSseRef.current) qaSseRef.current.cancel();
     if (typewriterRef.current) clearInterval(typewriterRef.current);
   }, []);
 
@@ -445,7 +463,6 @@ export function Drill() {
     setTransfer(null);
     setTransferResult(null);
     setRevealed(false);
-    setCardSaved(false);
     setPhase('generating');
     setBrowseQid(null);
     // 新题目：恢复自动跟随、重置作答标记，避免残留上一题的状态
@@ -549,6 +566,144 @@ export function Drill() {
       refresh,
     );
   };
+
+  // —— 讲解页答疑：拉取历史 / 提问 / 删除 ——
+  const loadLessonQa = useCallback(async (conceptId: number, subPoint: string) => {
+    if (!conceptId || !subPoint) return;
+    setQaLoading(true);
+    try {
+      const list = await drill.lessonQa(conceptId, subPoint);
+      setQaMessages(list);
+    } catch (e) {
+      setQaMessages([]);
+    } finally {
+      setQaLoading(false);
+    }
+  }, []);
+
+  // 关闭答疑面板 / 切走子点 / 切换知识点时清理流与选择态
+  const resetQaPanel = useCallback(() => {
+    if (qaSseRef.current) { qaSseRef.current.cancel(); qaSseRef.current = null; }
+    setQaOpen(false);
+    setQaMessages([]);
+    setQaQuestion('');
+    setQaReasoning('');
+    setQaAnchor(null);
+    setQaBusy(false);
+    setQaStreamingId(null);
+    setQaSelecting(false);
+    setQaSelected(new Set());
+    if (qaTextareaRef.current) qaTextareaRef.current.style.height = '';
+    qaFollowRef.current = true;
+  }, []);
+
+  const openLessonQa = useCallback(async (conceptId: number, subPoint: string) => {
+    setQaOpen(true);
+    qaFollowRef.current = true;
+    setErr('');
+    await loadLessonQa(conceptId, subPoint);
+  }, [loadLessonQa]);
+
+  const sendLessonQa = (conceptId: number, subPoint: string, anchor: string | null) => {
+    const q = qaQuestion.trim();
+    if (!q || qaBusy) return;
+    setQaBusy(true);
+    setQaReasoning('');
+    setErr('');
+    // 新提问：回到底部跟随（与练习聊天一致）
+    qaFollowRef.current = true;
+
+    // 临时 user 气泡（未持久化 id 未知）：用一个负数占位，流式 assistant 用正数 id 兜底
+    const tempUser: LessonQaMessageView = { id: -Date.now(), role: 'user', text: q, anchor, createdAt: '' };
+    const tempAi: LessonQaMessageView = { id: -Date.now() - 1, role: 'assistant', text: '', anchor: null, createdAt: '' };
+    setQaMessages((prev) => [...prev, tempUser, tempAi]);
+    setQaStreamingId(tempAi.id);
+    setQaQuestion('');
+    setQaAnchor(null);
+    setQaSelecting(false);
+    setQaSelected(new Set());
+    if (qaTextareaRef.current) qaTextareaRef.current.style.height = '';
+    qaSseRef.current = lessonChatStream(
+      conceptId,
+      subPoint,
+      q,
+      anchor,
+      (token) => {
+        setQaMessages((prev) => prev.map((m) =>
+          m.id === tempAi.id ? { ...m, text: m.text + token } : m));
+      },
+      (reasoning) => setQaReasoning((prev) => prev + reasoning),
+      (fullText) => {
+        // done 事件带回完整回答：用它兜底覆盖（修复偶发末尾截断），再刷新历史拿到持久化 id
+        setQaMessages((prev) => prev.map((m) =>
+          m.id === tempAi.id ? { ...m, text: fullText ?? m.text } : m));
+        qaSseRef.current = null;
+        setQaBusy(false);
+        setQaStreamingId(null);
+        void loadLessonQa(conceptId, subPoint);
+      },
+      (_status, msg) => {
+        qaSseRef.current = null;
+        setQaBusy(false);
+        setQaStreamingId(null);
+        setErr(msg || '答疑失败');
+        // 回答失败：把临时气泡移除，只留提问（提问已由后端持久化，刷新后可看到）
+        setQaMessages((prev) => prev.filter((m) => m.id !== tempAi.id));
+        void loadLessonQa(conceptId, subPoint);
+      },
+    );
+  };
+
+  const toggleQaSelect = (id: number) => {
+    setQaSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedLessonQa = async (conceptId: number, subPoint: string) => {
+    const ids = [...qaSelected];
+    if (ids.length === 0) return;
+    setPendingConfirm({
+      title: '删除答疑记录',
+      message: `确定删除选中的 ${ids.length} 条答疑记录吗？删除后不可恢复。`,
+      confirmText: '删除',
+      danger: true,
+      action: async () => {
+        try {
+          await drill.deleteLessonQa(conceptId, subPoint, ids);
+          setQaMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+          setQaSelecting(false);
+          setQaSelected(new Set());
+          setErr('');
+        } catch (e) {
+          setErr(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    });
+  };
+
+  // —— 答疑线程滚动：监听答疑容器，上翻暂停跟随、滚回底部恢复（与练习聊天一致）——
+  useEffect(() => {
+    if (!qaOpen) return;
+    const scroller = qaThreadRef.current;
+    if (!scroller) return;
+    const onScroll = () => {
+      const nearBottom =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+      qaFollowRef.current = nearBottom;
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [qaOpen]);
+
+  // 新消息 / 流式更新时：仅当处于「跟随」状态才把答疑线程底部滚进视野
+  useEffect(() => {
+    if (!qaOpen || !qaFollowRef.current) return;
+    const scroller = qaThreadRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [qaMessages, qaOpen, qaStreamingId]);
 
   // 进入「先教后考」：跳子路由，由路由 effect 拉子知识点清单
   const enterTeach = (conceptId: number) => {
@@ -1081,20 +1236,6 @@ export function Drill() {
     }
   };
 
-  // 把本次练习对话（含判分）提取为知识卡片：无论是否通过都能沉淀
-  const extractCard = async () => {
-    if (!meta || cardBusy) return;
-    setCardBusy(true);
-    setErr('');
-    try {
-      await drill.extractCard(meta.runId);
-      setCardSaved(true);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '知识卡片提取失败');
-    } finally {
-      setCardBusy(false);
-    }
-  };
 
   // ===== 下一题：按 ctx 抽新题（走 SSE） =====
   const goNext = () => {
@@ -1359,6 +1500,15 @@ export function Drill() {
           </div>
         </div>
         <NoteDialog runId={noteRunId} stem={noteStem} onClose={() => setNoteRunId(null)} onSaved={() => setNoteRunId(null)} />
+        {showCasualNote && (
+          <CasualNoteDialog
+            runId={meta?.runId ?? null}
+            onClose={() => setShowCasualNote(false)}
+            onSaved={() => {
+              /* 保存后留在弹窗内继续编辑；关闭由用户点击「关闭」触发 */
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -1471,13 +1621,160 @@ export function Drill() {
                         <div className="reasoning-text"><Markdown>{lessonReasoning}</Markdown></div>
                       </details>
                     )}
-                    <div className="tutor-text">
+                    <div className="tutor-text" onMouseUp={() => {
+                      const sel = window.getSelection();
+                      const txt = sel && !sel.isCollapsed ? sel.toString().trim() : '';
+                      if (txt && txt.length <= 500) setQaAnchor(txt);
+                    }}>
                       <Markdown>{lessonText || '（讲解内容为空）'}</Markdown>
                       {lessonBusy && <span className="tutor-caret" aria-hidden />}
                     </div>
                   </>
                 )}
               </div>
+
+              {/* 讲解页答疑：随时提问，AI 结合讲解回答（仅当前用户私有，可多选删除） */}
+              <div className="lesson-qa">
+                <div className="lesson-qa-head">
+                  <button
+                    className="lesson-qa-toggle"
+                    onClick={async () => {
+                      if (qaOpen) { resetQaPanel(); setQaOpen(false); }
+                      else await openLessonQa(t.conceptId, t.subPoints[t.curIdx]);
+                    }}
+                    title="针对这段讲解随时提问，AI 会结合讲解和你的学习资料回答"
+                  >
+                    <MessageCircle size={15} strokeWidth={1.8} />
+                    {qaOpen ? '收起答疑' : `答疑（${qaMessages.length > 0 ? qaMessages.filter(m => m.role === 'user').length : 0}）`}
+                  </button>
+                  {qaOpen && qaMessages.length > 0 && !qaBusy && (
+                    <div className="lesson-qa-head-actions">
+                      {qaSelecting ? (
+                        <>
+                          <span className="lesson-qa-select-hint">已选 {qaSelected.size} 条</span>
+                          <Button variant="ghost" className="btn-sm" onClick={() => { setQaSelecting(false); setQaSelected(new Set()); }}>
+                            取消
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="btn-sm"
+                            disabled={qaSelected.size === 0}
+                            onClick={() => deleteSelectedLessonQa(t.conceptId, t.subPoints[t.curIdx])}
+                          >
+                            删除
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" className="btn-sm" onClick={() => setQaSelecting(true)}>
+                          删除记录
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {qaOpen && (
+                  <div className="lesson-qa-body">
+                    {qaLoading ? (
+                      <div className="chat-row chat-row-ai chat-row-loading">
+                        <div className="chat-bubble chat-bubble-ai is-loading">
+                          <span className="spinner-sm" /> 读取答疑历史…
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="lesson-qa-thread" ref={qaThreadRef}>
+                        {qaMessages.length === 0 && !qaBusy ? (
+                          <div className="chat-row chat-row-ai">
+                            <div className="chat-bubble chat-bubble-ai is-muted">
+                              还没有提问。读讲解时有疑惑，可以直接在这里问，或选中讲解中的某句话再问。
+                            </div>
+                          </div>
+                        ) : (
+                          qaMessages.map((m) => (
+                            <div
+                              key={m.id}
+                              className={'chat-row ' + (m.role === 'user' ? 'chat-row-me' : 'chat-row-ai') + (qaSelecting ? ' is-qa-select' : '')}
+                              onClick={qaSelecting ? () => toggleQaSelect(m.id) : undefined}
+                            >
+                              {qaSelecting && (
+                                <span className={'lesson-qa-check' + (qaSelected.has(m.id) ? ' on' : '')} />
+                              )}
+                              <div className={'chat-bubble ' + (m.role === 'user' ? 'chat-bubble-me' : 'chat-bubble-ai')}>
+                                {m.anchor && m.role === 'user' && (
+                                  <div className="lesson-qa-anchor" title="你选中的讲解片段">
+                                    “{m.anchor}”
+                                  </div>
+                                )}
+                                {m.role === 'user' ? (
+                                  <p className="me-text">{m.text}</p>
+                                ) : (
+                                  <div className="tutor-text lesson-qa-answer">
+                                    <Markdown>{m.text || (qaStreamingId === m.id ? '…' : '')}</Markdown>
+                                    {qaStreamingId === m.id && <span className="tutor-caret" aria-hidden />}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                        {qaReasoning && qaBusy && (
+                          <details className="reasoning-panel" open>
+                            <summary>AI 思考过程</summary>
+                            <div className="reasoning-text"><Markdown>{qaReasoning}</Markdown></div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="lesson-qa-input">
+                      {qaAnchor && (
+                        <div className="lesson-qa-anchor-chip">
+                          <span className="lesson-qa-anchor-text" title={qaAnchor}>
+                            选中了讲解片段：“{qaAnchor}”
+                          </span>
+                          <button
+                            className="lesson-qa-anchor-clear"
+                            onClick={() => setQaAnchor(null)}
+                            title="取消这段引用"
+                          >
+                            <X size={13} strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      )}
+                      <div className="lesson-qa-input-row">
+                        <textarea
+                          ref={qaTextareaRef}
+                          className="lesson-qa-textarea"
+                          value={qaQuestion}
+                          placeholder={qaAnchor ? '就选中这段话提问（AI 会结合它回答）' : '针对这段讲解提问（如：为什么这里不能用 xxx？）'}
+                          disabled={qaBusy}
+                          rows={1}
+                          onChange={(e) => {
+                            const el = e.target;
+                            el.style.height = 'auto';
+                            el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+                            setQaQuestion(el.value);
+                          }}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter' && !e.shiftKey && !qaBusy) {
+                              e.preventDefault();
+                              sendLessonQa(t.conceptId, t.subPoints[t.curIdx], qaAnchor);
+                            }
+                          }}
+                        />
+                        <Button
+                          onClick={() => sendLessonQa(t.conceptId, t.subPoints[t.curIdx], qaAnchor)}
+                          disabled={qaBusy || !qaQuestion.trim()}
+                        >
+                          {qaBusy ? '回答中…' : '提问'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="teach-foot">
                 <div className="teach-foot-left">
                   <Button variant="ghost" onClick={() => t && navigate(`/drill/teach/${t.conceptId}`)}>
@@ -1676,9 +1973,9 @@ export function Drill() {
                     </Button>
                   )}
                   {phase === 'graded' && (
-                    <Button variant="ghost" onClick={extractCard} disabled={cardBusy}>
-                      {cardSaved ? <Check size={16} strokeWidth={1.8} /> : <FileText size={16} strokeWidth={1.6} />}
-                      {cardSaved ? '已保存知识卡片' : cardBusy ? '提取中…' : '提取知识卡片'}
+                    <Button variant="ghost" onClick={() => setShowCasualNote(true)}>
+                      <MessageCircle size={16} strokeWidth={1.6} />
+                      随手记
                     </Button>
                   )}
                 </div>

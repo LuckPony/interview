@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check } from 'lucide-react';
+import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check, MessageCircle, Plus } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { CasualNoteDialog } from '../components/CasualNoteDialog';
 import { CardMeta, daysUntilDue } from '../components/CardMeta';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
-import type {DebtView, KnowledgeCard, PlanView} from '../api/types';
+import type {DebtView, KnowledgeCard, PlanView, CasualNote} from '../api/types';
 import './Notes.css';
 import {knowledgeApi} from "../api/knowledge.ts";
 
@@ -46,7 +47,11 @@ export function Notes() {
   const [err, setErr] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const [tab, setTab] = useState<'debt' | 'card'>('debt');
+  const [tab, setTab] = useState<'debt' | 'card' | 'note'>('debt');
+  const [notes, setNotes] = useState<CasualNote[] | null>(null);
+  const [noteSearch, setNoteSearch] = useState('');
+  const [noteConceptId, setNoteConceptId] = useState<number | null>(null);
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [dueCards, setDueCards] = useState<KnowledgeCard[]>([]);
   // 复习反馈后自动消失的轻提示（无需确认）
   const [toast, setToast] = useState<{ kind: 'good' | 'bad'; text: string } | null>(null);
@@ -60,6 +65,13 @@ export function Notes() {
     if (tab === 'card') {
       setReveal(new Map());
       loadDue();
+    }
+  }, [tab]);
+
+  // 随手记：切到 note tab 时加载笔记列表
+  useEffect(() => {
+    if (tab === 'note') {
+      knowledgeApi.listNotes().then(setNotes).catch(() => setNotes([]));
     }
   }, [tab]);
 
@@ -137,6 +149,18 @@ export function Notes() {
     }
   };
 
+    // 删除随手记
+  const handleNoteDelete = async (id: number) => {
+    if (!window.confirm('确定删除这条随手记吗？此操作不可恢复。')) return;
+    setErr('');
+    try {
+      await knowledgeApi.deleteNote(id);
+      setNotes((prev) => (prev ? prev.filter((n) => n.id !== id) : prev));
+    } catch (e) {
+      setErr(msg(e));
+    }
+  };
+
   // 当前学习方向（切换需确认）：复盘按方向过滤
   const { activeId } = useActivePlan(plans);
   const debtActive = debt ? debt.filter((d) => d.planId === activeId) : [];
@@ -171,6 +195,13 @@ export function Notes() {
           <Layers size={14} strokeWidth={1.6} />
           知识卡片
           {dueCards.length > 0 && <span className="notes-tab-badge">{dueCards.length}</span>}
+        </button>
+        <button
+          className={'notes-tab' + (tab === 'note' ? ' active' : '')}
+          onClick={() => setTab('note')}
+        >
+          <MessageCircle size={14} strokeWidth={1.6} />
+          随手记
         </button>
       </nav>
 
@@ -317,6 +348,79 @@ export function Notes() {
                 })}
               </div>
           )
+      )}
+      {/* ===== Tab 3：随手记 ===== */}
+      {tab === 'note' && (
+        notes === null ? (
+          <Loading label="读取随手记…" />
+        ) : (
+          <>
+            <div className="note-toolbar">
+              <input
+                className="note-search"
+                placeholder="搜索标题…"
+                value={noteSearch}
+                onChange={(e) => setNoteSearch(e.target.value)}
+              />
+              <select
+                className="note-select"
+                value={noteConceptId ?? ''}
+                onChange={(e) => setNoteConceptId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">所有知识点</option>
+                {(() => {
+                  const map = new Map<number, string>();
+                  notes?.forEach((n) => {
+                    if (n.conceptId && n.conceptName) map.set(n.conceptId, n.conceptName);
+                  });
+                  return [...map.entries()].map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ));
+                })()}
+              </select>
+              <Button className="note-new-btn" onClick={() => setShowNoteDialog(true)}>
+                <Plus size={15} strokeWidth={2} /> 新建
+              </Button>
+            </div>
+            {(() => {
+              const filtered = (notes ?? []).filter((n) => {
+                const matchTitle = !noteSearch || n.title.toLowerCase().includes(noteSearch.toLowerCase());
+                const matchConcept = noteConceptId == null || n.conceptId === noteConceptId;
+                return matchTitle && matchConcept;
+              });
+              if (filtered.length === 0) {
+                return <div className="empty"><h3>没有匹配的随手记</h3></div>;
+              }
+              return (
+                <div className="notes-waterfall">
+                  {filtered.map((n) => {
+                    const raw = (n.content || '').split('\n')[0].trim();
+                    const snippet = raw.length > 40 ? raw.slice(0, 40) + '…' : raw;
+                    return (
+                      <Card className="casual-note-card" key={n.id}>
+                        <h3 className="note-title">{n.title}</h3>
+                        <p className="note-snippet">{snippet || '（暂无内容）'}</p>
+                        {n.conceptName && <span className="note-concept">{n.conceptName}</span>}
+                        <div className="note-card-actions">
+                          <Button variant="danger" onClick={() => handleNoteDelete(n.id)}>删除</Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </>
+        )
+      )}
+      {showNoteDialog && (
+        <CasualNoteDialog
+          runId={null}
+          onClose={() => setShowNoteDialog(false)}
+          onSaved={() => {
+            knowledgeApi.listNotes().then(setNotes).catch(() => undefined);
+          }}
+        />
       )}
     </div>
   );

@@ -1269,3 +1269,180 @@
 .teach-foot .spin {
   animation: teach-spin 1s linear infinite;
 }
+
+/* —— 讲解页答疑（仅当前用户私有；随时提问 + 多选删除） —— */
+.lesson-qa {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.lesson-qa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.lesson-qa-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.lesson-qa-toggle:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+}
+.lesson-qa-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lesson-qa-select-hint {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.btn-sm {
+  height: 30px;
+  padding: 0 var(--s-3);
+  font-size: var(--fs-sm);
+  border-radius: 8px;
+}
+.lesson-qa-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lesson-qa-thread {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.chat-row.is-qa-select {
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+}
+.chat-row.is-qa-select:hover .chat-bubble {
+  border-color: var(--cinnabar);
+}
+.lesson-qa-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  color: var(--on-accent);
+  font-size: 12px;
+}
+.lesson-qa-check.on {
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+}
+.lesson-qa-check.on::after {
+  content: '✓';
+}
+.lesson-qa-anchor {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  background: var(--paper-3);
+  border-left: 2px solid var(--cinnabar);
+  border-radius: 6px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lesson-qa-answer {
+  margin: 0;
+}
+.lesson-qa-answer::before {
+  content: none;
+}
+.lesson-qa-input {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.lesson-qa-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.lesson-qa-textarea {
+  flex: 1;
+  min-height: 40px;
+  max-height: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-base);
+  font-family: inherit;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.lesson-qa-textarea:focus {
+  border-color: var(--cinnabar);
+}
+.lesson-qa-textarea::placeholder {
+  color: var(--ink-faint);
+}
+.lesson-qa-textarea:disabled {
+  opacity: 0.6;
+}
+.lesson-qa-anchor-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: var(--cinnabar-wash);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 30%, transparent);
+  border-radius: 8px;
+}
+.lesson-qa-anchor-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lesson-qa-anchor-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.lesson-qa-anchor-clear:hover {
+  color: var(--danger, #d64545);
+  background: var(--bad-wash);
+}

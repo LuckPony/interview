@@ -145,6 +145,78 @@
 }
 .dash-link:hover { text-decoration: underline; }
 
+/* —— 首页待复习提醒：红点 + 到期规则 + 今日复习任务 —— */
+.dash-review {
+  margin-bottom: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid color-mix(in oklch, var(--bad) 45%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in oklch, var(--bad) 4%, var(--paper-2));
+}
+.dash-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+.dash-review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 650;
+  color: var(--bad);
+}
+.dash-review-rule {
+  margin: 0 0 var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.dash-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.dash-review-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.dash-review-item:hover {
+  border-color: var(--bad);
+  background: color-mix(in oklch, var(--bad) 7%, var(--paper-2));
+}
+.dash-review-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--bad);
+}
+.dash-review-plan {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.dash-review-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-base);
+  color: var(--ink);
+}
+
 .debt-list {
   list-style: none;
   border: 1px solid var(--line);

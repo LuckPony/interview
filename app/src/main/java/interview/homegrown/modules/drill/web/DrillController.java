@@ -3,6 +3,7 @@ package interview.homegrown.modules.drill.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.LessonGenerator;
+import interview.homegrown.modules.drill.ai.LessonQaGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
 import interview.homegrown.modules.drill.domain.*;
 import interview.homegrown.modules.drill.repository.*;
@@ -20,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,8 @@ public class DrillController {
     private final ReviewService reviewService;
     private final TransferTestService transferTestService;
     private final interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService;
+    private final LessonQaRepository lessonQaRepo;
+    private final LessonQaGenerator lessonQaGenerator;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
                            AnswerService answerService, ProfileService profileService,
@@ -88,7 +92,8 @@ public class DrillController {
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
                            ReviewService reviewService, TransferTestService transferTestService,
-                           interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService) {
+                           interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService,
+                           LessonQaRepository lessonQaRepo, LessonQaGenerator lessonQaGenerator) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
@@ -114,6 +119,8 @@ public class DrillController {
         this.reviewService = reviewService;
         this.transferTestService = transferTestService;
         this.chatCaptureService = chatCaptureService;
+        this.lessonQaRepo = lessonQaRepo;
+        this.lessonQaGenerator = lessonQaGenerator;
     }
 
     // ------------------------------------------------------------ LEARN
@@ -577,6 +584,152 @@ public class DrillController {
                 .header("X-Accel-Buffering", "no")
                 .body(body);
     }
+
+    // ------------------------------------------------------------ 子知识点讲解答疑（仅当前用户私有）
+
+    /** 讲解页答疑：拉取当前用户在该子知识点下的全部历史（按时间升序）。 */
+    @GetMapping("/{conceptId}/lesson/qa")
+    public List<LessonQaView> lessonQa(@PathVariable Long conceptId, @RequestParam String subPoint) {
+        Long uid = currentUserId();
+        conceptRepo.findById(conceptId).orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        return lessonQaRepo.findByUserIdAndConceptIdAndSubPointOrderByIdAsc(uid, conceptId, sub).stream()
+                .map(m -> new LessonQaView(m.getId(), m.getRole(), m.getText(), m.getAnchor(), m.getCreatedAt()))
+                .toList();
+    }
+
+    /**
+     * 讲解页答疑 SSE（POST /{conceptId}/lesson/chat?subPoint=...）：
+     * <ol>
+     *   <li>先持久化学生提问（写入 lesson_qa_message）；</li>
+     *   <li>逐 token 推 AI 回答（默认 message 事件，data:{"text":...}），event:reasoning 推思考；</li>
+     *   <li>event:done 带完整回答文本，随后把 AI 回答写入同表（前端可用 done 的全文兜底覆盖截断）；</li>
+     *   <li>event:error 流式中途异常。</li>
+     * </ol>
+     * 答疑与 run/判分/mastery 完全解耦：只存于讲解页自己的表，仅当前用户可见。
+     */
+    @PostMapping(value = "/{conceptId}/lesson/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> lessonChat(
+            @PathVariable Long conceptId,
+            @RequestParam String subPoint,
+            @RequestBody LessonChatRequest req) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        final String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        String question = req.question() == null ? "" : req.question().trim();
+        if (question.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "问题不能为空");
+        String anchor = req.anchor() == null ? null : req.anchor().trim();
+
+        // 讲解正文（最新缓存；refresh 后覆盖的就是它）
+        ConceptLesson lesson = conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub).orElse(null);
+        // 该用户自己的学习上下文（与出题/对话同一套装配：学生画像 + 概念要点 + 资料块 + 互联网）
+        String context = progressContext.contextFor(uid, conceptId);
+        // 该用户在此子点下已答过的历史（AI 避免重复已回答的内容）
+        List<LessonQaMessage> historyMsgs =
+                lessonQaRepo.findByUserIdAndConceptIdAndSubPointOrderByIdAsc(uid, conceptId, sub);
+        List<LessonQaGenerator.QaPair> history = new java.util.ArrayList<>();
+        for (int i = 0; i < historyMsgs.size() - 1; i++) {
+            LessonQaMessage m = historyMsgs.get(i);
+            if ("user".equals(m.getRole())) {
+                LessonQaMessage next = historyMsgs.get(i + 1);
+                if ("assistant".equals(next.getRole()) && next.getText() != null) {
+                    history.add(new LessonQaGenerator.QaPair(m.getText(), next.getText()));
+                }
+            }
+        }
+
+        // 学生提问先落库（id 会回传给前端用于删除）
+        LessonQaMessage userMsg = new LessonQaMessage();
+        userMsg.setUserId(uid);
+        userMsg.setConceptId(conceptId);
+        userMsg.setSubPoint(sub);
+        userMsg.setRole("user");
+        userMsg.setText(question);
+        userMsg.setAnchor(anchor);
+        userMsg = lessonQaRepo.save(userMsg);
+        final long userMsgId = userMsg.getId();
+
+        StreamingResponseBody body = out -> {
+            try {
+                out.write(("event: start\ndata: {\"userMessageId\":" + userMsgId + "}\n\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                final StringBuilder buf = new StringBuilder();
+                String full = lessonQaGenerator.streamAnswer(
+                        concept.getName(), concept.getTopic(), concept.getLayer(),
+                        sub, lesson == null ? null : lesson.getLessonText(), anchor, context, history, question,
+                        token -> {
+                            buf.append(token);
+                            try {
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("lesson-qa token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        },
+                        r -> sseReasoning(out, r));
+
+                // AI 回答写库（与提问配对；失败不阻塞流）
+                if (full != null && !full.isBlank()) {
+                    LessonQaMessage aiMsg = new LessonQaMessage();
+                    aiMsg.setUserId(uid);
+                    aiMsg.setConceptId(conceptId);
+                    aiMsg.setSubPoint(sub);
+                    aiMsg.setRole("assistant");
+                    aiMsg.setText(full);
+                    try {
+                        lessonQaRepo.save(aiMsg);
+                    } catch (Exception e) {
+                        log.debug("lesson-qa AI 回答写库失败（忽略）: {}", e.getMessage());
+                    }
+                }
+
+                String donePayload = full == null ? "" : jsonEscape(full);
+                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("lesson-qa 流推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /** 删除当前用户在某个子知识点下的若干条答疑（仅自己的记录，前端多选 + 二次确认后调用）。 */
+    @PostMapping("/{conceptId}/lesson/qa/delete")
+    public Map<String, Object> deleteLessonQa(@PathVariable Long conceptId,
+                                              @RequestParam String subPoint,
+                                              @RequestBody LessonQaDeleteRequest req) {
+        Long uid = currentUserId();
+        String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        if (req.ids() == null || req.ids().isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "请选择要删除的答疑记录");
+        }
+        int deleted = lessonQaRepo.deleteByIdsAndUser(uid, req.ids());
+        return Map.of("ok", true, "deleted", deleted);
+    }
+
+    public record LessonQaView(Long id, String role, String text, String anchor, Instant createdAt) {}
+
+    public record LessonChatRequest(String question, String anchor) {}
+
+    public record LessonQaDeleteRequest(List<Long> ids) {}
 
     // ------------------------------------------------------------ 今日任务（每日自动排期）
 

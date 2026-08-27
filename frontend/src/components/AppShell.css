@@ -89,6 +89,22 @@
   background: var(--cinnabar);
   opacity: 0.5;
 }
+.nav-review-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--bad);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1;
+}
 
 .side-foot {
   margin-top: auto;

@@ -24,6 +24,7 @@ import type {
   LearningNextView,
   KnowledgePointsView,
   OutlineView,
+  LessonQaMessageView,
   KnowledgeCard,
   TransferView,
 } from './types';
@@ -343,6 +344,34 @@ export function lessonStream(
   }, { onToken, onReasoning, onDone: () => onDone(), onError });
 }
 
+/**
+ * 子知识点讲解答疑 SSE 流（POST /{conceptId}/lesson/chat?subPoint=...，SSE）：
+ * 学生提问 → 逐 token 推 AI 回答（data:{"text":...}），event:reasoning 推思考，
+ * event:done 带完整回答文本。答疑不判分、不进 run，仅当前用户私有并持久化。
+ * @param anchor 学生选中的讲解片段（可空，作为提问上下文）
+ */
+export function lessonChatStream(
+  conceptId: number,
+  subPoint: string,
+  question: string,
+  anchor: string | null,
+  onToken: (token: string) => void,
+  onReasoning: (text: string) => void,
+  onDone: (fullText?: string) => void,
+  onError: (status?: number, message?: string) => void,
+): TutorStream {
+  const token = getToken();
+  const url = `${API_BASE_SSE}/api/drill/${conceptId}/lesson/chat?subPoint=${encodeURIComponent(subPoint)}`;
+  return openSse(url, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ question, anchor: anchor ?? null }),
+  }, { onToken, onReasoning, onDone, onError });
+}
+
 export const drill = {
   next: () => apiFetch<QuestionView>('/drill/next', { method: 'POST' }),
 
@@ -356,6 +385,17 @@ export const drill = {
   // 先教后考：拆解知识点为子知识点清单（缓存 concept.lesson_outline）
   outline: (conceptId: number) =>
     apiFetch<OutlineView>(`/drill/${conceptId}/outline`, { method: 'POST' }),
+
+  // 讲解页答疑：历史消息（当前用户私有，按时间升序）
+  lessonQa: (conceptId: number, subPoint: string) =>
+    apiFetch<LessonQaMessageView[]>(`/drill/${conceptId}/lesson/qa?subPoint=${encodeURIComponent(subPoint)}`),
+
+  // 讲解页答疑：删除若干条消息（仅自己的记录，前端多选 + 二次确认）
+  deleteLessonQa: (conceptId: number, subPoint: string, ids: number[]) =>
+    apiFetch<{ ok: boolean; deleted: number }>(`/drill/${conceptId}/lesson/qa/delete?subPoint=${encodeURIComponent(subPoint)}`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
 
   // 手动「直接通过 / 取消通过」某个子知识点（简单知识点跳过做题）
   subPointPass: (conceptId: number, subPoint: string, passed: boolean) =>
