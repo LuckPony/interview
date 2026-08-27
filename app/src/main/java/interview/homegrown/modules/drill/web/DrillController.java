@@ -73,7 +73,6 @@ public class DrillController {
     private final DailyPlanService dailyPlanService;
     private final LearningWorkflowService learningWorkflowService;
     private final ReviewService reviewService;
-    private final TransferTestService transferTestService;
     private final interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService;
     private final LessonQaRepository lessonQaRepo;
     private final LessonQaGenerator lessonQaGenerator;
@@ -91,7 +90,7 @@ public class DrillController {
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
-                           ReviewService reviewService, TransferTestService transferTestService,
+                           ReviewService reviewService,
                            interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService,
                            LessonQaRepository lessonQaRepo, LessonQaGenerator lessonQaGenerator) {
         this.selectionService = selectionService;
@@ -117,7 +116,6 @@ public class DrillController {
         this.dailyPlanService = dailyPlanService;
         this.learningWorkflowService = learningWorkflowService;
         this.reviewService = reviewService;
-        this.transferTestService = transferTestService;
         this.chatCaptureService = chatCaptureService;
         this.lessonQaRepo = lessonQaRepo;
         this.lessonQaGenerator = lessonQaGenerator;
@@ -1110,30 +1108,18 @@ public class DrillController {
         // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
         // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
         // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
-        // 判分后（GRADED）看答案同样记录边界：三阶段流程里「看答案后不再补救测试追问」。
+        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
         boolean reveal = Boolean.TRUE.equals(req.reveal());
-        boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
-                || run.getStatus() == DrillRunStatus.ANSWERING;
-        boolean notFinished = run.getPhase() != DrillPhase.DONE;
-        if (reveal && notFinished && run.getAnswerRevealedRound() == null) {
-            run.setAnswerRevealedRound(nextRound);
+        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
+        if (reveal && notFinished && !run.isRevealed()) {
+            run.setRevealed(true);
             runRepo.save(run);
         }
 
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
-        // 追问安全阀（仅判分前）：学生已作答的轮数。
-        // 判分后（继续对话 = 用户向 AI 提问）传 -1，走通用苏格拉底引导、不限小问。
-        // reveal 时该值不影响：reveal 模式优先，直接给完整讲解、不再追问。
-        // 正常流程由 AI 按「小问 ≤ 4 个、确认理解后才出下一问」自行控制，这里只是兜底。
-        int followupIndex = isPreGraded
-                ? (int) allTurns.stream().filter(t -> t.getRawAnswer() != null
-                        && !t.getRawAnswer().isBlank()).count()
-                : -1;
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
-        // 出题时预生成的「追问小问」清单：老师按顺序逐条问，问完就停（学生提前掌握可提前收）。
-        final List<String> followups = extractFollowups(pointsJson);
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
@@ -1150,7 +1136,7 @@ public class DrillController {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
-                String full = tutorGenerator.streamChat(stem, pointsJson, followups, allTurns, context,
+                String full = tutorGenerator.streamChat(stem, pointsJson, List.of(), allTurns, context,
                         fImages,
                         token -> {
                             try {
@@ -1163,7 +1149,7 @@ public class DrillController {
                             }
                         },
                         r -> sseReasoning(out, r),
-                        fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
+                        fReveal, 0, TutorGenerator.SAFETY_ANSWER_CAP);
 
                 // 完整文本只写回 turn。AI 可以停止追问并提示用户点击按钮，但不得替用户结束或触发评分。
                 // 客户端已断开（暂停/离开）时跳过：该轮 AI 回复视为未完成，不进入对话历史与评分依据。
@@ -1204,35 +1190,7 @@ public class DrillController {
     }
 
     /**
-     * 补救测试（阶段3）：判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题考察。
-     * 返回补救测试题 stem；用户作答后调 {@code POST /{runId}/transfer-answer} 判分。
-     */
-    @PostMapping("/{runId}/transfer")
-    public TransferTestService.TransferView transfer(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        return transferTestService.start(uid, runId);
-    }
-
-    /** 补救测试作答判分：答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。 */
-    @PostMapping("/{runId}/transfer-answer")
-    public GradeView transferAnswer(@PathVariable Long runId, @RequestBody ChatRequest req) {
-        Long uid = currentUserId();
-        return transferTestService.answer(uid, runId, req.rawAnswer());
-    }
-
-    /**
-     * 自动补救测试：判分讲解结束后由前端自动调用，AI 自主评判是否再考一道补救题。
-     * 若 AI 判定值得再考 → 返回补救题视图（前端据此展示新题）；判定不需要或硬性不满足 → 返回 null。
-     */
-    @PostMapping("/{runId}/auto-transfer")
-    public ResponseEntity<?> autoTransfer(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        TransferTestService.TransferView view = transferTestService.autoStartIfApplicable(uid, runId);
-        return view == null ? ResponseEntity.ok(Map.of("skipped", true)) : ResponseEntity.ok(view);
-    }
-
-    /**
-     * 放弃本次作答（三阶段练习：未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
+     * 放弃本次作答（未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
      * 让 run 置 GRADED、物理闸门放行下一题——否则看答案后既不能评分也无法推进。
      */
     @PostMapping("/{runId}/abandon")
@@ -1369,17 +1327,6 @@ public class DrillController {
                 .body(body);
     }
 
-    /**
-     * LEARN grade 卡"继续追问"按钮：基于已 GRADED 的 LEARN run spawn 一条 mode=REHEARSAL 的追问场，
-     * 复用 questionId，maxRound=10 让用户追问到底，settle 跳过 mastery（不算正式面试，不取 L3）。
-     * 返回追问场第一轮的 RehearsalView。
-     */
-    @PostMapping("/{runId}/followup")
-    public RehearsalView followup(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        return rehearsalService.spawnFollowup(uid, runId);
-    }
-
     /** 追问/模拟面试主动结束：用户点"下一题（结束追问）"或"结算本场"时调用 */
     @PostMapping("/rehearsal/{runId}/end")
     public RehearsalView rehearsalEnd(@PathVariable Long runId) {
@@ -1499,23 +1446,6 @@ public class DrillController {
             }
         }
         return b.toString();
-    }
-
-    /** 从题目 points JSON 里取出出题时预生成的「追问小问」清单（空/异常则空列表）。 */
-    private List<String> extractFollowups(String pointsJson) {
-        try {
-            JsonNode root = objectMapper.readTree(pointsJson);
-            JsonNode fu = root == null ? null : root.get("followups");
-            if (fu == null || !fu.isArray()) return List.of();
-            List<String> out = new java.util.ArrayList<>();
-            for (JsonNode n : fu) {
-                String s = n.asText();
-                if (s != null && !s.isBlank()) out.add(s);
-            }
-            return out;
-        } catch (Exception e) {
-            return List.of();
-        }
     }
 
     // ------------------------------------------------------------- 内化

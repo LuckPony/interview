@@ -1,19 +1,17 @@
 package interview.homegrown.modules.drill.domain;
 
 /**
- * 三阶段练习（独立作答 → 教学讲解 → 迁移测试）的阶段标记。
+ * 苏格拉底教学流程状态（取代旧三阶段 FIRST_ANSWER/TUTORING/TRANSFER_TEST）。
  *
- * <p>FIRST_ANSWER：题目已出，等待用户第一次独立作答（阶段1判分锁定基础档位）；
- * TUTORING：阶段1已判分，AI 讲解 + 用户自由提问（阶段2，不评分）；
- * TRANSFER_TEST：阶段3，AI 结合已掌握知识点出新题考察，答对可降级通过（升级封顶 GOOD）；
- * DONE：全部阶段结束，run 置 GRADED。
+ * <p>ANSWERING：用户作答中（含苏格拉底引导循环，AI 每轮判 answering/needs_guide/done）；
+ * GUIDED：G1 未达标，已进入引导（正在或已引导，待再考查）；
+ * DONE：本题结束（G1 达标直接结束 / G2 评分后结束 / 看答案封 AGAIN 结束）。
  *
- * <p>与 drill_run.status 的关系：status 仍是外层状态机（READY/ANSWERING/GRADED…），
- * phase 是练习流程内部的细分阶段，两者独立推进。
+ * <p>与 drill_run.status 的关系：status 是外层状态机（READY/ANSWERING/GRADED…），
+ * socraticState 是练习流程内部细分阶段，两者独立推进。
  */
 public enum DrillPhase {
-    FIRST_ANSWER,
-    TUTORING,
-    TRANSFER_TEST,
+    ANSWERING,
+    GUIDED,
     DONE
 }
