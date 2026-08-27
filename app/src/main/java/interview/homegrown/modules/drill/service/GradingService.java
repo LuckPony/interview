@@ -122,7 +122,7 @@ public class GradingService {
         applyMastery(userId, out.conceptScores(), run.getMode(), timed);
 
         // 三阶段练习：阶段1（独立作答）判分锁定基础档位，进入教学讲解阶段。
-        // 之后阶段3（迁移测试）答对可「降级通过」升级（封顶 GOOD），答错不降级。
+        // 之后阶段3（补救测试）答对可「降级通过」升级（封顶 GOOD），答错不降级。
         run.setFirstGrade(out.grade().name());
         run.setPhase(DrillPhase.TUTORING);
         run.setStatus(DrillRunStatus.GRADED);
@@ -235,7 +235,7 @@ public class GradingService {
 
         applyMastery(userId, out.conceptScores(), run.getMode(), timed);
 
-        // 三阶段练习：对话判分同样锁定基础档位并进入讲解阶段（迁移测试入口由前端按档位展示）
+        // 三阶段练习：对话判分同样锁定基础档位并进入讲解阶段（补救测试入口由前端按档位展示）
         run.setFirstGrade(out.grade().name());
         run.setPhase(DrillPhase.TUTORING);
         run.setStatus(DrillRunStatus.GRADED);
@@ -247,21 +247,21 @@ public class GradingService {
     }
 
     /**
-     * 阶段3（迁移测试）判分：基于 run 上暂存的迁移题（transferStem/transferPointsJson/transferConceptIdsJson）
+     * 阶段3（补救测试）判分：基于 run 上暂存的补救题（transferStem/transferPointsJson/transferConceptIdsJson）
      * 判分，只允许「降级通过」——答对升一档（AGAIN→HARD→GOOD，封顶 GOOD），答错不降级。
      * 判分落库后：更新 first_grade、transfer_count 递增；达到上限或升到 GOOD 则 phase=DONE。
      *
-     * @return 迁移测试判分结果（grade 为升级后的档位）
+     * @return 补救测试判分结果（grade 为升级后的档位）
      */
     @Transactional
     public GradeView gradeTransfer(Long userId, Long runId, String rawAnswer) {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
         if (run.getPhase() != DrillPhase.TRANSFER_TEST) {
-            throw new ResponseStatusException(BAD_REQUEST, "当前不在迁移测试阶段: " + run.getPhase());
+            throw new ResponseStatusException(BAD_REQUEST, "当前不在补救测试阶段: " + run.getPhase());
         }
         if (run.getStatus() != DrillRunStatus.GRADED) {
-            throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可迁移测试: " + run.getStatus());
+            throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可补救测试: " + run.getStatus());
         }
         // 看答案后不再追问：阶段3 已揭示答案，继续考已无意义
         if (run.getAnswerRevealedRound() != null) {
@@ -271,7 +271,7 @@ public class GradingService {
         String pointsJson = run.getTransferPointsJson();
         Integer[] conceptIds = parseConceptIds(run.getTransferConceptIdsJson());
         if (stem == null || pointsJson == null || conceptIds == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "迁移测试题不存在");
+            throw new ResponseStatusException(BAD_REQUEST, "补救测试题不存在");
         }
         boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
 
@@ -280,7 +280,7 @@ public class GradingService {
         // 降级通过：答对（GOOD/EASY）→ 基础档位升一档（封顶 GOOD）；答错 → 保持基础档位（不降级）
         String base = run.getFirstGrade() == null ? "AGAIN" : run.getFirstGrade();
         Grade upgraded = switch (out.grade()) {
-            case AGAIN, HARD -> Grade.valueOf(base);       // 迁移测试未通过：维持阶段1档位
+            case AGAIN, HARD -> Grade.valueOf(base);       // 补救测试未通过：维持阶段1档位
             case GOOD, EASY -> upgradeOnPass(base);        // 通过：升一档，封顶 GOOD
         };
         boolean passed = out.grade() == Grade.GOOD || out.grade() == Grade.EASY;
@@ -304,7 +304,7 @@ public class GradingService {
 
         boolean transferExhausted = run.getPhase() == DrillPhase.DONE && !passed;
 
-        // 迁移测试通过 → 更新阶段1 落的那条 GradeResult 为「最终成绩」（升级后档位）：
+        // 补救测试通过 → 更新阶段1 落的那条 GradeResult 为「最终成绩」（升级后档位）：
         // 让「子点通过」判定（findPassedFocusedRuns 按 GradeResult.rawScore >= 60）能看到降级通过，
         // 否则 HARD 降级通过的 run 会因阶段1 分数不过线而永远不算达标。
         // 同时保持「一 run 一条 GradeResult」不变式——history/review/note 都用
@@ -320,12 +320,12 @@ public class GradingService {
             }
         }
 
-        // 迁移测试通过 → 掌握度结算（降级通过）：
+        // 补救测试通过 → 掌握度结算（降级通过）：
         // 阶段1 独立作答已按基础档位 applyMastery 过一次（AGAIN 会把 level 降一档）。
-        // 迁移通过后 PRIMARY 概念 level 直接 +1（封顶 cap）：
+        // 补救测试通过后 PRIMARY 概念 level 直接 +1（封顶 cap）：
         //   AGAIN→HARD 通过 = 恢复到阶段1 之前的 level；
         //   HARD→GOOD 通过 = 提升一级。
-        // ANCHOR（已掌握概念）只是陪考，不因迁移测试改变掌握度。
+        // ANCHOR（已掌握概念）只是陪考，不因补救测试改变掌握度。
         if (passed && out.conceptScores() != null && !out.conceptScores().isEmpty()) {
             ConceptScore primary = out.conceptScores().get(0);
             if (primary.role() == ConceptRole.PRIMARY) {
@@ -344,7 +344,7 @@ public class GradingService {
     }
 
     /**
-     * 动态迁移测试轮数上限（按本轮作答质量 + 基础档位）：
+     * 动态补救测试轮数上限（按本轮作答质量 + 基础档位）：
      * <p>得分反映本轮理解，基础档位反映初始掌握：
      * <ul>
      *   <li>rawScore &gt;= 50（接近通过）→ 差一点就能过：HARD 允许最多 3 轮，AGAIN 最多 2 轮；</li>
@@ -363,7 +363,7 @@ public class GradingService {
         return 1;
     }
 
-    /** 迁移测试通过时把基础档位升一档：AGAIN→HARD→GOOD，GOOD 封顶（EASY 保持）。 */
+    /** 补救测试通过时把基础档位升一档：AGAIN→HARD→GOOD，GOOD 封顶（EASY 保持）。 */
     private Grade upgradeOnPass(String base) {
         return switch (base) {
             case "AGAIN" -> Grade.HARD;

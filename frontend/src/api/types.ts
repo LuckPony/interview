@@ -65,7 +65,7 @@ export interface GradeView {
   rawScore: number;
   grade: string; // EASY / GOOD / HARD / MISSING
   byConceptJson: string; // JSON 字符串 -> 解析为 ByConcept[]
-  transferExhausted?: boolean; // 迁移测试判分后是否已达轮数上限（无需再考）
+  transferExhausted?: boolean; // 补救测试判分后是否已达轮数上限（无需再考）
 }
 
 export interface RehearsalView {
@@ -334,7 +334,7 @@ export interface KnowledgeCard {
     createdAt: string;
 }
 
-/** 迁移测试题视图（阶段3）：结合已掌握知识点出的新题，答对可降级通过（封顶 GOOD）。 */
+/** 补救测试题视图（阶段3）：结合已掌握知识点出的新题，答对可降级通过（封顶 GOOD）。 */
 export interface TransferView {
     runId: number;
     stem: string;

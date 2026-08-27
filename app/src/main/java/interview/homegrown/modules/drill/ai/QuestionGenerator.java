@@ -104,7 +104,7 @@ public class QuestionGenerator {
                 精确对应——绝不能题干说 3 点、评分点却考 5 点，或题干说只写关键、评分点却要求面面俱到；
                 否则学习者按题干作答会被判分器错判为"缺漏"，直接用反"题干明确性"。
                 必须按概念分组输出 byConcept，conceptIndex 使用下面清单里给出的序号。
-                不要使用中文破折号，输出严格遵循格式说明的 JSON。""";
+                不要使用中文破折号，输出严格遵循格式说明的 JSON.""";
 
         String conceptList = renderConcepts(task.concepts());
         String avoidBlock = avoidStems.isEmpty() ? "（暂无历史题目）"

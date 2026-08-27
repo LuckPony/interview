@@ -1,7 +1,9 @@
 package interview.homegrown.modules.drill.domain;
 
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 认知动作维度（四维签名之一）。
@@ -45,9 +47,19 @@ public enum ProbeType {
         return arity >= minArity && arity <= maxArity;
     }
 
-    /** 给定 arity，返回所有合法的 probe_type（服务端确定性过滤，不交给 LLM） */
+    /**
+     * 已停用出题的题型（保留枚举值兼容历史题库数据与渲染，但不再生成新题）。
+     * <p>CLOZE 挖空题：要求"题干声明 / 代码挖空 / 题目复述"三处对账，模型规划-渲染漂移导致
+     * 高比例的自相矛盾题，且无通用可靠的服务端校验能兜住，苏格拉底教学改版中先行停用。
+     */
+    private static final Set<ProbeType> DISABLED = EnumSet.of(CLOZE);
+
+    /** 给定 arity，返回所有合法且仍在用的 probe_type（服务端确定性过滤，不交给 LLM） */
     public static List<ProbeType> forArity(int arity) {
-        return Arrays.stream(values()).filter(p -> p.supports(arity)).toList();
+        return Arrays.stream(values())
+                .filter(p -> p.supports(arity))
+                .filter(p -> !DISABLED.contains(p))
+                .toList();
     }
 
     /**

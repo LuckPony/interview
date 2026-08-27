@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { drill } from '../api/drill';
+import { CasualNoteDialog } from './CasualNoteDialog';
 import './AppShell.css';
 
 interface NavItem {
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { userId, logout } = useAuth();
   const navigate = useNavigate();
   const [pendingReview, setPendingReview] = useState(0);
+  const [showCasualNote, setShowCasualNote] = useState(false);
 
   // 主进程在窗口隐藏后仍负责定时通知；渲染层只需周期性同步今天还剩多少学习/复习任务。
   useEffect(() => {
@@ -106,6 +108,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="main">{children}</main>
+
+      {/* 全局随手记：右下角悬浮入口，点击直接打开（不绑定题目/知识点） */}
+      <button
+        className="casual-note-fab"
+        onClick={() => setShowCasualNote(true)}
+        title="随手记"
+        aria-label="打开随手记"
+      >
+        <NotebookPen size={20} strokeWidth={1.8} />
+      </button>
+
+      {showCasualNote && (
+        <CasualNoteDialog onClose={() => setShowCasualNote(false)} />
+      )}
     </div>
   );
 }

@@ -60,7 +60,6 @@ function shortDate(iso: string): string {
 }
 
 type Props = {
-  runId: number | null;
   onClose: () => void;
   onSaved?: () => void;
 };
@@ -72,7 +71,7 @@ type Props = {
  * 加粗/斜体/标题/引用/代码/链接/表格/列表/图片…，支持粘贴与拖入图片，自动转 base64 存库）。
  * 保存后留在弹窗里继续编辑，关闭才退出。
  */
-export function CasualNoteDialog({ runId, onClose, onSaved }: Props) {
+export function CasualNoteDialog({ onClose, onSaved }: Props) {
   const [notes, setNotes] = useState<CasualNote[] | null>(null);
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -193,7 +192,6 @@ export function CasualNoteDialog({ runId, onClose, onSaved }: Props) {
         : await knowledgeApi.createNote({
             title: title.trim(),
             content,
-            chatId: runId ?? undefined,
           });
       setEditingId(saved.id);
       onSaved?.();
@@ -292,7 +290,7 @@ export function CasualNoteDialog({ runId, onClose, onSaved }: Props) {
                 ref={mdRef}
                 value={content}
                 onChange={(v) => setContent(v ?? '')}
-                height={380}
+                height="100%"
                 preview="live"
                 commands={toolbarCommands()}
                 textareaProps={{
@@ -303,11 +301,7 @@ export function CasualNoteDialog({ runId, onClose, onSaved }: Props) {
             {savedFlash && <div className="casual-note-saved">已保存 ✓</div>}
             <div className="casual-note-actions">
               <span className="casual-note-hint">
-                {editingId != null
-                  ? '正在编辑已有笔记'
-                  : runId != null
-                    ? '新建后将挂到当前对话'
-                    : '新建随手记'}
+                {editingId != null ? '正在编辑已有笔记' : '新建随手记'}
               </span>
               <Button variant="ghost" onClick={onClose}>关闭</Button>
               <Button onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</Button>

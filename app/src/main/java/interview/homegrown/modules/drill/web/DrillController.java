@@ -1110,7 +1110,7 @@ public class DrillController {
         // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
         // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
         // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
-        // 判分后（GRADED）看答案同样记录边界：三阶段流程里「看答案后不再迁移测试追问」。
+        // 判分后（GRADED）看答案同样记录边界：三阶段流程里「看答案后不再补救测试追问」。
         boolean reveal = Boolean.TRUE.equals(req.reveal());
         boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
                 || run.getStatus() == DrillRunStatus.ANSWERING;
@@ -1204,8 +1204,8 @@ public class DrillController {
     }
 
     /**
-     * 迁移测试（阶段3）：判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题考察。
-     * 返回迁移测试题 stem；用户作答后调 {@code POST /{runId}/transfer-answer} 判分。
+     * 补救测试（阶段3）：判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题考察。
+     * 返回补救测试题 stem；用户作答后调 {@code POST /{runId}/transfer-answer} 判分。
      */
     @PostMapping("/{runId}/transfer")
     public TransferTestService.TransferView transfer(@PathVariable Long runId) {
@@ -1213,7 +1213,7 @@ public class DrillController {
         return transferTestService.start(uid, runId);
     }
 
-    /** 迁移测试作答判分：答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。 */
+    /** 补救测试作答判分：答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。 */
     @PostMapping("/{runId}/transfer-answer")
     public GradeView transferAnswer(@PathVariable Long runId, @RequestBody ChatRequest req) {
         Long uid = currentUserId();
@@ -1221,8 +1221,8 @@ public class DrillController {
     }
 
     /**
-     * 自动迁移测试：判分讲解结束后由前端自动调用，AI 自主评判是否再考一道迁移题。
-     * 若 AI 判定值得再考 → 返回迁移题视图（前端据此展示新题）；判定不需要或硬性不满足 → 返回 null。
+     * 自动补救测试：判分讲解结束后由前端自动调用，AI 自主评判是否再考一道补救题。
+     * 若 AI 判定值得再考 → 返回补救题视图（前端据此展示新题）；判定不需要或硬性不满足 → 返回 null。
      */
     @PostMapping("/{runId}/auto-transfer")
     public ResponseEntity<?> autoTransfer(@PathVariable Long runId) {

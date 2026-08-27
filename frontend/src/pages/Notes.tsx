@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check, MessageCircle, Plus } from 'lucide-react';
+import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check, MessageCircle } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
-import { CasualNoteDialog } from '../components/CasualNoteDialog';
 import { CardMeta, daysUntilDue } from '../components/CardMeta';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
@@ -51,7 +50,6 @@ export function Notes() {
   const [notes, setNotes] = useState<CasualNote[] | null>(null);
   const [noteSearch, setNoteSearch] = useState('');
   const [noteConceptId, setNoteConceptId] = useState<number | null>(null);
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [dueCards, setDueCards] = useState<KnowledgeCard[]>([]);
   // 复习反馈后自动消失的轻提示（无需确认）
   const [toast, setToast] = useState<{ kind: 'good' | 'bad'; text: string } | null>(null);
@@ -378,9 +376,6 @@ export function Notes() {
                   ));
                 })()}
               </select>
-              <Button className="note-new-btn" onClick={() => setShowNoteDialog(true)}>
-                <Plus size={15} strokeWidth={2} /> 新建
-              </Button>
             </div>
             {(() => {
               const filtered = (notes ?? []).filter((n) => {
@@ -388,6 +383,14 @@ export function Notes() {
                 const matchConcept = noteConceptId == null || n.conceptId === noteConceptId;
                 return matchTitle && matchConcept;
               });
+              if ((notes ?? []).length === 0) {
+                return (
+                  <div className="empty">
+                    <h3>还没有随手记</h3>
+                    <p>点右下角的「随手记」按钮，随时写一条</p>
+                  </div>
+                );
+              }
               if (filtered.length === 0) {
                 return <div className="empty"><h3>没有匹配的随手记</h3></div>;
               }
@@ -412,15 +415,6 @@ export function Notes() {
             })()}
           </>
         )
-      )}
-      {showNoteDialog && (
-        <CasualNoteDialog
-          runId={null}
-          onClose={() => setShowNoteDialog(false)}
-          onSaved={() => {
-            knowledgeApi.listNotes().then(setNotes).catch(() => undefined);
-          }}
-        />
       )}
     </div>
   );
