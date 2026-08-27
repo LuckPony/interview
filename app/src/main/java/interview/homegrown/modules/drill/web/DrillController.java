@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.ai.LessonQaGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
+import interview.homegrown.modules.drill.ai.SocraticJudge;
+import interview.homegrown.modules.drill.ai.SocraticJudgeService;
 import interview.homegrown.modules.drill.domain.*;
 import interview.homegrown.modules.drill.repository.*;
 import interview.homegrown.modules.drill.service.*;
@@ -68,6 +70,7 @@ public class DrillController {
     private final SubPointPassRepository subPointPassRepo;
     private final interview.homegrown.common.ai.AiSettingsService aiSettings;
     private final TutorGenerator tutorGenerator;
+    private final SocraticJudgeService socraticJudge;
     private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
     private final DailyPlanService dailyPlanService;
@@ -88,6 +91,7 @@ public class DrillController {
                            SubPointPassRepository subPointPassRepo,
                            interview.homegrown.common.ai.AiSettingsService aiSettings,
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
+                           SocraticJudgeService socraticJudge,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
                            ReviewService reviewService,
@@ -111,6 +115,7 @@ public class DrillController {
         this.subPointPassRepo = subPointPassRepo;
         this.aiSettings = aiSettings;
         this.tutorGenerator = tutorGenerator;
+        this.socraticJudge = socraticJudge;
         this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
         this.dailyPlanService = dailyPlanService;
@@ -1125,34 +1130,80 @@ public class DrillController {
         final String context = contextOf(uid, run.getQuestionId());
         final List<String> fImages = images;
 
+        // —— 苏格拉底三态判定（用户每轮作答后）——
+        // 判定结果写回 turn，并决定 AI 这轮的回复行为：
+        //   answering → AI 简短确认并等（不引导不评分）
+        //   needs_guide → AI 抛一个引导问题（不给答案）
+        //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
+        final SocraticJudge judge = fReveal ? null : socraticJudge.judge(
+                stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+        if (judge != null) {
+            fTurn.setJudgeState(judge.state());
+            fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
+            fTurn.setFatalGap(judge.fatalGap());
+            turnRepo.save(fTurn);
+            if ("done".equalsIgnoreCase(judge.state())) {
+                // G1 达标 → GOOD 结束
+                run.setSocraticState(DrillPhase.DONE);
+                run.setFinalGrade("GOOD");
+                runRepo.save(run);
+            } else if ("needs_guide".equalsIgnoreCase(judge.state())) {
+                run.setSocraticState(DrillPhase.GUIDED);
+                run.setGuideRounds(run.getGuideRounds() + 1);
+                runRepo.save(run);
+            }
+        }
+
         StreamingResponseBody body = out -> {
-            // 客户端已断开（用户点「暂停」或离开页面）：AI 尚未送达的回复不落库。
-            // 流式生成无法中途打断，但跳过 tutorText 写入即可保证「暂停后未答完的内容」不进数据库。
             java.util.concurrent.atomic.AtomicBoolean clientGone =
                     new java.util.concurrent.atomic.AtomicBoolean(false);
             try {
-                // 揭示边界触发：先推 event:reveal，前端在聊天线程里渲染“参考答案”分隔线
+                // 揭示边界触发：先推 event:reveal
                 if (fReveal && notFinished) {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
-                String full = tutorGenerator.streamChat(stem, pointsJson, List.of(), allTurns, context,
-                        fImages,
-                        token -> {
-                            try {
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                clientGone.set(true);
-                                log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r),
-                        fReveal, 0, TutorGenerator.SAFETY_ANSWER_CAP);
 
-                // 完整文本只写回 turn。AI 可以停止追问并提示用户点击按钮，但不得替用户结束或触发评分。
-                // 客户端已断开（暂停/离开）时跳过：该轮 AI 回复视为未完成，不进入对话历史与评分依据。
+                // 苏格拉底判定驱动的回复：
+                // - needs_guide → 直接推送 guideQuestion 作为引导问题（不走 streamChat）
+                // - done → 推送 praise + 提示结束
+                // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
+                String judgeReply = null;
+                if (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
+                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank()) {
+                    judgeReply = judge.guideQuestion();
+                } else if (judge != null && "done".equalsIgnoreCase(judge.state())
+                        && judge.praise() != null && !judge.praise().isBlank()) {
+                    judgeReply = judge.praise();
+                }
+
+                String full;
+                if (judgeReply != null) {
+                    // 直接推送判定生成的引导/表扬文本
+                    for (String token : judgeReply.split("(?<=。|？|！|\\n)")) {
+                        if (token.isBlank()) continue;
+                        out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                    full = judgeReply;
+                } else {
+                    full = tutorGenerator.streamChat(stem, pointsJson, List.of(), allTurns, context,
+                            fImages,
+                            token -> {
+                                try {
+                                    out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                            .getBytes(StandardCharsets.UTF_8));
+                                    out.flush();
+                                } catch (Exception e) {
+                                    clientGone.set(true);
+                                    log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
+                                }
+                            },
+                            r -> sseReasoning(out, r),
+                            fReveal, 0, TutorGenerator.SAFETY_ANSWER_CAP);
+                }
+
                 if (full != null && !clientGone.get()) {
                     fTurn.setTutorText(full.trim());
                     turnRepo.save(fTurn);
@@ -1548,6 +1599,23 @@ public class DrillController {
         QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
         if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
         return q.getConceptIds()[0].longValue();
+    }
+
+    /** 把 turns 拼成「老师/学生」对话实录，供 SocraticJudgeService 判定哪些点被实际考到。 */
+    private String buildConversationForJudge(List<DrillTurn> turns) {
+        if (turns == null || turns.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (DrillTurn t : turns) {
+            String ans = t.getRawAnswer();
+            if (ans != null && !ans.isBlank()) {
+                sb.append("学生：").append(ans, 0, Math.min(ans.length(), 400)).append("\n");
+            }
+            String tutor = t.getTutorText();
+            if (tutor != null && !tutor.isBlank()) {
+                sb.append("老师：").append(tutor, 0, Math.min(tutor.length(), 400)).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */

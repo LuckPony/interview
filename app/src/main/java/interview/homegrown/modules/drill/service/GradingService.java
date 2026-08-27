@@ -119,7 +119,8 @@ public class GradingService {
             turnRepo.save(turn);
         }
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed);
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
+                run.isGuided(), run.getGuideRounds(), run.isRevealed());
 
         // 苏格拉底 G1 预引导分：达标（GOOD/EASY）→ DONE + finalGrade；未达标 → GUIDED + preGrade（待引导/再考查）
         Grade g1 = out.grade();
@@ -233,7 +234,8 @@ public class GradingService {
         turn0.setRawScore(out.rawScore());
         turnRepo.save(turn0);
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed);
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
+                run.isGuided(), run.getGuideRounds(), run.isRevealed());
 
         // 苏格拉底 G1 预引导分（延迟评分路径同 grade）
         Grade g1 = out.grade();
@@ -282,14 +284,20 @@ public class GradingService {
         return s.substring(0, max) + "…";
     }
 
-    /** per concept 更新掌握度与下次复习时间 */
-    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed) {
+    /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */
+    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed,
+                             boolean guided, int guideRounds, boolean revealed) {
         for (ConceptScore cs : scores) {
             Grade effective = effectiveGrade(cs);
             int level = computeLevel(userId, cs.conceptId(), effective, cs.role(), mode);
-            Instant due = scheduleService.nextDue(effective, timed);
+            Instant due = scheduleService.nextDue(effective, timed, guided, guideRounds, revealed);
             masteryRepo.upsert(userId, cs.conceptId(), level, effective.name(), due);
         }
+    }
+
+    /** per concept 更新掌握度与下次复习时间（模拟面试 REHEARSAL 路径，无苏格拉底引导概念） */
+    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed) {
+        applyMastery(userId, scores, mode, timed, false, 0, false);
     }
 
     /** ANCHOR 封顶 GOOD：不给 EASY，避免"顺带答对"把复习间隔拉得太长 */
