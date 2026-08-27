@@ -16,10 +16,12 @@
 | 看答案 | 用户表明真不会→AI 给答案+原因；最终分封 AGAIN |
 | 旧机制 | followups 追问 + 补救测试 全部移除 |
 
-## 默认取舍（用户未逐条否认，按建议推进）
-- 复习（ReviewService/DrillReview）**本轮不改**，沿用旧评分调用；新 GradingService 改造后复习自动复用
+## 默认取舍（用户已确认）
+- 复习（ReviewService/DrillReview）**本轮也改**：ReviewService 苏格拉底化 + ReviewGenerator 适配
+- **动态规划到期复习时间**：ScheduleService.nextDue 改成基于两级评分（G1/G2 + guided + guideRounds + revealed）
+- **删 REHEARSAL 追问场**：RehearsalService.spawnFollowup + DrillController `/{runId}/followup` + FollowupGenerator 删
 - DrillTurn **改造存**：每轮存 judgeState/coverage/引导问/作答
-- 讲解答疑 LessonQaMessage **保留不动**
+- 讲解答疑 LessonQaMessage **保留不动**，但答疑聊天回复框与练习一致（复用 CodeMirror 输入框）
 
 ---
 
@@ -27,8 +29,9 @@
 
 ### V44 迁移脚本 `app/src/main/resources/db/migration/common/V44__socratic_grading.sql`
 ```sql
--- 苏格拉底教学评分体系：移除补救测试/追问字段，加两级评分字段
--- 删：phase/first_grade/transfer_*（旧三阶段+补救测试）/current_round/max_round/answer_revealed_round（旧追问）
+-- 苏格拉底教学评分体系：移除补救测试/追问/三阶段字段，加两级评分字段
+-- 删：phase/first_grade/transfer_*（旧三阶段+补救测试）
+-- 删：current_round/max_round/answer_revealed_round（旧 REHEARSAL 追问场，followups 全删）
 ALTER TABLE drill_run
     DROP COLUMN IF EXISTS phase,
     DROP COLUMN IF EXISTS first_grade,
@@ -36,7 +39,10 @@ ALTER TABLE drill_run
     DROP COLUMN IF EXISTS transfer_max,
     DROP COLUMN IF EXISTS transfer_stem,
     DROP COLUMN IF EXISTS transfer_points,
-    DROP COLUMN IF EXISTS transfer_concept_ids;
+    DROP COLUMN IF EXISTS transfer_concept_ids,
+    DROP COLUMN IF EXISTS current_round,
+    DROP COLUMN IF EXISTS max_round,
+    DROP COLUMN IF EXISTS answer_revealed_round;
 
 -- DrillRun 新增苏格拉底评分字段
 ALTER TABLE drill_run
@@ -127,7 +133,35 @@ public enum DrillPhase {
 - G2：引导后再考查答完后判；封顶 BASIC
 - 看答案：revealed=true→封 AGAIN
 - 阈值：覆盖 ≥80% 且无致命缺漏
-- 删 `gradeTransfer` 方法
+- 删 `gradeTransfer` 方法 + `dynamicTransferMax` + `upgradeOnPass`
+- `applyMastery` 改：用 finalGrade（=G1 或 G2）+ guided + guideRounds 算掌握度升降
+
+### ScheduleService 动态排程 `service/ScheduleService.java`
+```java
+/** 基于两级评分的动态到期时间 */
+public Instant nextDue(Grade finalGrade, boolean guided, int guideRounds, boolean revealed) {
+    // G1 独立达标 GOOD → 间隔最长（已掌握）
+    // G2 引导后达标（guided=true，封顶 BASIC）→ 间隔短（需巩固）
+    // 看答案 AGAIN → 当天重来
+    int days = switch (finalGrade) {
+        case GOOD -> guided ? Math.max(1, 3 - guideRounds) : 2;  // 引导过则缩短
+        case HARD -> 1;
+        case AGAIN -> revealed ? 0 : 1;  // 看答案当天重来
+        case EASY -> 4;
+    };
+    return Instant.now().plus(days, ChronoUnit.DAYS);
+}
+```
+
+---
+
+## 阶段 3.5：复习苏格拉底化 `service/ReviewService.java` + `ai/ReviewGenerator.java`
+
+- ReviewService 复用 SocraticJudgeService，复习也走三态判定
+- ReviewGenerator 的复盘报告基于两级评分结果（G1 vs G2 + 引导轮数）
+- 删 RehearsalService.spawnFollowup + DrillController `/{runId}/followup` 端点
+- 删 FollowupGenerator.java（如无其他引用）
+- DrillMode.REHEARSAL 枚举保留（历史数据兼容）或删除（确认无引用后）
 
 ---
 
