@@ -185,15 +185,15 @@ public class GradingService {
         List<DrillTurn> gradeTurns = turns;
         boolean revealed = run.isRevealed();
 
-        // —— 评分正文只取「第一次独立作答」 ——
-        // 追问后的修正/复述只进入 conversation 供判分器参考（判断老师是否泄底、哪些点被实际考到），
-        // 不进入评分正文。否则老师纠正后学生照着复述出正确版本，会被判 HIT 把分数刷成满分，失去考察意义。
-        // gradeTurns 已按 round 升序，findFirst 即第一次作答。
+        // —— 评分正文取「最后一轮实质作答」——
+        // 苏格拉底流程里用户往往是「先答一点 → AI 引导 → 补全」，最终轮次往往包含最完整的作答。
+        // 只取第一次会漏掉引导后的补全内容，导致评分偏低。取最后一轮非空作答作为评分正文，
+        // 判分 prompt 自带「老师泄底后学生回答判 NA」的兜底，不会因复述刷分。
         int MAX_COMBINED = 8000;
         String rawAnswer = gradeTurns.stream()
                 .filter(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank())
                 .map(DrillTurn::getRawAnswer)
-                .findFirst()
+                .reduce((first, second) -> second)   // 取最后一个
                 .orElse(null);
         if (rawAnswer == null || rawAnswer.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
@@ -326,27 +326,30 @@ public class GradingService {
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
     private String buildConversation(List<DrillTurn> turns) {
         StringBuilder sb = new StringBuilder();
-        boolean firstAnswerSeen = false;
         for (DrillTurn t : turns) {
             String ans = t.getRawAnswer();
             if (ans != null && !ans.isBlank()) {
-                // 明确区分「首次独立作答」与「后续追问/修正」：后续修正不进入评分正文，
-                // 这里标注出来，避免判分器把老师纠正后的复述当成独立作答采信。
-                String label = firstAnswerSeen ? "学生（追问后的修正/复述，不计分）" : "学生（首次独立作答，计分）";
-                firstAnswerSeen = true;
-                sb.append(label).append("：").append(truncate(ans, 400)).append("\n");
+                // 完整呈现每轮学生作答（含引导后的补全）与老师回复，供判分器核验：
+                // - 哪些评分点被实际考到 → 没问到的判 NA（不计分）
+                // - 老师是否泄底 → 依据 prompt 规则把泄底后的回答判 NA/低分
+                // 不再把后续轮次标成「不计分」：苏格拉底流程里补全后的代码往往是最终完整答案，
+                // 标成不计分会把引导后的正确作答排除在评分外（评分假性偏低）。
+                sb.append("学生（第 ").append(t.getRound() + 1).append(" 轮）：")
+                        .append(trimForGrading(ans)).append("\n");
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                sb.append("老师：").append(truncate(tutor, 400)).append("\n");
+                sb.append("老师：").append(trimForGrading(tutor)).append("\n");
             }
         }
         return sb.toString();
     }
 
-    private String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s;
-        return s.substring(0, max) + "…";
+    /** 供对话实录用的裁剪：代码作答（含 ``` 围栏）完整保留；其余宽松截断到 1200 字符。 */
+    private static String trimForGrading(String s) {
+        if (s == null || s.length() <= 1200) return s == null ? "" : s;
+        if (s.contains("```")) return s;
+        return s.substring(0, 1200) + "…";
     }
 
     /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */

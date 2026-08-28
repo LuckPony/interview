@@ -1186,17 +1186,22 @@ public class DrillController {
                 }
 
                 // 苏格拉底判定驱动的回复：
-                // - needs_guide → 直接推送 guideQuestion 作为引导问题（不走 streamChat）
+                // - needs_guide → 也走 streamChat：让 AI 结合对话历史先指出错处/给原因，再引导追问
+                //   （不再直接推送 judge.guideQuestion——那只有一句反问，没有解释，体验差）
                 // - done → 推送 praise + 提示结束
                 // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
                 String judgeReply = null;
-                if (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
-                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank()) {
-                    judgeReply = judge.guideQuestion();
-                } else if (judge != null && "done".equalsIgnoreCase(judge.state())
+                if (judge != null && "done".equalsIgnoreCase(judge.state())
                         && judge.praise() != null && !judge.praise().isBlank()) {
                     judgeReply = judge.praise();
                 }
+                // needs_guide 也走 streamChat；但把 judge 的引导问题注入 streamChat 的 user prompt，
+                // 让 AI 以它为「本轮该引导的点」展开（先解释原因，再抛引导）。——通过 pointsJson 上下文已含评分点，
+                // 这里把 guideQuestion 作为附加指令传给 streamChat：用 fGuide 标记
+                final String fGuide = (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
+                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank())
+                        ? judge.guideQuestion()
+                        : null;
 
                 String full;
                 if (judgeReply != null) {
@@ -1210,7 +1215,7 @@ public class DrillController {
                     full = judgeReply;
                 } else {
                     full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
-                            fImages,
+                            fImages, fGuide,
                             token -> {
                                 try {
                                     out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
@@ -1636,14 +1641,22 @@ public class DrillController {
         for (DrillTurn t : turns) {
             String ans = t.getRawAnswer();
             if (ans != null && !ans.isBlank()) {
-                sb.append("学生：").append(ans, 0, Math.min(ans.length(), 400)).append("\n");
+                sb.append("学生（第 ").append(t.getRound() + 1).append(" 轮）：")
+                        .append(trimForJudge(ans)).append("\n");
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                sb.append("老师：").append(tutor, 0, Math.min(tutor.length(), 400)).append("\n");
+                sb.append("老师：").append(trimForJudge(tutor)).append("\n");
             }
         }
         return sb.toString();
+    }
+
+    /** 判定用对话实录裁剪：代码（含 ``` 围栏）完整保留；其余 1200 字符截断。 */
+    private static String trimForJudge(String s) {
+        if (s == null || s.length() <= 1200) return s == null ? "" : s;
+        if (s.contains("```")) return s;
+        return s.substring(0, 1200) + "…";
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */

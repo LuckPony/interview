@@ -63,9 +63,10 @@ public class TutorGenerator {
             你是一位耐心的技术辅导老师，一对一辅导学生做题（苏格拉底引导式）。目标是帮学生自己想明白；评分要点里题面未要求的扩展内容不得泄底、不得据此判回答不完整。
             1. 准确性 + 纠错：只讲确切技术事实，绝不编造。当学生指出你的回答、代码或所谓“标准答案”有误时立刻核查：若他正确，直接承认“这里我错了”并给修正，绝不复读错误结论、绝不把学生的正确质疑说成“需要补的地方”。给任何代码前先在心里 trace 一遍：这段代码在「单线程直接调用」时会不会阻塞/死锁、在「并发调用」时是否真能互斥；发现隐患就改用正确写法（如带缓冲 channel、sync.Mutex），绝不给出在某种调用方式下会死锁却号称“标准答案”的代码。
             2. 不泄完整答案：学生索要完整答案/代码时，先给最关键结论缓解卡点，再提示点「看答案」按钮，不要直接倾倒完整解法。
-            3. 苏格拉底引导：学生开始实质作答但未答完整时，先判断哪个评分点最弱，用一个小而具体的引导问题（只问、不给答案、不替学生总结）让他自己想出来；答得完整且正确时肯定并提示可结束；就具体点提问→一句话结论+简短解释；确认答案对不对→明确说对/部分对/错并解释原因。不要机械地一个个问，问最有价值的那个即可。
-            4. 禁止问“理解了吗”，禁止要求复述或重复已说过的话；收尾提示「结束并评分」只在学生表示做完或讨论确实收束时出现。
-            5. 100-240 字、白话+最小示例、Markdown 排版、不用中文破折号、不提分数判分、结尾完整句。
+            3. 苏格拉底引导（先诊断、再解释、后引导）：学生开始实质作答后，先判断哪个评分点答错或没答到。若答错了——指出错在哪里、解释为什么错（给正确的原理/结论，必要时给最小反例），让他明白问题所在，再抛一个引导问题或请他修正；学生卡住或明显不会——给关键提示并解释思路，引导他自己迈出下一步。不要机械地重复提问，更不要只反问不给解释；每轮要么推进理解、要么推进作答。
+            4. 答得完整且正确→肯定并提示可结束；就具体点提问→一句话结论+简短解释；确认答案对不对→明确说对/部分对/错并解释原因。
+            5. 禁止问“理解了吗”，禁止要求复述或重复已说过的话；收尾提示「结束并评分」只在学生表示做完或讨论确实收束时出现。
+            6. 100-300 字、白话+最小示例、Markdown 排版、不用中文破折号、不提分数判分、结尾完整句。
             """;
 
     /**
@@ -179,7 +180,7 @@ public class TutorGenerator {
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
                              java.util.function.Consumer<String> onToken) {
-        return streamChat(stem, pointsJson, turns, null, onToken, null, false);
+        return streamChat(stem, pointsJson, turns, null, null, null, onToken, null, false);
     }
 
     /**
@@ -205,7 +206,7 @@ public class TutorGenerator {
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal) {
-        return streamChat(stem, pointsJson, turns, null, null, onToken, onReasoning, reveal);
+        return streamChat(stem, pointsJson, turns, null, null, null, onToken, onReasoning, reveal);
     }
 
     /**
@@ -216,38 +217,45 @@ public class TutorGenerator {
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal) {
-        return streamChat(stem, pointsJson, turns, context, null, onToken, onReasoning, reveal);
+        return streamChat(stem, pointsJson, turns, context, null, null, onToken, onReasoning, reveal);
     }
 
     /**
      * 带学习上下文 + 学生消息附带的图片（data URL 列表；仅视觉模型，null/空则纯文本）。
+     *
+     * @param guideHint 苏格拉底 judge 判 needs_guide 时给的本轮引导点（可空）。
+     *                  注入 user prompt，AI 以此展开：先指出错处/解释原因，再引导。
      */
     public String streamChat(String stem, String pointsJson, List<DrillTurn> turns, String context,
-                             List<String> images,
+                             List<String> images, String guideHint,
                              java.util.function.Consumer<String> onToken,
                              java.util.function.Consumer<String> onReasoning,
                              boolean reveal) {
         String pointsText = formatPoints(pointsJson);
 
-        // 对话历史只保留最近几轮，且每条文本截断到合理长度：
-        // 聊天不限轮数，若把全部历史拼进 prompt，轮数多了会撑爆模型上下文（LLM 返回 400/失败）。
+        // 对话历史保留最近 12 轮；代码作答（含 ``` 围栏）不截断，其余宽松截断到 1000 字符。
+        // 之前的 500 截断会把长代码砍成残句，AI 看到的作答顺序与内容都不对。
         StringBuilder history = new StringBuilder();
-        int from = Math.max(0, turns.size() - 8);   // 最多带最近 8 条
+        int from = Math.max(0, turns.size() - 12);
         for (int i = from; i < turns.size(); i++) {
             DrillTurn t = turns.get(i);
             String answer = t.getRawAnswer();
             if (answer != null && !answer.isBlank()) {
-                history.append("学生: ").append(truncate(answer, 500)).append("\n\n");
+                history.append("学生: ").append(trimForContext(answer)).append("\n\n");
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                history.append("老师: ").append(truncate(tutor, 500)).append("\n\n");
+                history.append("老师: ").append(trimForContext(tutor)).append("\n\n");
             }
         }
 
         String contextBlock = (context == null || context.isBlank())
                 ? ""
                 : "\n\n学习上下文（学生进度 / 概念要点 / 用户资料 / 互联网补充，作为参考素材，引用时可注明出处）：\n" + context;
+        String guideBlock = (guideHint == null || guideHint.isBlank())
+                ? ""
+                : "\n\n【本轮判定：学生作答未达标，最需要引导的点】\n" + guideHint
+                + "\n请围绕这个点：先指出他哪里没答对/没答到并解释原因（给正确原理或最小反例），再抛一个引导问题或请他修正。";
         String user = String.format("""
                 题目：
                 %s
@@ -258,12 +266,13 @@ public class TutorGenerator {
                 对话历史：
                 %s
                 %s
+                %s
 
                 学生最新消息附带了 %d 张图片（截图，随消息一起发送），请结合图片内容回应：
                 图片是学生作答的截图/报错/代码/题目时，请基于图里的实际内容回应，不要臆测图里没有的东西。
                 请回复学生的最新消息。
                 """, stem, pointsText,
-                history.toString().isBlank() ? "（无）" : history.toString(), contextBlock,
+                history.toString().isBlank() ? "（无）" : history.toString(), contextBlock, guideBlock,
                 images == null ? 0 : images.size());
 
         StringBuilder buf = new StringBuilder();
@@ -288,6 +297,13 @@ public class TutorGenerator {
                 });
         String text = buf.toString().trim();
         return text.isEmpty() ? null : text;
+    }
+
+    /** 供对话历史用的裁剪：代码作答（含 ``` 围栏）完整保留；其余文本宽松截断到 1000 字符。 */
+    private static String trimForContext(String s) {
+        if (s == null || s.length() <= 1000) return s == null ? "" : s;
+        if (s.contains("```")) return s;   // 代码作答不截断，保证 AI 看到完整代码
+        return s.substring(0, 1000) + "…";
     }
 
     /** 把评分点 JSON 展平成纯文本，避免模型被 JSON 格式干扰 */
