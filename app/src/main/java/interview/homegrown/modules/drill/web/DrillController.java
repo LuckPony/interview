@@ -1146,7 +1146,10 @@ public class DrillController {
         //   answering → AI 简短确认并等（不引导不评分）
         //   needs_guide → AI 抛一个引导问题（不给答案）
         //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
-        final SocraticJudge judge = fReveal ? null : socraticJudge.judge(
+        // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
+        boolean preGraded = run.getStatus() == DrillRunStatus.READY
+                || run.getStatus() == DrillRunStatus.ANSWERING;
+        final SocraticJudge judge = (fReveal || !preGraded) ? null : socraticJudge.judge(
                 stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
         if (judge != null) {
             fTurn.setJudgeState(judge.state());
