@@ -1120,25 +1120,11 @@ public class DrillController {
             runRepo.save(run);
         }
 
-        // —— 答案揭示边界（“得到答案之前”的评分依据）——
-        // 按钮 reveal=true 或文字明确索要答案（wantsAnswerNow）都触发揭示；text 触发是用户
-        // 显式表达「要答案/不会了/直接给我」，与按钮等效（评分同样封 AGAIN，防止骗答案刷分）。
-        // 普通文本如「怎么做」「如何实现」等不触发——那是正常作答过程，不能靠关键词猜测意图。
-        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
-        boolean reveal = Boolean.TRUE.equals(req.reveal())
-                || wantsAnswerNow(req.rawAnswer());
-        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
-        if (reveal && notFinished && !run.isRevealed()) {
-            run.setRevealed(true);
-            runRepo.save(run);
-        }
-
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
         final DrillTurn fTurn = turn;
-        final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
         final List<String> fImages = images;
 
@@ -1147,17 +1133,34 @@ public class DrillController {
         //   answering → AI 简短确认并等（不引导不评分）
         //   needs_guide → AI 抛一个引导问题（不给答案）
         //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
+        //   wantsAnswerNow=true → 用户明确索要完整答案/放弃作答，触发揭示（评分封 AGAIN）
         // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
+        boolean buttonReveal = Boolean.TRUE.equals(req.reveal());
         boolean preGraded = run.getStatus() == DrillRunStatus.READY
                 || run.getStatus() == DrillRunStatus.ANSWERING;
-        final SocraticJudge judge = (fReveal || !preGraded) ? null : socraticJudge.judge(
+        // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
+        final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
                 stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+
+        // —— 答案揭示边界（“得到答案之前”的评分依据）——
+        // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
+        // 意图由 AI 语义理解判定（非关键词写死）。揭示后评分封 AGAIN，防止骗答案刷分。
+        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
+        boolean reveal = buttonReveal || (judge != null && judge.wantsAnswerNow());
+        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
+        if (reveal && notFinished && !run.isRevealed()) {
+            run.setRevealed(true);
+            runRepo.save(run);
+        }
+        final boolean fReveal = reveal;
+
         if (judge != null) {
             fTurn.setJudgeState(judge.state());
             fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
             fTurn.setFatalGap(judge.fatalGap());
             turnRepo.save(fTurn);
-            if ("done".equalsIgnoreCase(judge.state())) {
+            // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（fReveal=true）
+            if (!reveal && "done".equalsIgnoreCase(judge.state())) {
                 // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
                 // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
                 boolean guided = run.getGuideRounds() > 0
@@ -1169,7 +1172,7 @@ public class DrillController {
                     run.setFinalGrade("GOOD");
                     runRepo.save(run);
                 }
-            } else if ("needs_guide".equalsIgnoreCase(judge.state())) {
+            } else if (!reveal && "needs_guide".equalsIgnoreCase(judge.state())) {
                 run.setSocraticState(DrillPhase.GUIDED);
                 run.setGuideRounds(run.getGuideRounds() + 1);
                 runRepo.save(run);
@@ -1191,15 +1194,19 @@ public class DrillController {
                 //   （不再直接推送 judge.guideQuestion——那只有一句反问，没有解释，体验差）
                 // - done → 推送 praise + 提示结束
                 // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
+                // - wantsAnswerNow=true → 用户要答案，走 reveal 讲解（fReveal=true），
+                //   judge 的 praise/guideQuestion 一律不生效（除非按钮手动 reveal，judge 为 null）
+                boolean wantAnswer = judge != null && judge.wantsAnswerNow();
                 String judgeReply = null;
-                if (judge != null && "done".equalsIgnoreCase(judge.state())
+                if (judge != null && !wantAnswer && "done".equalsIgnoreCase(judge.state())
                         && judge.praise() != null && !judge.praise().isBlank()) {
                     judgeReply = judge.praise();
                 }
                 // needs_guide 也走 streamChat；但把 judge 的引导问题注入 streamChat 的 user prompt，
                 // 让 AI 以它为「本轮该引导的点」展开（先解释原因，再抛引导）。——通过 pointsJson 上下文已含评分点，
                 // 这里把 guideQuestion 作为附加指令传给 streamChat：用 fGuide 标记
-                final String fGuide = (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
+                final String fGuide = (!wantAnswer && judge != null
+                        && "needs_guide".equalsIgnoreCase(judge.state())
                         && judge.guideQuestion() != null && !judge.guideQuestion().isBlank())
                         ? judge.guideQuestion()
                         : null;
@@ -1496,46 +1503,6 @@ public class DrillController {
                 .header("Cache-Control", "no-cache")
                 .header("X-Accel-Buffering", "no")
                 .body(body);
-    }
-
-    /**
-     * 检测用户消息是否<b>明确</b>表达「直接要答案 / 不会了 / 放弃独立作答」。
-     * <p>命中即触发答案揭示（与点「看答案」按钮等效），评分封 AGAIN。
-     * 防误判要点：
-     * <ul>
-     *   <li>只匹配<b>完整、明确的索要表达</b>，不匹配「怎么做」「如何实现」等可能只是思考过程的词；</li>
-     *   <li>消息要短（≤40 字符）——长消息多半是真实作答或含作答内容，不触发；</li>
-     *   <li>「我不会做/不会了」这类放弃表达单独成句才算，若夹杂长段作答不触发。</li>
-     * </ul>
-     */
-    static boolean wantsAnswerNow(String raw) {
-        if (raw == null) return false;
-        String s = raw.trim();
-        if (s.isEmpty() || s.length() > 40) return false;
-
-        // 中英文「直接要答案」短语（整体匹配，命中率高、误伤低）
-        String[] direct = {
-                "直接给我答案", "给我答案", "直接告诉我答案", "告诉我答案", "把答案给我", "答案是",
-                "直接给答案", "直接给", "给我完整答案", "我要答案", "我要完整答案", "答案是什么",
-                "give me the answer", "give me answer", "give me the solution", "tell me the answer",
-                "what's the answer", "what is the answer", "show me the answer", "i want the answer",
-                "直接告诉我", "直接给我", "告诉我怎么做", "教教我", "怎么做这道题"
-        };
-        for (String d : direct) {
-            if (s.contains(d)) return true;
-        }
-
-        // 「不会了/放弃」→ 只在消息本身极短、几乎只表达放弃时触发（≤12 字符），
-        // 防止「我不会做，但我想先试试……」（想尝试而非放弃）被误判成要答案。
-        if (s.length() <= 12) {
-            String[] giveUp = {"不会了", "我不会", "不会做", "做不出来", "做不出", "想不出来",
-                    "放弃", "太难了", "i don't know", "i can't", "i give up", "give up",
-                    "don't know how", "no idea"};
-            for (String g : giveUp) {
-                if (s.contains(g)) return true;
-            }
-        }
-        return false;
     }
 
     /**
