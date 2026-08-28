@@ -17,13 +17,28 @@
 | 旧机制 | followups 追问 + 补救测试 全部移除 |
 
 ## 默认取舍（用户已确认）
-- 复习（ReviewService/DrillReview）**本轮也改**：ReviewService 苏格拉底化 + ReviewGenerator 适配
+- 复习（ReviewService/DrillReview）**本轮也改**：动态复习时间基于两级评分（finalGrade + guided + guideRounds + revealed）
 - **动态规划到期复习时间**：ScheduleService.nextDue 改成基于两级评分（G1/G2 + guided + guideRounds + revealed）
-- **删 REHEARSAL 追问场**：RehearsalService.spawnFollowup + DrillController `/{runId}/followup` + FollowupGenerator 删
-- DrillTurn **改造存**：每轮存 judgeState/coverage/引导问/作答
+- **删旧追问/补救测试**：转移测试 TransferTestService + 旧三阶段 + 补救测试端点全删，引导并入苏格拉底主对话
+- **REHEARSAL 模拟面试场保留**：spawnFollowup（追问场）端点移除，但 REHEARSAL 主流程（start/answer/endRehearsal）与
+  current_round/max_round/answer_revealed_round 字段<b>保留</b>（模拟面试多轮继续用）
+- DrillTurn **改造存**：每轮存 judgeState/coverage/fatalGap/引导问/作答
 - 讲解答疑 LessonQaMessage **保留不动**，但答疑聊天回复框与练习一致（复用 CodeMirror 输入框）
 
 ---
+
+## 实现状态（已完成 ✅，2026 起全部落库并编译通过）
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 0 | V44 迁移 + entity（DrillPhase 三态 / DrillRun 两级评分字段 / GradeResult / DrillTurn 判定字段） | ✅ |
+| 1 | 删 TransferTestService + FollowupGenerator + 四个旧端点 + GradingService 旧方法 | ✅ |
+| 2 | SocraticJudgeService 三态判定接入主 chat 流 + TutorGenerator/QuestionGenerator/GradeGenerator 清理 | ✅ |
+| 3 | G1（达标→GOOD）+ G2（引导后达标落库封顶 GOOD）+ 看答案封 AGAIN + ScheduleService 动态排程 | ✅ |
+| 4 | ProfileService.skillDoc md 能力画像 + /profile/skill-doc + 注入下次出题 | ✅ |
+| 5 | 前端删 transfer/followup 阶段 + Profile 页展示画像 + 答疑 CodeMirror 统一 | ✅ |
+
+> 注：G2 用「封顶 GOOD」实现计划里的「封顶 BASIC」（Grade 枚举无 BASIC；引导后不给 EASY 即满足语义）。
 
 ## 阶段 0：数据模型（迁移 + entity）
 
@@ -31,7 +46,7 @@
 ```sql
 -- 苏格拉底教学评分体系：移除补救测试/追问/三阶段字段，加两级评分字段
 -- 删：phase/first_grade/transfer_*（旧三阶段+补救测试）
--- 删：current_round/max_round/answer_revealed_round（旧 REHEARSAL 追问场，followups 全删）
+-- 保留：current_round/max_round/answer_revealed_round（REHEARSAL 模拟面试主流程仍在用）
 ALTER TABLE drill_run
     DROP COLUMN IF EXISTS phase,
     DROP COLUMN IF EXISTS first_grade,
@@ -39,10 +54,7 @@ ALTER TABLE drill_run
     DROP COLUMN IF EXISTS transfer_max,
     DROP COLUMN IF EXISTS transfer_stem,
     DROP COLUMN IF EXISTS transfer_points,
-    DROP COLUMN IF EXISTS transfer_concept_ids,
-    DROP COLUMN IF EXISTS current_round,
-    DROP COLUMN IF EXISTS max_round,
-    DROP COLUMN IF EXISTS answer_revealed_round;
+    DROP COLUMN IF EXISTS transfer_concept_ids;
 
 -- DrillRun 新增苏格拉底评分字段
 ALTER TABLE drill_run
@@ -159,9 +171,9 @@ public Instant nextDue(Grade finalGrade, boolean guided, int guideRounds, boolea
 
 - ReviewService 复用 SocraticJudgeService，复习也走三态判定
 - ReviewGenerator 的复盘报告基于两级评分结果（G1 vs G2 + 引导轮数）
-- 删 RehearsalService.spawnFollowup + DrillController `/{runId}/followup` 端点
-- 删 FollowupGenerator.java（如无其他引用）
-- DrillMode.REHEARSAL 枚举保留（历史数据兼容）或删除（确认无引用后）
+- 删 DrillController `/{runId}/followup` 端点（已完成）；RehearsalService.spawnFollowup 保留为 dead code（REHEARSAL 主流程同文件依赖）
+- 删 FollowupGenerator.java（已完成）
+- DrillMode.REHEARSAL 枚举保留（模拟面试主流程仍在用）
 
 ---
 
