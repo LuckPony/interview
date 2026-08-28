@@ -1142,10 +1142,8 @@ export function Drill() {
   };
 
   // ===== 结束并评分：基于整轮对话一次性判分 =====
-  const finishingRef = useRef(false);
   const finishAndGrade = async () => {
-    if (!meta || finishingRef.current) return;   // 防重复提交（双击/连续点击）
-    finishingRef.current = true;
+    if (!meta) return;
     setPhase('finishing');
     setErr('');
     try {
@@ -1156,13 +1154,9 @@ export function Drill() {
       }
       setPhase('graded');
     } catch (e) {
-      // 若已成功拿到评分（如后端已判分，二次提交被 409 拒），不回退 phase 保留评分界面；
-      // 否则才回到 chatting 让用户重试。
-      setPhase((prev) => (prev === 'graded' ? prev : 'chatting'));
+      setPhase('chatting');
       if (e instanceof ApiError && e.status === 409) setGate(e.message);
       else setErr(e instanceof ApiError ? e.message : '评分失败');
-    } finally {
-      finishingRef.current = false;
     }
   };
 
@@ -1893,7 +1887,7 @@ export function Drill() {
                     <Button
                       variant="ghost"
                       onClick={finishAndGrade}
-                      disabled={phase !== 'chatting' || aiStreaming || finishingRef.current}
+                      disabled={phase !== 'chatting' || aiStreaming}
                     >
                       结束并评分
                     </Button>
@@ -1912,7 +1906,7 @@ export function Drill() {
                     <Button
                       variant="ghost"
                       onClick={finishAndGrade}
-                      disabled={aiStreaming || finishingRef.current}
+                      disabled={aiStreaming}
                       title="已看答案，按已答内容评分"
                     >
                       结束并评分
