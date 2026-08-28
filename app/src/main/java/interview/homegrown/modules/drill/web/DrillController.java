@@ -1120,24 +1120,11 @@ public class DrillController {
             runRepo.save(run);
         }
 
-        // —— 答案揭示边界（“得到答案之前”的评分依据）——
-        // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
-        // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
-        // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
-        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
-        boolean reveal = Boolean.TRUE.equals(req.reveal());
-        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
-        if (reveal && notFinished && !run.isRevealed()) {
-            run.setRevealed(true);
-            runRepo.save(run);
-        }
-
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
         final DrillTurn fTurn = turn;
-        final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
         final List<String> fImages = images;
 
@@ -1146,17 +1133,34 @@ public class DrillController {
         //   answering → AI 简短确认并等（不引导不评分）
         //   needs_guide → AI 抛一个引导问题（不给答案）
         //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
+        //   wantsAnswerNow=true → 用户明确索要完整答案/放弃作答，触发揭示（评分封 AGAIN）
         // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
+        boolean buttonReveal = Boolean.TRUE.equals(req.reveal());
         boolean preGraded = run.getStatus() == DrillRunStatus.READY
                 || run.getStatus() == DrillRunStatus.ANSWERING;
-        final SocraticJudge judge = (fReveal || !preGraded) ? null : socraticJudge.judge(
+        // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
+        final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
                 stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+
+        // —— 答案揭示边界（“得到答案之前”的评分依据）——
+        // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
+        // 意图由 AI 语义理解判定（非关键词写死）。揭示后评分封 AGAIN，防止骗答案刷分。
+        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
+        boolean reveal = buttonReveal || (judge != null && judge.wantsAnswerNow());
+        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
+        if (reveal && notFinished && !run.isRevealed()) {
+            run.setRevealed(true);
+            runRepo.save(run);
+        }
+        final boolean fReveal = reveal;
+
         if (judge != null) {
             fTurn.setJudgeState(judge.state());
             fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
             fTurn.setFatalGap(judge.fatalGap());
             turnRepo.save(fTurn);
-            if ("done".equalsIgnoreCase(judge.state())) {
+            // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（fReveal=true）
+            if (!reveal && "done".equalsIgnoreCase(judge.state())) {
                 // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
                 // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
                 boolean guided = run.getGuideRounds() > 0
@@ -1168,7 +1172,7 @@ public class DrillController {
                     run.setFinalGrade("GOOD");
                     runRepo.save(run);
                 }
-            } else if ("needs_guide".equalsIgnoreCase(judge.state())) {
+            } else if (!reveal && "needs_guide".equalsIgnoreCase(judge.state())) {
                 run.setSocraticState(DrillPhase.GUIDED);
                 run.setGuideRounds(run.getGuideRounds() + 1);
                 runRepo.save(run);
@@ -1186,17 +1190,26 @@ public class DrillController {
                 }
 
                 // 苏格拉底判定驱动的回复：
-                // - needs_guide → 直接推送 guideQuestion 作为引导问题（不走 streamChat）
+                // - needs_guide → 也走 streamChat：让 AI 结合对话历史先指出错处/给原因，再引导追问
+                //   （不再直接推送 judge.guideQuestion——那只有一句反问，没有解释，体验差）
                 // - done → 推送 praise + 提示结束
                 // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
+                // - wantsAnswerNow=true → 用户要答案，走 reveal 讲解（fReveal=true），
+                //   judge 的 praise/guideQuestion 一律不生效（除非按钮手动 reveal，judge 为 null）
+                boolean wantAnswer = judge != null && judge.wantsAnswerNow();
                 String judgeReply = null;
-                if (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
-                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank()) {
-                    judgeReply = judge.guideQuestion();
-                } else if (judge != null && "done".equalsIgnoreCase(judge.state())
+                if (judge != null && !wantAnswer && "done".equalsIgnoreCase(judge.state())
                         && judge.praise() != null && !judge.praise().isBlank()) {
                     judgeReply = judge.praise();
                 }
+                // needs_guide 也走 streamChat；但把 judge 的引导问题注入 streamChat 的 user prompt，
+                // 让 AI 以它为「本轮该引导的点」展开（先解释原因，再抛引导）。——通过 pointsJson 上下文已含评分点，
+                // 这里把 guideQuestion 作为附加指令传给 streamChat：用 fGuide 标记
+                final String fGuide = (!wantAnswer && judge != null
+                        && "needs_guide".equalsIgnoreCase(judge.state())
+                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank())
+                        ? judge.guideQuestion()
+                        : null;
 
                 String full;
                 if (judgeReply != null) {
@@ -1210,7 +1223,7 @@ public class DrillController {
                     full = judgeReply;
                 } else {
                     full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
-                            fImages,
+                            fImages, fGuide,
                             token -> {
                                 try {
                                     out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
@@ -1636,14 +1649,22 @@ public class DrillController {
         for (DrillTurn t : turns) {
             String ans = t.getRawAnswer();
             if (ans != null && !ans.isBlank()) {
-                sb.append("学生：").append(ans, 0, Math.min(ans.length(), 400)).append("\n");
+                sb.append("学生（第 ").append(t.getRound() + 1).append(" 轮）：")
+                        .append(trimForJudge(ans)).append("\n");
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                sb.append("老师：").append(tutor, 0, Math.min(tutor.length(), 400)).append("\n");
+                sb.append("老师：").append(trimForJudge(tutor)).append("\n");
             }
         }
         return sb.toString();
+    }
+
+    /** 判定用对话实录裁剪：代码（含 ``` 围栏）完整保留；其余 1200 字符截断。 */
+    private static String trimForJudge(String s) {
+        if (s == null || s.length() <= 1200) return s == null ? "" : s;
+        if (s.contains("```")) return s;
+        return s.substring(0, 1200) + "…";
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */

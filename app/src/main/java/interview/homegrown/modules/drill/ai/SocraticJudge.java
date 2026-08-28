@@ -9,13 +9,17 @@ package interview.homegrown.modules.drill.ai;
  *   <li>needs_guide：用户已答完实质内容但未达标（覆盖<80% 或有致命缺漏）→ AI 抛一个引导问题（不给答案）</li>
  *   <li>done：达标（覆盖≥80% 且无致命缺漏）→ 表扬 + 提示结束；若 G1 未达标则触发再考查</li>
  * </ul>
+ *
+ * <p>wantsAnswerNow：AI 判定的用户意图——用户是否<b>明确表达</b>了「直接要完整答案 / 放弃独立作答」。
+ * 为 true 时服务端触发答案揭示（reveal），评分封 AGAIN。由 AI 语义理解判定，不做关键词写死。
  */
 public record SocraticJudge(
         String state,           // answering / needs_guide / done
         double coverage,        // 评分点覆盖度 0~1
         boolean fatalGap,        // 是否有致命缺漏
         String guideQuestion,   // needs_guide 时下一步引导问题（不给答案）；其他态留空
-        String praise            // done 时的表扬语；其他态留空
+        String praise,          // done 时的表扬语；其他态留空
+        boolean wantsAnswerNow  // 用户是否明确索要完整答案 / 放弃独立作答
 ) {
     public enum State {
         ANSWERING, NEEDS_GUIDE, DONE;

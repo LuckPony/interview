@@ -57,12 +57,14 @@ public class GradingService {
     private final GraderText graderText;
     private final GraderMcq graderMcq;
     private final ScheduleService scheduleService;
+    private final SubPointPassService subPointPassService;
     private final ObjectMapper objectMapper;
 
     public GradingService(GradeResultRepository gradeRepo, DrillRunRepository runRepo,
                           QuestionBankRepository qbRepo, MasteryRepository masteryRepo,
                           DrillTurnRepository turnRepo,
                           GraderText graderText, GraderMcq graderMcq, ScheduleService scheduleService,
+                          SubPointPassService subPointPassService,
                           ObjectMapper objectMapper) {
         this.gradeRepo = gradeRepo;
         this.runRepo = runRepo;
@@ -72,6 +74,7 @@ public class GradingService {
         this.graderText = graderText;
         this.graderMcq = graderMcq;
         this.scheduleService = scheduleService;
+        this.subPointPassService = subPointPassService;
         this.objectMapper = objectMapper;
     }
 
@@ -131,6 +134,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
+            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -180,16 +185,21 @@ public class GradingService {
         List<DrillTurn> gradeTurns = turns;
         boolean revealed = run.isRevealed();
 
-        // —— 评分正文只取「第一次独立作答」 ——
-        // 追问后的修正/复述只进入 conversation 供判分器参考（判断老师是否泄底、哪些点被实际考到），
-        // 不进入评分正文。否则老师纠正后学生照着复述出正确版本，会被判 HIT 把分数刷成满分，失去考察意义。
-        // gradeTurns 已按 round 升序，findFirst 即第一次作答。
+        // —— 评分正文取「AI 给出引导提示之前」的独立作答 ——
+        // 苏格拉底流程：用户先独立作答 → judge 判 needs_guide → AI 给引导提示 → 用户照提示补全。
+        // 引导后的补全不是独立作答（学生看到了提示，含老师泄底风险），不能直接计入评分。
+        // 正确取法：找到第一轮 judgeState==needs_guide 的 turn（= AI 首次提示「未达标并引导」那轮），
+        // 取它之前的最后一个用户作答（被提示前独立完成的最终答案）。
+        // 若全程无 needs_guide（用户独立答对）→ 取最后一轮作答；若首轮即 needs_guide → 取第一轮作答。
         int MAX_COMBINED = 8000;
-        String rawAnswer = gradeTurns.stream()
-                .filter(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank())
-                .map(DrillTurn::getRawAnswer)
-                .findFirst()
-                .orElse(null);
+        String rawAnswer = independentAnswerBeforeFirstGuide(gradeTurns);
+        if (rawAnswer == null || rawAnswer.isBlank()) {
+            rawAnswer = gradeTurns.stream()
+                    .filter(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank())
+                    .map(DrillTurn::getRawAnswer)
+                    .reduce((first, second) -> second)
+                    .orElse(null);
+        }
         if (rawAnswer == null || rawAnswer.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
         }
@@ -247,6 +257,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
+            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -301,6 +313,9 @@ public class GradingService {
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
 
+        // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+        subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
+
         // 掌握度：G2 引导后达标 → 按 primary 概念升到 GOOD（guided 会缩短复习间隔）
         Long primaryId = (q.getConceptIds() == null || q.getConceptIds().length == 0)
                 ? null : q.getConceptIds()[0].longValue();
@@ -316,27 +331,60 @@ public class GradingService {
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
     private String buildConversation(List<DrillTurn> turns) {
         StringBuilder sb = new StringBuilder();
-        boolean firstAnswerSeen = false;
+        boolean guideShown = false;   // 是否已进入「AI 引导提示后」阶段
         for (DrillTurn t : turns) {
+            String judgeState = t.getJudgeState();
             String ans = t.getRawAnswer();
             if (ans != null && !ans.isBlank()) {
-                // 明确区分「首次独立作答」与「后续追问/修正」：后续修正不进入评分正文，
-                // 这里标注出来，避免判分器把老师纠正后的复述当成独立作答采信。
-                String label = firstAnswerSeen ? "学生（追问后的修正/复述，不计分）" : "学生（首次独立作答，计分）";
-                firstAnswerSeen = true;
-                sb.append(label).append("：").append(truncate(ans, 400)).append("\n");
+                String stage = guideShown ? "（已给引导提示后）" : "（独立作答）";
+                sb.append("学生第 ").append(t.getRound() + 1).append(" 轮").append(stage).append("：")
+                        .append(trimForGrading(ans)).append("\n");
+            }
+            // 该轮被判 needs_guide → 此后进入「引导后」阶段
+            if ("needs_guide".equalsIgnoreCase(judgeState)) {
+                guideShown = true;
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                sb.append("老师：").append(truncate(tutor, 400)).append("\n");
+                sb.append("老师：").append(trimForGrading(tutor)).append("\n");
             }
         }
         return sb.toString();
     }
 
-    private String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s;
-        return s.substring(0, max) + "…";
+    /** 供对话实录用的裁剪：代码作答（含 ``` 围栏）完整保留；其余宽松截断到 1200 字符。 */
+    private static String trimForGrading(String s) {
+        if (s == null || s.length() <= 1200) return s == null ? "" : s;
+        if (s.contains("```")) return s;
+        return s.substring(0, 1200) + "…";
+    }
+
+    /**
+     * 取「AI 首次引导提示之前」的最后一个独立作答。
+     * <p>遍历按 round 升序的 turns，找到第一轮 judgeState==needs_guide 的 turn
+     * （= AI 提示「未达标并引导」的那轮），取它之前的最后一个用户作答。
+     * <ul>
+     *   <li>首轮即 needs_guide（引导前无作答）→ 返回第一个用户作答（首答就是唯一的独立作答）</li>
+     *   <li>中途出现 needs_guide → 返回引导前最后一个作答</li>
+     *   <li>全程无 needs_guide（用户独立完成）→ 返回 null，由调用方回退取最后一轮</li>
+     * </ul>
+     */
+    private static String independentAnswerBeforeFirstGuide(List<DrillTurn> turns) {
+        if (turns == null || turns.isEmpty()) return null;
+        String lastBeforeGuide = null;
+        String firstAnswer = null;
+        for (DrillTurn t : turns) {
+            String ans = t.getRawAnswer();
+            if (ans != null && !ans.isBlank()) {
+                if (firstAnswer == null) firstAnswer = ans;
+                lastBeforeGuide = ans;
+            }
+            // 这轮被判 needs_guide：AI 即将/已经给出引导提示，之后的作答都算「被提示后」
+            if ("needs_guide".equalsIgnoreCase(t.getJudgeState())) {
+                return lastBeforeGuide != null ? lastBeforeGuide : firstAnswer;
+            }
+        }
+        return null;   // 全程无 needs_guide → 调用方回退
     }
 
     /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */
