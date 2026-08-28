@@ -10,7 +10,7 @@ import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
 import { PROBE_LABEL } from '../lib/labels';
-import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, TransferView, LessonQaMessageView } from '../api/types';
+import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, LessonQaMessageView } from '../api/types';
 import { ConversationStream, VerdictPanel } from '../components/ConversationStream';
 import { Markdown } from '../components/Markdown';
 import { Plans } from './Plans';
@@ -46,8 +46,8 @@ type SessionCtx =
   | { kind: 'scoped'; planId?: number; scope: 'concept' | 'layer'; conceptId?: number; layer?: number } // 整知识点 / 整层级练习
   | { kind: 'teach'; conceptId: number; subIndex: number; planId?: number; taskId?: number }; // 先教后考：做完当前子点 → 下一个子点/综合检测
 
-// —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分；补救测试为评分后的阶段3 ——
-type Phase = 'generating' | 'chatting' | 'finishing' | 'graded' | 'transfer';
+// —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分 ——
+type Phase = 'generating' | 'chatting' | 'finishing' | 'graded';
 
 let msgCounter = 0;
 const nextMsgId = () => `m${++msgCounter}`;
@@ -82,27 +82,12 @@ function runTurnsToMessages(conv: ConversationView, runId: number): ChatMsg[] {
   return msgs;
 }
 
-// 补救测试判分结果文案：答对降级通过（升一档），答错保持基础档位；
-// 是否已达动态轮数上限由后端决定（transferExhausted）
-function transferResultText(g: GradeView): string {
-  const pass = g.rawScore >= 60;
-  if (pass) {
-    return `✅ 补救测试通过（${g.rawScore} 分）：档位升级为 ${g.grade}，本次练习按升级后档位计分。`;
-  }
-  const exhausted = g.transferExhausted ?? false;
-  return exhausted
-    ? `✳️ 补救测试未通过（${g.rawScore} 分）：维持此前档位。本轮作答差距较大，本次不再追问，可结合讲解后再练。`
-    : `✳️ 补救测试未通过（${g.rawScore} 分）：维持此前档位，不降级。可再考一轮，结合讲解后再试。`;
-}
-
 export function Drill() {
   const location = useLocation();
   const navigate = useNavigate();
   const restoreRef = useRef<string | null>(null);
   // 出题去重锁：防止连续点击时重复打后端生成题
   const genLockRef = useRef(false);
-  // 自动补救测试防重锁：同一 run 讲解结束后只触发一次 AI 评判，避免重复出题
-  const autoTransferLock = useRef(false);
   // 当前活跃 SSE 流引用（卸载 / 换题时 cancel）
   const sseRef = useRef<TutorStream | null>(null);
   // 题干打字机定时器（卸载 / 换题时清理）
@@ -154,14 +139,7 @@ export function Drill() {
   // —— 评分结果（独立于聊天消息，一个对话只有一个评分）——
   const [grade, setGrade] = useState<GradeView | null>(null);
 
-  // —— 三阶段练习（阶段3 补救测试）——
-  // 补救测试题（结合已掌握知识点出新题）；null=尚未开始。答对降级通过（封顶 GOOD），答错不降级。
-  const [transfer, setTransfer] = useState<TransferView | null>(null);
-  // 补救测试判分结果（升级后的档位），显示在判分面板下方
-  const [transferResult, setTransferResult] = useState<GradeView | null>(null);
-  // 补救测试请求中（出题/判分，防重复点击）
-  const [transferBusy, setTransferBusy] = useState(false);
-  // 已看答案（reveal）：看答案后不再追问，隐藏补救测试入口
+  // 已看答案（reveal）：看答案后不再追问
   const [revealed, setRevealed] = useState(false);
 
   // 当前对话是否挂在一条已判分(GRADED)的 run 上继续（历史记录「继续对话」= 用户向 AI 提问，
@@ -201,7 +179,7 @@ export function Drill() {
   const [qaAnchor, setQaAnchor] = useState<string | null>(null);   // 选中讲解片段 → 作为提问上下文
   const qaSseRef = useRef<TutorStream | null>(null);
   const qaThreadRef = useRef<HTMLDivElement>(null);
-  const qaTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const qaSendRef = useRef<(conceptId: number, subPoint: string, anchor: string | null) => void>(() => {});
   const [teachFirst, setTeachFirst] = useState<boolean>(() => {
     try { return localStorage.getItem(TEACH_FIRST_KEY) !== '0'; } catch { return true; }
   });
@@ -458,8 +436,6 @@ export function Drill() {
     setSeconds(0);
     setGrade(null);
     setResumedGraded(false);
-    setTransfer(null);
-    setTransferResult(null);
     setRevealed(false);
     setPhase('generating');
     setBrowseQid(null);
@@ -591,7 +567,6 @@ export function Drill() {
     setQaStreamingId(null);
     setQaSelecting(false);
     setQaSelected(new Set());
-    if (qaTextareaRef.current) qaTextareaRef.current.style.height = '';
     qaFollowRef.current = true;
   }, []);
 
@@ -620,7 +595,6 @@ export function Drill() {
     setQaAnchor(null);
     setQaSelecting(false);
     setQaSelected(new Set());
-    if (qaTextareaRef.current) qaTextareaRef.current.style.height = '';
     qaSseRef.current = lessonChatStream(
       conceptId,
       subPoint,
@@ -651,6 +625,11 @@ export function Drill() {
       },
     );
   };
+
+  // 答疑 CodeMirror keymap 需要「最新」的 sendLessonQa 与当前子点上下文
+  useEffect(() => {
+    qaSendRef.current = sendLessonQa;
+  });
 
   const toggleQaSelect = (id: number) => {
     setQaSelected((prev) => {
@@ -974,11 +953,9 @@ export function Drill() {
   // 答案揭示边界，之后的回答不再计入评分。
   // 评分权交给用户：AI 只负责追问/讲解（chat），判分由用户点「结束并评分」（finish）触发。
   const sendAnswer = (reveal = false) => {
-    // 补救测试阶段作答（非看答案）：走独立判分通道（答对升级，答错不降）
-    if (phase === 'transfer' && !reveal) { sendTransferAnswer(); return; }
-    // 看答案在对话 / 补救测试 / 已评分阶段都可用（已评分看答案 = 揭示参考答案，不再追问）
+    // 看答案在对话 / 已评分阶段都可用（已评分看答案 = 揭示参考答案，不再追问）
     // 已评分（graded）时普通发送 = 教学对话（AI 讲解/答疑，不再评分）
-    if (!meta || (phase !== 'chatting' && phase !== 'transfer' && phase !== 'graded')) return;
+    if (!meta || (phase !== 'chatting' && phase !== 'graded')) return;
     // 防御：若仍有未结束的流（异常情况下），先取消再发新消息，避免旧流残留
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     const userText = reveal ? '我想直接看答案' : input.trim();
@@ -1039,11 +1016,8 @@ export function Drill() {
         setMessages((prev) => prev.map((mm) =>
           mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
         ));
-        // 看答案后不再追问：隐藏补救测试入口
+        // 看答案后不再追问
         setRevealed(true);
-        // 补救测试阶段看答案 = 放弃本轮迁移作答（维持原档位），退回已判分状态：
-        // 否则输入区还停在「提交补救作答」，提交会被后端以「已看答案」拒绝
-        setPhase((p) => (p === 'transfer' ? 'graded' : p));
       },
       sendingImages,
     );
@@ -1128,6 +1102,24 @@ export function Drill() {
     }, { dark: false }),
   ], []);
 
+  // 答疑输入框扩展：复用主练习的 markdown 高亮 + 配色，但发送键发答疑（Mod-Enter 提问）
+  // 发送上下文（conceptId/subPoint/anchor）由答疑输入框渲染时写入 qaCtxRef，keymap 读取最新值
+  const qaCtxRef = useRef<{ conceptId: number; subPoint: string } | null>(null);
+  const qaAnchorRef = useRef<string | null>(null);
+  const qaExtensions = useMemo(() => [
+    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    keymap.of([{
+      key: 'Mod-Enter',
+      preventDefault: true,
+      run: (view) => {
+        if (view.composing) return false;
+        const ctx = qaCtxRef.current;
+        if (ctx) qaSendRef.current(ctx.conceptId, ctx.subPoint, qaAnchorRef.current);
+        return true;
+      },
+    }]),
+  ], []);
+
   // ===== 暂停 AI 回复：取消当前 SSE，未答完的回复保留在界面但不落库 =====
   const pauseReply = () => {
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
@@ -1148,91 +1140,12 @@ export function Drill() {
         drill.completeTask(ctx.taskId).catch(() => {});
       }
       setPhase('graded');
-      // 判分后：基础档位未通过时，让 AI 自主评判是否再考一道补救题（阶段3）
-      void maybeAutoTransfer();
     } catch (e) {
       setPhase('chatting');
       if (e instanceof ApiError && e.status === 409) setGate(e.message);
       else setErr(e instanceof ApiError ? e.message : '评分失败');
     }
   };
-
-  // ===== 三阶段练习：阶段3 补救测试 =====
-  // 判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题再考一次；
-  // 答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。看答案后不再追问。
-  // 最多能考几轮由后端按回答质量动态决定：答得好但差一点(≥50分)→最多3轮，
-  // 部分理解(≥30分)→最多2轮，几乎没答对(<30分)→本轮即止。
-  // 是否再考由 AI 自主评判（不再显示手动按钮），见 maybeAutoTransfer。
-
-  // ===== 三阶段练习：阶段3 补救测试（AI 自动评判） =====
-  // 判分讲解结束后由 AI 自主决定是否再考一道补救题，不再展示手动按钮。
-  // 展示补救题（AI 已判定值得再考，或用户在讲解后由系统自动触发）。
-  const showTransfer = (tv: TransferView) => {
-    setTransfer(tv);
-    setTransferResult(null);
-    // 补救测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'ai', text: `【补救测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
-    ]);
-    setPhase('transfer');
-  };
-
-  // AI 自动评判：判分后调用。返回补救题则展示并进入作答，返回 skipped 则继续。
-  const maybeAutoTransfer = async () => {
-    if (!meta || autoTransferLock.current) return;
-    autoTransferLock.current = true;
-    try {
-      const r = await drill.autoTransfer(meta.runId);
-      if (r && typeof r === 'object' && 'stem' in r) {
-        showTransfer(r);
-      }
-      // r.skipped → AI/后端判定不需要补救测试，保持 graded 状态即可
-    } catch {
-      // 自动补救测试失败不阻塞主流程：保持 graded，用户可继续问答/下一题
-    } finally {
-      autoTransferLock.current = false;
-    }
-  };
-
-  // 补救测试作答：判分（答对升档封顶 GOOD，答错不降），结果附在判分面板下方
-  const sendTransferAnswer = async () => {
-    if (!meta || !transfer || phase !== 'transfer') return;
-    const userText = input.trim();
-    if (!userText) return;
-    setInput('');
-    const userMsgId = nextMsgId();
-    const aiMsgId = nextMsgId();
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, role: 'me', text: userText, type: 'chat' },
-      { id: aiMsgId, role: 'ai', text: '', streaming: true, type: 'chat' },
-    ]);
-    setTransferBusy(true);
-    try {
-      const g = await drill.transferAnswer(meta.runId, userText);
-      setTransferResult(g);
-      setMessages((prev) => prev.map((mm) =>
-        mm.id === aiMsgId
-          ? { ...mm, streaming: false, text: transferResultText(g) }
-          : mm,
-      ));
-      setPhase('graded');
-      // 答错且未达动态上限：让 AI 再次评判是否值得再考一道补救题
-      if (!(g.grade === 'GOOD' || g.grade === 'EASY') && !g.transferExhausted) {
-        void maybeAutoTransfer();
-      }
-    } catch (e) {
-      setMessages((prev) => prev.map((mm) =>
-        mm.id === aiMsgId ? { ...mm, streaming: false, text: '（补救测试判分失败）' } : mm,
-      ));
-      setPhase('transfer');
-      setErr(e instanceof ApiError ? e.message : '补救测试判分失败');
-    } finally {
-      setTransferBusy(false);
-    }
-  };
-
 
   // ===== 下一题：按 ctx 抽新题（走 SSE） =====
   const goNext = () => {
@@ -1730,26 +1643,22 @@ export function Drill() {
                         </div>
                       )}
                       <div className="lesson-qa-input-row">
-                        <textarea
-                          ref={qaTextareaRef}
-                          className="lesson-qa-textarea"
+                        <CodeMirror
                           value={qaQuestion}
                           placeholder={qaAnchor ? '就选中这段话提问（AI 会结合它回答）' : '针对这段讲解提问（如：为什么这里不能用 xxx？）'}
-                          disabled={qaBusy}
-                          rows={1}
-                          onChange={(e) => {
-                            const el = e.target;
-                            el.style.height = 'auto';
-                            el.style.height = Math.min(el.scrollHeight, 360) + 'px';
-                            setQaQuestion(el.value);
+                          height="auto"
+                          minHeight="44px"
+                          maxHeight="360px"
+                          editable={!qaBusy}
+                          extensions={qaExtensions}
+                          onChange={(val) => setQaQuestion(val)}
+                          onUpdate={(vu) => {
+                            // 渲染时记录当前答疑上下文，供 keymap（Mod-Enter 提问）读取
+                            qaCtxRef.current = { conceptId: t.conceptId, subPoint: t.subPoints[t.curIdx] };
+                            qaAnchorRef.current = qaAnchor;
+                            if (vu.view.composing) return;
                           }}
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === 'Enter' && !e.shiftKey && !qaBusy) {
-                              e.preventDefault();
-                              sendLessonQa(t.conceptId, t.subPoints[t.curIdx], qaAnchor);
-                            }
-                          }}
+                          className="lesson-qa-textarea"
                         />
                         <Button
                           onClick={() => sendLessonQa(t.conceptId, t.subPoints[t.curIdx], qaAnchor)}
@@ -1827,9 +1736,9 @@ export function Drill() {
   // ===== Learn（聊天式 SSE 练习）=====
   // AI 正在流式回复中：显示「暂停」而不是发送（回车=换行，Ctrl/⌘+回车=发送）
   const aiStreaming = messages.some((m) => m.streaming);
-  // 对话 / 补救测试 / 已评分（教学对话）都可发送；发送键 Ctrl/⌘+回车
+  // 对话 / 已评分（教学对话）都可发送；发送键 Ctrl/⌘+回车
   const canSend =
-    (phase === 'chatting' || phase === 'transfer' || phase === 'graded') &&
+    (phase === 'chatting' || phase === 'graded') &&
     input.trim().length > 0 &&
     !aiStreaming;
   // 至少有一轮用户真实作答才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮。
@@ -1873,7 +1782,7 @@ export function Drill() {
         </div>
 
         {/* 输入区：按 phase 分态（resumedGraded 时隐藏「结束并评分」）
-            三阶段：chatting=第一答即判；graded=已判分，保留输入框做教学对话（不评分）+ 补救测试入口；transfer=补救测试作答 */}
+            苏格拉底：chatting=答疑；graded=已判分，保留输入框做教学对话（不评分） */}
         <div className="chat-input card">
           {phase === 'finishing' ? (
             // 评分中：禁用
@@ -1884,7 +1793,7 @@ export function Drill() {
               </Button>
             </div>
           ) : (
-            // 对话 / 生成 / 已评分（教学对话） / 补救测试：输入框 + 动作
+            // 对话 / 生成 / 已评分（教学对话）：输入框 + 动作
             <>
               <div className="chat-input-tools">
                 <button type="button" className="chat-tool-btn" onClick={insertCodeBlock} title="插入代码块（```语言 包裹）">
@@ -1931,13 +1840,11 @@ export function Drill() {
                 placeholder={
                   phase === 'generating'
                     ? '题目生成中…'
-                    : phase === 'transfer'
-                      ? '回答补救测试题（结合已掌握知识点的新题）；答对可升级为 GOOD，答错不降级。Ctrl/⌘+回车发送。'
-                      : phase === 'graded' && !resumedGraded
-                        ? '已判分：可继续向 AI 提问（教学讲解，不再评分），或点「补救测试」再考一轮。回车换行，Ctrl/⌘+回车发送。'
-                        : resumedGraded
-                          ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
-                          : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问。答完可点「结束并评分」，想直接看答案可点「看答案」。回车换行，Ctrl/⌘+回车发送。'
+                    : phase === 'graded' && !resumedGraded
+                      ? '已判分：可继续向 AI 提问（教学讲解，不再评分）。回车换行，Ctrl/⌘+回车发送。'
+                      : resumedGraded
+                        ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
+                        : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问。答完可点「结束并评分」，想直接看答案可点「看答案」。回车换行，Ctrl/⌘+回车发送。'
                 }
                 editable={phase !== 'generating'}
                 extensions={cmExtensions}
@@ -1972,22 +1879,12 @@ export function Drill() {
                       结束并评分
                     </Button>
                   )}
-                  {phase !== 'generating' && !revealed && phase !== 'transfer' && (
+                  {phase !== 'generating' && !revealed && (
                     <Button
                       variant="ghost"
                       onClick={() => sendAnswer(true)}
                       disabled={aiStreaming}
                       title="直接看参考答案（看答案后不再追问）"
-                    >
-                      看答案
-                    </Button>
-                  )}
-                  {phase === 'transfer' && !revealed && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => sendAnswer(true)}
-                      disabled={aiStreaming || transferBusy}
-                      title="看参考答案（看答案后不再追问）"
                     >
                       看答案
                     </Button>
@@ -2024,7 +1921,7 @@ export function Drill() {
                     </Button>
                   ) : (
                     <Button onClick={() => sendAnswer(false)} disabled={!canSend}>
-                      {phase === 'generating' ? '等待题目' : phase === 'transfer' ? '提交补救作答' : '发送'}
+                      {phase === 'generating' ? '等待题目' : '发送'}
                     </Button>
                   )}
                   {phase === 'graded' && (
@@ -2038,8 +1935,8 @@ export function Drill() {
           )}
         </div>
 
-        {/* 评分总结：独立于聊天线程，显示在输入框下方。补救测试升级后展示最终档位。 */}
-        {(grade || transferResult) && (
+        {/* 评分总结：独立于聊天线程，显示在输入框下方。 */}
+        {(grade) && (
           <div className="chat-verdict card">
             <VerdictPanel
               run={{
@@ -2047,8 +1944,8 @@ export function Drill() {
                 mode: 'LEARN',
                 status: 'GRADED',
                 sourceRunId: null,
-                rawScore: (transferResult ?? grade)?.rawScore ?? 0,
-                grade: (transferResult ?? grade)?.grade ?? 'AGAIN',
+                rawScore: grade?.rawScore ?? 0,
+                grade: grade?.grade ?? 'AGAIN',
                 answeredAt: '',
                 turns: [],
               }}
@@ -2056,9 +1953,9 @@ export function Drill() {
                 round: 0,
                 stem: '',
                 rawAnswer: '',
-                rawScore: (transferResult ?? grade)?.rawScore ?? 0,
-                passed: ((transferResult ?? grade)?.rawScore ?? 0) >= 60,
-                byConceptJson: (transferResult ?? grade)?.byConceptJson ?? null,
+                rawScore: grade?.rawScore ?? 0,
+                passed: (grade?.rawScore ?? 0) >= 60,
+                byConceptJson: grade?.byConceptJson ?? null,
                 tutorText: null,
               }}
             />

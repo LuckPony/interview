@@ -276,7 +276,7 @@ public class DrillController {
                 ? "这是大知识点综合检测。题目应综合该知识点下多个子知识点，考察组合运用，不要只重复单个定义。"
                 : "这是 L" + layer + " 层级综合检测。题目应在当前层的多个知识点间建立真实工程联系，难度不得超过当前层级。")
                 + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
-        QuestionBank q = questionService.generate(task, context);
+        QuestionBank q = questionService.generate(task, withSkillContext(uid, context));
         QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
         tagRun(view.runId(), purpose, planId, conceptId, layer);
         return view;
@@ -344,10 +344,18 @@ public class DrillController {
                 ? "这是整个知识点的综合练习。题目应综合这个知识点下的多个子知识点，考察组合运用，不要只重复单个子知识点。"
                 : "这是 L" + layer + " 整个层级的综合练习。题目应综合覆盖当前层级的多个知识点，在它们之间建立真实工程联系，难度不得超过 L" + layer + "。")
                 + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
-        QuestionBank q = questionService.generate(task, context);
+        QuestionBank q = questionService.generate(task, withSkillContext(uid, context));
         QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
         tagRun(view.runId(), purpose, planId, conceptId, layer);
         return view;
+    }
+
+    /** 把用户能力画像（已掌握知识点）追加进出题上下文，作为下次出题的「基于已学知识点考查」锚点。 */
+    private String withSkillContext(Long uid, String context) {
+        String skill = profileService.skillDoc(uid);
+        if (skill == null || skill.isBlank() || skill.startsWith("（用户暂无")) return context;
+        return (context == null ? "" : context + "\n\n")
+                + "【能力画像（用户已掌握的知识点，作为考查锚点参考）】\n" + skill;
     }
 
     private void tagRun(Long runId, DrillPurpose purpose, Long planId, Long conceptId, Integer layer) {
@@ -846,7 +854,7 @@ public class DrillController {
                         + "对已经正确回答的内容换认知动作或应用场景，对暴露出的薄弱处做针对性考察。";
             }
         }
-        var q = questionService.generate(task, context, practicedStems);       // 出题（LLM 填空）
+        var q = questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
         return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
     }
 
@@ -1188,7 +1196,7 @@ public class DrillController {
                     }
                     full = judgeReply;
                 } else {
-                    full = tutorGenerator.streamChat(stem, pointsJson, List.of(), allTurns, context,
+                    full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
                             fImages,
                             token -> {
                                 try {
@@ -1201,7 +1209,7 @@ public class DrillController {
                                 }
                             },
                             r -> sseReasoning(out, r),
-                            fReveal, 0, TutorGenerator.SAFETY_ANSWER_CAP);
+                            fReveal);
                 }
 
                 if (full != null && !clientGone.get()) {
@@ -1524,6 +1532,13 @@ public class DrillController {
     public List<ProfileService.TopicProfile> profile() {
         Long uid = currentUserId();
         return profileService.profile(uid);
+    }
+
+    /** 能力画像 md 文档（已训练能力清单），供用户画像页展示 + 注入下次出题 */
+    @GetMapping("/profile/skill-doc")
+    public Map<String, String> skillDoc() {
+        Long uid = currentUserId();
+        return Map.of("markdown", profileService.skillDoc(uid));
     }
 
     // -------------------------------------------------------- 问答记录

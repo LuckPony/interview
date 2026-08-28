@@ -59,6 +59,57 @@ public class ProfileService {
                 .toList();
     }
 
+    /**
+     * 能力画像 md 文档：把用户已掌握（masteryLevel&gt;0）的知识点聚合成一份"已训练能力"清单。
+     * 用于用户画像页展示，并作为能力画像注入下次出题 prompt（苏格拉底"基于已学知识点考查"的锚点来源）。
+     */
+    public String skillDoc(Long userId) {
+        List<Mastery> mastered = masteryRepo.findByUserId(userId).stream()
+                .filter(m -> m.getMasteryLevel() > 0)
+                .sorted(Comparator.comparing(Mastery::getUpdatedAt).reversed())
+                .toList();
+        if (mastered.isEmpty()) {
+            return "（用户暂无已掌握的知识点）";
+        }
+
+        Map<Long, Mastery> byConcept = mastered.stream()
+                .collect(Collectors.toMap(Mastery::getConceptId, m -> m));
+        Map<Long, Concept> conceptMap = conceptRepo.findAll().stream()
+                .collect(Collectors.toMap(Concept::getId, c -> c));
+
+        Map<String, List<Concept>> byTopic = new HashMap<>();
+        for (Mastery m : mastered) {
+            Concept c = conceptMap.get(m.getConceptId());
+            if (c == null) continue;
+            byTopic.computeIfAbsent(c.getTopic(), k -> new ArrayList<>()).add(c);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("# 能力画像（已训练能力）\n\n");
+        sb.append("> 按主题分组，列出用户已掌握的知识点与掌握层级（L1-L5）。"
+                + "用于后续教学「基于已学知识点」考查的锚点参考。\n\n");
+
+        byTopic.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> {
+                    String topic = e.getKey();
+                    e.getValue().sort(Comparator.comparingInt(Concept::getLayer));
+                    int maxLayer = e.getValue().stream()
+                            .mapToInt(Concept::getLayer).max().orElse(0);
+                    sb.append("## ").append(topic).append("（已掌握至 L").append(maxLayer).append("）\n\n");
+                    for (Concept c : e.getValue()) {
+                        Mastery m = byConcept.get(c.getId());
+                        sb.append("- **").append(c.getName()).append("**")
+                                .append("（L").append(c.getLayer()).append("，掌握度 ")
+                                .append(m == null ? 0 : m.getMasteryLevel())
+                                .append("）\n");
+                    }
+                    sb.append("\n");
+                });
+
+        return sb.toString();
+    }
+
     // 一个主题：最大已掌握层 + 每概念明细
     public record TopicProfile(String topic, int masteredLayer, List<ConceptProfile> concepts) {
     }

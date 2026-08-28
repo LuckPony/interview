@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Layers, TrendingUp, Play, X } from 'lucide-react';
-import { studyPlan } from '../api/drill';
+import { studyPlan, drill } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Card, Loading, Badge } from '../components/ui';
+import { Markdown } from '../components/Markdown';
 import { ACTIVE_PLAN_KEY, readActivePlanId } from '../lib/useActivePlan';
 import type { PlanView, PlanConceptView } from '../api/types';
 import './Profile.css';
@@ -44,6 +45,8 @@ export function Profile() {
   const [plans, setPlans] = useState<PlanView[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  // 能力画像 md 文档（已训练能力清单）
+  const [skillMd, setSkillMd] = useState<string | null>(null);
   // 方向 tab 与「认知层模块」弹层由 URL 查询参数驱动（?plan=&layer=），支持浏览器前进/后退
   // 无 ?plan= 时默认跟随全局「当前学习方向」（首页/他页选择记忆），而不是固定第一个
   const storedIdx = (() => {
@@ -75,6 +78,20 @@ export function Profile() {
       .finally(() => {
         if (alive) setLoading(false);
       });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 能力画像 md 文档（失败静默，不阻塞画像页主体）
+  useEffect(() => {
+    let alive = true;
+    drill
+      .skillDoc()
+      .then((r) => {
+        if (alive) setSkillMd(r.markdown ?? null);
+      })
+      .catch(() => { /* 忽略 */ });
     return () => {
       alive = false;
     };
@@ -204,6 +221,23 @@ export function Profile() {
             <Play size={14} strokeWidth={1.8} /> 继续练「{plan.title}」
           </button>
         </div>
+      )}
+
+      {/* ====== 能力画像（已训练能力 md 文档）====== */}
+      {skillMd != null && (
+        <Card className="profile-skill-card">
+          <div className="profile-skill-head">
+            <TrendingUp size={15} strokeWidth={1.7} />
+            <span className="profile-skill-title">能力画像 · 已训练能力</span>
+          </div>
+          <div className="profile-skill-body">
+            {skillMd.startsWith('（用户暂无') ? (
+              <p className="profile-skill-empty">{skillMd}</p>
+            ) : (
+              <Markdown className="profile-skill-md">{skillMd}</Markdown>
+            )}
+          </div>
+        </Card>
       )}
 
       {/* ====== 认知层模块内容弹层：点击知识点后查看该层包含什么（?layer= 驱动，可后退关闭）====== */}

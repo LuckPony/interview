@@ -30,23 +30,20 @@ public class GradeGenerator {
 
     public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
                              String context) {
-        return grade(stem, rawAnswer, groups, context, null, List.of());
+        return grade(stem, rawAnswer, groups, context, null);
     }
 
     /**
      * @param conversation 对话实录（老师实际问过的问题 + 学生回答），可为 null。
-     * @param followups    出题时预生成的教学追问清单，可为空。followups 不属于评分范围，
-     *                     只能用于确认某个评分点是否真的由主问直接要求；不能因追问被问过就扩大评分范围。
-     *                     任何无法从 stem 直接推出的评分点都应判 NA（不计分）。
      */
     public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
-                             String context, String conversation, List<String> followups) {
+                             String context, String conversation) {
         String system = """
                 你是评分器。先确定合法评分范围，再逐点判定：
                 1. 合法评分范围只来自主问(stem)明确要求学生回答的内容。判断标准是：学生只看 stem，
                    是否能合理知道自己需要回答该评分点。
-                2. 对话中的追问和「追问小问清单」是教学过程，不得扩大本题量化评分范围。
-                   评分点若只对应 followup，或 stem 从未要求该方法/API/边界/场景，必须判 NA，不计分，
+                2. 对话中的追问是教学过程，不得扩大本题量化评分范围。
+                   评分点若 stem 从未要求该方法/API/边界/场景，必须判 NA，不计分，
                    即使老师后来追问过也一样。
                 3. 对合法范围内的评分点，再结合用户答案与对话实录判 HIT/PARTIAL/MISS。
 
@@ -115,30 +112,17 @@ public class GradeGenerator {
                     + conversation;
         }
 
-        String followupBlock;
-        if (followups == null || followups.isEmpty()) {
-            followupBlock = "";
-        } else {
-            followupBlock = "\n\n教学追问清单（这些问题不属于量化评分范围，仅供识别越界评分点；"
-                    + "如果某评分点只能由以下追问推出而不能由 stem 直接推出，必须判 NA）：\n"
-                    + IntStream.range(0, followups.size())
-                    .mapToObj(i -> (i + 1) + ". " + followups.get(i))
-                    .reduce((a, b) -> a + "\n" + b)
-                    .orElse("");
-        }
-
         String user = String.format("""
                 题干：%s
 
                 待判分组：
-                %s
                 %s
 
                 用户答案：
                 %s
                 %s
                 %s
-                """, stem, groupBlock, followupBlock, rawAnswer, conversationBlock,
+                """, stem, groupBlock, rawAnswer, conversationBlock,
                 (context == null || context.isBlank()) ? "" : "\n\n学习上下文（判分时可对照，但只依据其中真实内容）：\n" + context);
 
         return invoker.invoke(system, user, GradeOutput.class);

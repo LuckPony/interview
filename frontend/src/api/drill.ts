@@ -26,7 +26,6 @@ import type {
   OutlineView,
   LessonQaMessageView,
   KnowledgeCard,
-  TransferView,
 } from './types';
 
 export interface Timing {
@@ -500,29 +499,13 @@ export const drill = {
         body: JSON.stringify({ planId }),
       }),
 
-  // LEARN grade 卡"继续追问"：spawn 一条 mode=REHEARSAL 的追问场，复用 source questionId
-  followup: (runId: number) =>
-    apiFetch<RehearsalView>(`/drill/${runId}/followup`, { method: 'POST' }),
-
   // 主动结束追问 / 模拟面试：强制 settle
   rehearsalEnd: (runId: number) =>
     apiFetch<RehearsalView>(`/drill/rehearsal/${runId}/end`, { method: 'POST' }),
 
-  // 结束对话并评分：基于整轮对话一次性评分（不再逐答即判）
+  // 结束对话并评分：基于整轮对话一次性评分
   finish: (runId: number) =>
     apiFetch<GradeView>(`/drill/${runId}/finish`, { method: 'POST' }),
-
-  // 三阶段练习：补救测试（阶段3）—— 结合已掌握知识点出新题考察；答对降级通过（封顶 GOOD），答错不降级
-  transfer: (runId: number) =>
-    apiFetch<TransferView>(`/drill/${runId}/transfer`, { method: 'POST' }),
-  // 自动补救测试：AI 自主评判是否再考一道补救题；返回新题视图或 {skipped:true}（不需要）
-  autoTransfer: (runId: number) =>
-    apiFetch<TransferView | { skipped: boolean }>(`/drill/${runId}/auto-transfer`, { method: 'POST' }),
-  transferAnswer: (runId: number, rawAnswer: string) =>
-    apiFetch<GradeView>(`/drill/${runId}/transfer-answer`, {
-      method: 'POST',
-      body: JSON.stringify({ rawAnswer }),
-    }),
 
   // 放弃本次作答（看答案后不再作答，按 AGAIN 结算闭环，放行下一题）
   abandon: (runId: number) =>
@@ -538,6 +521,9 @@ export const drill = {
   debt: () => apiFetch<DebtView[]>('/drill/debt'),
 
   profile: () => apiFetch<TopicProfile[]>('/drill/profile'),
+
+  /** 能力画像 md 文档（已训练能力清单） */
+  skillDoc: () => apiFetch<{ markdown: string }>('/drill/profile/skill-doc'),
 
   // 问答记录：按题聚合的对话线列表 + 单题完整对话线
   history: () => apiFetch<RunSummaryView[]>('/drill/history'),

@@ -334,10 +334,3 @@ export interface KnowledgeCard {
     createdAt: string;
 }
 
-/** 补救测试题视图（阶段3）：结合已掌握知识点出的新题，答对可降级通过（封顶 GOOD）。 */
-export interface TransferView {
-    runId: number;
-    stem: string;
-    transferCount: number;
-    transferMax: number;
-}

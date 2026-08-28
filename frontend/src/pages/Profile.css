@@ -306,3 +306,42 @@
   text-align: center;
   padding: var(--s-5) 0;
 }
+
+/* —— 能力画像（已训练能力 md 文档） —— */
+.profile-skill-card {
+  margin-top: var(--s-5);
+}
+.profile-skill-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.profile-skill-title {
+  font-size: var(--fs-sm);
+  letter-spacing: 0.02em;
+}
+.profile-skill-body {
+  padding: var(--s-4);
+}
+.profile-skill-empty {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+.profile-skill-md {
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--ink);
+}
+.profile-skill-md h2 {
+  font-size: var(--fs-base);
+  margin: var(--s-4) 0 var(--s-2);
+  color: var(--ink);
+}
+.profile-skill-md ul {
+  padding-left: 1.2em;
+  margin: 0;
+}
