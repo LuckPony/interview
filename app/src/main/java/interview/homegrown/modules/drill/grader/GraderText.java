@@ -101,8 +101,7 @@ public class GraderText implements Grader {
                     g.conceptIndex, nameById.getOrDefault(cid, "概念" + g.conceptIndex), texts));
         }
 
-        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade, context, conversation,
-                gq.followups == null ? List.of() : gq.followups);
+        GradeOutput out = gradeGenerator.grade(stem, rawAnswer, toGrade, context, conversation);
 
         List<ByConcept> byConcepts = new ArrayList<>();
         List<ConceptScore> conceptScores = new ArrayList<>();

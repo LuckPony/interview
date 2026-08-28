@@ -59,6 +59,18 @@ public class DrillTurn {
     @Column(name = "image_json", columnDefinition = "text")
     private String imageJson;
 
+    // ---- 苏格拉底每轮判定 ----
+    /** 本轮 AI 判定状态：answering（还在答）/ needs_guide（答完未达标，需引导）/ done（达标） */
+    @Column(name = "judge_state", length = 20)
+    private String judgeState;
+
+    /** 评分点覆盖度 0~1（done/needs_guide 时填，answering 为 null） */
+    private BigDecimal coverage;
+
+    /** 是否有致命缺漏 */
+    @Column(name = "fatal_gap")
+    private Boolean fatalGap;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 }

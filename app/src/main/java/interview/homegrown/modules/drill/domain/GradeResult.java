@@ -42,6 +42,27 @@ public class GradeResult {
     @Enumerated(EnumType.STRING)
     private Grade grade;
 
+    // ---- 苏格拉底两级评分记录 ----
+    /** G1 预引导分（用户首次独立答完后判定，诊断用） */
+    @Column(name = "pre_grade", length = 10)
+    private String preGrade;
+
+    /** 最终分（=G1 达标，或 G2 引导后分；看答案封 AGAIN） */
+    @Column(name = "final_grade", length = 10)
+    private String finalGrade;
+
+    /** 是否经过苏格拉底引导 */
+    @Column(name = "guided", nullable = false)
+    private boolean guided = false;
+
+    /** 引导轮数 */
+    @Column(name = "guide_rounds", nullable = false)
+    private int guideRounds = 0;
+
+    /** 是否看过答案 */
+    @Column(name = "revealed", nullable = false)
+    private boolean revealed = false;
+
     @Column(insertable = false, updatable = false)
     private Instant createdAt;
 }

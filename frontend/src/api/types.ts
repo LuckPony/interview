@@ -26,6 +26,15 @@ export interface OutlineView {
   cached: boolean;
 }
 
+/** 讲解页答疑消息（当前用户私有）：user = 学生提问（anchor 为选中的讲解片段），assistant = AI 回答。 */
+export interface LessonQaMessageView {
+  id: number;
+  role: 'user' | 'assistant';
+  text: string;
+  anchor: string | null;
+  createdAt: string;
+}
+
 /** 题目生成 SSE 首帧：题目元数据（不含 stem，stem 由后续 token 帧逐字推送） */
 export interface QuestionMeta {
   runId: number;
@@ -56,7 +65,7 @@ export interface GradeView {
   rawScore: number;
   grade: string; // EASY / GOOD / HARD / MISSING
   byConceptJson: string; // JSON 字符串 -> 解析为 ByConcept[]
-  transferExhausted?: boolean; // 迁移测试判分后是否已达轮数上限（无需再考）
+  transferExhausted?: boolean; // 补救测试判分后是否已达轮数上限（无需再考）
 }
 
 export interface RehearsalView {
@@ -126,6 +135,19 @@ export interface DailyTaskView {
   /** 复习任务聚焦的子知识点（null = 概念级复习） */
   subPoint: string | null;
 }
+
+/** 随手记：用户手动沉淀的 Markdown 笔记，可挂到知识点/对话 */
+export interface CasualNote {
+  id: number;
+  userId: number;
+  title: string;
+  content: string;
+  conceptId: number | null;
+  conceptName?: string | null;
+  chatId: number | null;
+  createdAt: string;
+}
+
 
 export interface ConceptProfile {
   conceptId: number;
@@ -312,10 +334,3 @@ export interface KnowledgeCard {
     createdAt: string;
 }
 
-/** 迁移测试题视图（阶段3）：结合已掌握知识点出的新题，答对可降级通过（封顶 GOOD）。 */
-export interface TransferView {
-    runId: number;
-    stem: string;
-    transferCount: number;
-    transferMax: number;
-}

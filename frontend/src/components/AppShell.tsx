@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import logo from '../logo.png';
 import {
@@ -12,11 +12,11 @@ import {
   History,
   Settings,
   LogOut,
-  Code2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { drill } from '../api/drill';
+import { CasualNoteDialog } from './CasualNoteDialog';
 import './AppShell.css';
 
 interface NavItem {
@@ -36,23 +36,25 @@ const NAV: NavItem[] = [
   { to: '/notes', label: '内化复盘', icon: NotebookPen },
   { to: '/history', label: '问答记录', icon: History },
   { to: '/settings', label: '设置', icon: Settings },
-  { to: '/project', label: '项目学习', icon: Code2 },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { userId, logout } = useAuth();
   const navigate = useNavigate();
+  const [pendingReview, setPendingReview] = useState(0);
+  const [showCasualNote, setShowCasualNote] = useState(false);
 
   // 主进程在窗口隐藏后仍负责定时通知；渲染层只需周期性同步今天还剩多少学习/复习任务。
   useEffect(() => {
-    if (!window.electronAPI?.updateReminderTasks) return;
     let alive = true;
     const sync = () => drill.today().then((tasks) => {
       if (!alive) return;
       const active = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
+      const review = active.filter((t) => t.kind === 'REVIEW').length;
+      setPendingReview(review);
       return window.electronAPI?.updateReminderTasks({
         learn: active.filter((t) => t.kind === 'NEW').length,
-        review: active.filter((t) => t.kind === 'REVIEW').length,
+        review,
       });
     }).catch(() => {});
     sync();
@@ -77,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="nav">
-          {NAV.map((item, i) => (
+          {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -86,7 +88,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <item.icon size={18} strokeWidth={1.6} />
               <span>{item.label}</span>
-              {i === 0 && <span className="nav-dot" aria-hidden />}
+              {item.to === '/drill' && pendingReview > 0 && (
+                <span className="nav-review-badge" title={`有 ${pendingReview} 项复习任务待完成`}>
+                  {pendingReview}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -102,6 +108,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="main">{children}</main>
+
+      {/* 全局随手记：右下角悬浮入口，点击直接打开（不绑定题目/知识点） */}
+      <button
+        className="casual-note-fab"
+        onClick={() => setShowCasualNote(true)}
+        title="随手记"
+        aria-label="打开随手记"
+      >
+        <NotebookPen size={20} strokeWidth={1.8} />
+      </button>
+
+      {showCasualNote && (
+        <CasualNoteDialog onClose={() => setShowCasualNote(false)} />
+      )}
     </div>
   );
 }

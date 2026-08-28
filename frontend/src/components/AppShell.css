@@ -89,6 +89,22 @@
   background: var(--cinnabar);
   opacity: 0.5;
 }
+.nav-review-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--bad);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1;
+}
 
 .side-foot {
   margin-top: auto;
@@ -146,4 +162,32 @@
   .brand-text { display: none; }
   .nav { flex-direction: row; margin: 0; }
   .side-foot { display: none; }
+}
+
+
+/* —— 全局随手记悬浮按钮（右下角，z-index 低于弹窗 backdrop 的 70） —— */
+.casual-note-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--cinnabar);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.casual-note-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.casual-note-fab:active {
+  transform: translateY(0);
 }

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, ImagePlus, Code2, Check, FileText } from 'lucide-react';
+import { Timer, NotebookPen, Compass, ChevronRight, ArrowLeft, RefreshCw, Target, Plus, X, MessageCircle, ImagePlus, Code2 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
-import { drill, aiSettings, chatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
+import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
 import { PROBE_LABEL } from '../lib/labels';
-import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, TransferView } from '../api/types';
+import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, LessonQaMessageView } from '../api/types';
 import { ConversationStream, VerdictPanel } from '../components/ConversationStream';
 import { Markdown } from '../components/Markdown';
 import { Plans } from './Plans';
@@ -46,8 +46,8 @@ type SessionCtx =
   | { kind: 'scoped'; planId?: number; scope: 'concept' | 'layer'; conceptId?: number; layer?: number } // 整知识点 / 整层级练习
   | { kind: 'teach'; conceptId: number; subIndex: number; planId?: number; taskId?: number }; // 先教后考：做完当前子点 → 下一个子点/综合检测
 
-// —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分；迁移测试为评分后的阶段3 ——
-type Phase = 'generating' | 'chatting' | 'finishing' | 'graded' | 'transfer';
+// —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分 ——
+type Phase = 'generating' | 'chatting' | 'finishing' | 'graded';
 
 let msgCounter = 0;
 const nextMsgId = () => `m${++msgCounter}`;
@@ -82,27 +82,12 @@ function runTurnsToMessages(conv: ConversationView, runId: number): ChatMsg[] {
   return msgs;
 }
 
-// 迁移测试判分结果文案：答对降级通过（升一档），答错保持基础档位；
-// 是否已达动态轮数上限由后端决定（transferExhausted）
-function transferResultText(g: GradeView): string {
-  const pass = g.rawScore >= 60;
-  if (pass) {
-    return `✅ 迁移测试通过（${g.rawScore} 分）：档位升级为 ${g.grade}，本次练习按升级后档位计分。`;
-  }
-  const exhausted = g.transferExhausted ?? false;
-  return exhausted
-    ? `✳️ 迁移测试未通过（${g.rawScore} 分）：维持此前档位。本轮作答差距较大，本次不再追问，可结合讲解后再练。`
-    : `✳️ 迁移测试未通过（${g.rawScore} 分）：维持此前档位，不降级。可再考一轮，结合讲解后再试。`;
-}
-
 export function Drill() {
   const location = useLocation();
   const navigate = useNavigate();
   const restoreRef = useRef<string | null>(null);
   // 出题去重锁：防止连续点击时重复打后端生成题
   const genLockRef = useRef(false);
-  // 自动迁移测试防重锁：同一 run 讲解结束后只触发一次 AI 评判，避免重复出题
-  const autoTransferLock = useRef(false);
   // 当前活跃 SSE 流引用（卸载 / 换题时 cancel）
   const sseRef = useRef<TutorStream | null>(null);
   // 题干打字机定时器（卸载 / 换题时清理）
@@ -112,6 +97,8 @@ export function Drill() {
   // 是否自动跟随流式内容滚到底：默认跟随；用户向上滚动即暂停跟随，
   // 滚回接近底部时恢复跟随（经典 AI 聊天行为）。
   const followRef = useRef(true);
+  // 答疑线程是否处于「跟随底部」：上翻暂停、滚回底部恢复（与练习聊天一致）。
+  const qaFollowRef = useRef(true);
   // 本轮是否真实作答过（reveal「看答案」不算作答）：看答案后据此区分「结束并评分」与「放弃下一题」。
   const hasAnsweredRef = useRef(false);
 
@@ -152,18 +139,8 @@ export function Drill() {
   // —— 评分结果（独立于聊天消息，一个对话只有一个评分）——
   const [grade, setGrade] = useState<GradeView | null>(null);
 
-  // —— 三阶段练习（阶段3 迁移测试）——
-  // 迁移测试题（结合已掌握知识点出新题）；null=尚未开始。答对降级通过（封顶 GOOD），答错不降级。
-  const [transfer, setTransfer] = useState<TransferView | null>(null);
-  // 迁移测试判分结果（升级后的档位），显示在判分面板下方
-  const [transferResult, setTransferResult] = useState<GradeView | null>(null);
-  // 迁移测试请求中（出题/判分，防重复点击）
-  const [transferBusy, setTransferBusy] = useState(false);
-  // 已看答案（reveal）：看答案后不再追问，隐藏迁移测试入口
+  // 已看答案（reveal）：看答案后不再追问
   const [revealed, setRevealed] = useState(false);
-  // 知识卡片提取状态（需求：无论是否通过都能沉淀对话）
-  const [cardBusy, setCardBusy] = useState(false);
-  const [cardSaved, setCardSaved] = useState(false);
 
   // 当前对话是否挂在一条已判分(GRADED)的 run 上继续（历史记录「继续对话」= 用户向 AI 提问，
   // 不重新评分，故隐藏「结束并评分」）
@@ -189,6 +166,20 @@ export function Drill() {
   const [lessonReasoning, setLessonReasoning] = useState('');
   const [lessonBusy, setLessonBusy] = useState(false);
   const [outlineBusy, setOutlineBusy] = useState(false);
+  // —— 讲解页答疑（当前用户私有；不判分、不进 run、不反哺讲解正文）——
+  const [qaOpen, setQaOpen] = useState(false);                    // 答疑面板是否展开
+  const [qaMessages, setQaMessages] = useState<LessonQaMessageView[]>([]);
+  const [qaLoading, setQaLoading] = useState(false);              // 拉取历史中
+  const [qaQuestion, setQaQuestion] = useState('');               // 输入框
+  const [qaBusy, setQaBusy] = useState(false);                    // AI 回答中
+  const [qaReasoning, setQaReasoning] = useState('');             // 当前 AI 思考过程
+  const [qaStreamingId, setQaStreamingId] = useState<number | null>(null); // 正在流式回复的临时气泡 id
+  const [qaSelecting, setQaSelecting] = useState(false);          // 是否处于「多选删除」模式
+  const [qaSelected, setQaSelected] = useState<Set<number>>(new Set());
+  const [qaAnchor, setQaAnchor] = useState<string | null>(null);   // 选中讲解片段 → 作为提问上下文
+  const qaSseRef = useRef<TutorStream | null>(null);
+  const qaThreadRef = useRef<HTMLDivElement>(null);
+  const qaSendRef = useRef<(conceptId: number, subPoint: string, anchor: string | null) => void>(() => {});
   const [teachFirst, setTeachFirst] = useState<boolean>(() => {
     try { return localStorage.getItem(TEACH_FIRST_KEY) !== '0'; } catch { return true; }
   });
@@ -225,7 +216,7 @@ export function Drill() {
 
   // —— 路由 → teach 状态同步：进入/切换知识点拉 outline；切换子点播放讲解 ——
   useEffect(() => {
-    if (view !== 'teach') { teachRouteRef.current = null; return; }
+    if (view !== 'teach') { teachRouteRef.current = null; resetQaPanel(); return; }
     const cid = routeTeachCid;
     if (cid == null || Number.isNaN(cid)) { navigate('/drill', { replace: true }); return; }
     const sub = routeSubIdx ?? -1;
@@ -235,6 +226,7 @@ export function Drill() {
       teachRouteRef.current = { cid, sub };
       if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
       if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
+      resetQaPanel();
       setOutlineBusy(true);
       setErr('');
       setLessonText('');
@@ -275,6 +267,7 @@ export function Drill() {
       setTeach({ ...teach, curIdx: -1 });
     } else if (sub < teach.subPoints.length) {
       setTeach({ ...teach, curIdx: sub });
+      resetQaPanel();
       playSubLesson(cid, teach.subPoints[sub]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -330,6 +323,7 @@ export function Drill() {
   // —— 卸载时关 SSE 流 + 清打字机 ——
   useEffect(() => () => {
     if (sseRef.current) sseRef.current.cancel();
+    if (qaSseRef.current) qaSseRef.current.cancel();
     if (typewriterRef.current) clearInterval(typewriterRef.current);
   }, []);
 
@@ -442,10 +436,7 @@ export function Drill() {
     setSeconds(0);
     setGrade(null);
     setResumedGraded(false);
-    setTransfer(null);
-    setTransferResult(null);
     setRevealed(false);
-    setCardSaved(false);
     setPhase('generating');
     setBrowseQid(null);
     // 新题目：恢复自动跟随、重置作答标记，避免残留上一题的状态
@@ -549,6 +540,147 @@ export function Drill() {
       refresh,
     );
   };
+
+  // —— 讲解页答疑：拉取历史 / 提问 / 删除 ——
+  const loadLessonQa = useCallback(async (conceptId: number, subPoint: string) => {
+    if (!conceptId || !subPoint) return;
+    setQaLoading(true);
+    try {
+      const list = await drill.lessonQa(conceptId, subPoint);
+      setQaMessages(list);
+    } catch (e) {
+      setQaMessages([]);
+    } finally {
+      setQaLoading(false);
+    }
+  }, []);
+
+  // 关闭答疑面板 / 切走子点 / 切换知识点时清理流与选择态
+  const resetQaPanel = useCallback(() => {
+    if (qaSseRef.current) { qaSseRef.current.cancel(); qaSseRef.current = null; }
+    setQaOpen(false);
+    setQaMessages([]);
+    setQaQuestion('');
+    setQaReasoning('');
+    setQaAnchor(null);
+    setQaBusy(false);
+    setQaStreamingId(null);
+    setQaSelecting(false);
+    setQaSelected(new Set());
+    qaFollowRef.current = true;
+  }, []);
+
+  const openLessonQa = useCallback(async (conceptId: number, subPoint: string) => {
+    setQaOpen(true);
+    qaFollowRef.current = true;
+    setErr('');
+    await loadLessonQa(conceptId, subPoint);
+  }, [loadLessonQa]);
+
+  const sendLessonQa = (conceptId: number, subPoint: string, anchor: string | null) => {
+    const q = qaQuestion.trim();
+    if (!q || qaBusy) return;
+    setQaBusy(true);
+    setQaReasoning('');
+    setErr('');
+    // 新提问：回到底部跟随（与练习聊天一致）
+    qaFollowRef.current = true;
+
+    // 临时 user 气泡（未持久化 id 未知）：用一个负数占位，流式 assistant 用正数 id 兜底
+    const tempUser: LessonQaMessageView = { id: -Date.now(), role: 'user', text: q, anchor, createdAt: '' };
+    const tempAi: LessonQaMessageView = { id: -Date.now() - 1, role: 'assistant', text: '', anchor: null, createdAt: '' };
+    setQaMessages((prev) => [...prev, tempUser, tempAi]);
+    setQaStreamingId(tempAi.id);
+    setQaQuestion('');
+    setQaAnchor(null);
+    setQaSelecting(false);
+    setQaSelected(new Set());
+    qaSseRef.current = lessonChatStream(
+      conceptId,
+      subPoint,
+      q,
+      anchor,
+      (token) => {
+        setQaMessages((prev) => prev.map((m) =>
+          m.id === tempAi.id ? { ...m, text: m.text + token } : m));
+      },
+      (reasoning) => setQaReasoning((prev) => prev + reasoning),
+      (fullText) => {
+        // done 事件带回完整回答：用它兜底覆盖（修复偶发末尾截断），再刷新历史拿到持久化 id
+        setQaMessages((prev) => prev.map((m) =>
+          m.id === tempAi.id ? { ...m, text: fullText ?? m.text } : m));
+        qaSseRef.current = null;
+        setQaBusy(false);
+        setQaStreamingId(null);
+        void loadLessonQa(conceptId, subPoint);
+      },
+      (_status, msg) => {
+        qaSseRef.current = null;
+        setQaBusy(false);
+        setQaStreamingId(null);
+        setErr(msg || '答疑失败');
+        // 回答失败：把临时气泡移除，只留提问（提问已由后端持久化，刷新后可看到）
+        setQaMessages((prev) => prev.filter((m) => m.id !== tempAi.id));
+        void loadLessonQa(conceptId, subPoint);
+      },
+    );
+  };
+
+  // 答疑 CodeMirror keymap 需要「最新」的 sendLessonQa 与当前子点上下文
+  useEffect(() => {
+    qaSendRef.current = sendLessonQa;
+  });
+
+  const toggleQaSelect = (id: number) => {
+    setQaSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedLessonQa = async (conceptId: number, subPoint: string) => {
+    const ids = [...qaSelected];
+    if (ids.length === 0) return;
+    setPendingConfirm({
+      title: '删除答疑记录',
+      message: `确定删除选中的 ${ids.length} 条答疑记录吗？删除后不可恢复。`,
+      confirmText: '删除',
+      danger: true,
+      action: async () => {
+        try {
+          await drill.deleteLessonQa(conceptId, subPoint, ids);
+          setQaMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+          setQaSelecting(false);
+          setQaSelected(new Set());
+          setErr('');
+        } catch (e) {
+          setErr(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    });
+  };
+
+  // —— 答疑线程滚动：监听答疑容器，上翻暂停跟随、滚回底部恢复（与练习聊天一致）——
+  useEffect(() => {
+    if (!qaOpen) return;
+    const scroller = qaThreadRef.current;
+    if (!scroller) return;
+    const onScroll = () => {
+      const nearBottom =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+      qaFollowRef.current = nearBottom;
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, [qaOpen]);
+
+  // 新消息 / 流式更新时：仅当处于「跟随」状态才把答疑线程底部滚进视野
+  useEffect(() => {
+    if (!qaOpen || !qaFollowRef.current) return;
+    const scroller = qaThreadRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [qaMessages, qaOpen, qaStreamingId]);
 
   // 进入「先教后考」：跳子路由，由路由 effect 拉子知识点清单
   const enterTeach = (conceptId: number) => {
@@ -821,11 +953,9 @@ export function Drill() {
   // 答案揭示边界，之后的回答不再计入评分。
   // 评分权交给用户：AI 只负责追问/讲解（chat），判分由用户点「结束并评分」（finish）触发。
   const sendAnswer = (reveal = false) => {
-    // 迁移测试阶段作答（非看答案）：走独立判分通道（答对升级，答错不降）
-    if (phase === 'transfer' && !reveal) { sendTransferAnswer(); return; }
-    // 看答案在对话 / 迁移测试 / 已评分阶段都可用（已评分看答案 = 揭示参考答案，不再追问）
+    // 看答案在对话 / 已评分阶段都可用（已评分看答案 = 揭示参考答案，不再追问）
     // 已评分（graded）时普通发送 = 教学对话（AI 讲解/答疑，不再评分）
-    if (!meta || (phase !== 'chatting' && phase !== 'transfer' && phase !== 'graded')) return;
+    if (!meta || (phase !== 'chatting' && phase !== 'graded')) return;
     // 防御：若仍有未结束的流（异常情况下），先取消再发新消息，避免旧流残留
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
     const userText = reveal ? '我想直接看答案' : input.trim();
@@ -886,11 +1016,8 @@ export function Drill() {
         setMessages((prev) => prev.map((mm) =>
           mm.id === aiMsgId ? { ...mm, revealed: true } : mm,
         ));
-        // 看答案后不再追问：隐藏迁移测试入口
+        // 看答案后不再追问
         setRevealed(true);
-        // 迁移测试阶段看答案 = 放弃本轮迁移作答（维持原档位），退回已判分状态：
-        // 否则输入区还停在「提交迁移作答」，提交会被后端以「已看答案」拒绝
-        setPhase((p) => (p === 'transfer' ? 'graded' : p));
       },
       sendingImages,
     );
@@ -947,7 +1074,6 @@ export function Drill() {
         fontFamily: 'var(--font-mono)',
         caretColor: 'var(--cinnabar)',
         lineHeight: '1.6',
-        maxHeight: '180px',
       },
       '&.cm-focused': { outline: 'none' },
       '.cm-content': { padding: 'var(--s-2) var(--s-3)' },
@@ -976,6 +1102,24 @@ export function Drill() {
     }, { dark: false }),
   ], []);
 
+  // 答疑输入框扩展：复用主练习的 markdown 高亮 + 配色，但发送键发答疑（Mod-Enter 提问）
+  // 发送上下文（conceptId/subPoint/anchor）由答疑输入框渲染时写入 qaCtxRef，keymap 读取最新值
+  const qaCtxRef = useRef<{ conceptId: number; subPoint: string } | null>(null);
+  const qaAnchorRef = useRef<string | null>(null);
+  const qaExtensions = useMemo(() => [
+    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    keymap.of([{
+      key: 'Mod-Enter',
+      preventDefault: true,
+      run: (view) => {
+        if (view.composing) return false;
+        const ctx = qaCtxRef.current;
+        if (ctx) qaSendRef.current(ctx.conceptId, ctx.subPoint, qaAnchorRef.current);
+        return true;
+      },
+    }]),
+  ], []);
+
   // ===== 暂停 AI 回复：取消当前 SSE，未答完的回复保留在界面但不落库 =====
   const pauseReply = () => {
     if (sseRef.current) { sseRef.current.cancel(); sseRef.current = null; }
@@ -996,103 +1140,10 @@ export function Drill() {
         drill.completeTask(ctx.taskId).catch(() => {});
       }
       setPhase('graded');
-      // 判分后：基础档位未通过时，让 AI 自主评判是否再考一道迁移题（阶段3）
-      void maybeAutoTransfer();
     } catch (e) {
       setPhase('chatting');
       if (e instanceof ApiError && e.status === 409) setGate(e.message);
       else setErr(e instanceof ApiError ? e.message : '评分失败');
-    }
-  };
-
-  // ===== 三阶段练习：阶段3 迁移测试 =====
-  // 判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题再考一次；
-  // 答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。看答案后不再追问。
-  // 最多能考几轮由后端按回答质量动态决定：答得好但差一点(≥50分)→最多3轮，
-  // 部分理解(≥30分)→最多2轮，几乎没答对(<30分)→本轮即止。
-  // 是否再考由 AI 自主评判（不再显示手动按钮），见 maybeAutoTransfer。
-
-  // ===== 三阶段练习：阶段3 迁移测试（AI 自动评判） =====
-  // 判分讲解结束后由 AI 自主决定是否再考一道迁移题，不再展示手动按钮。
-  // 展示迁移题（AI 已判定值得再考，或用户在讲解后由系统自动触发）。
-  const showTransfer = (tv: TransferView) => {
-    setTransfer(tv);
-    setTransferResult(null);
-    // 迁移测试题作为新的 AI 消息加入聊天线程（重新出题，不再复用原题干气泡）
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'ai', text: `【迁移测试·第 ${tv.transferCount}/${tv.transferMax} 轮】\n\n${tv.stem}`, type: 'stem' },
-    ]);
-    setPhase('transfer');
-  };
-
-  // AI 自动评判：判分后调用。返回迁移题则展示并进入作答，返回 skipped 则继续。
-  const maybeAutoTransfer = async () => {
-    if (!meta || autoTransferLock.current) return;
-    autoTransferLock.current = true;
-    try {
-      const r = await drill.autoTransfer(meta.runId);
-      if (r && typeof r === 'object' && 'stem' in r) {
-        showTransfer(r);
-      }
-      // r.skipped → AI/后端判定不需要迁移测试，保持 graded 状态即可
-    } catch {
-      // 自动迁移测试失败不阻塞主流程：保持 graded，用户可继续问答/下一题
-    } finally {
-      autoTransferLock.current = false;
-    }
-  };
-
-  // 迁移测试作答：判分（答对升档封顶 GOOD，答错不降），结果附在判分面板下方
-  const sendTransferAnswer = async () => {
-    if (!meta || !transfer || phase !== 'transfer') return;
-    const userText = input.trim();
-    if (!userText) return;
-    setInput('');
-    const userMsgId = nextMsgId();
-    const aiMsgId = nextMsgId();
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, role: 'me', text: userText, type: 'chat' },
-      { id: aiMsgId, role: 'ai', text: '', streaming: true, type: 'chat' },
-    ]);
-    setTransferBusy(true);
-    try {
-      const g = await drill.transferAnswer(meta.runId, userText);
-      setTransferResult(g);
-      setMessages((prev) => prev.map((mm) =>
-        mm.id === aiMsgId
-          ? { ...mm, streaming: false, text: transferResultText(g) }
-          : mm,
-      ));
-      setPhase('graded');
-      // 答错且未达动态上限：让 AI 再次评判是否值得再考一道迁移题
-      if (!(g.grade === 'GOOD' || g.grade === 'EASY') && !g.transferExhausted) {
-        void maybeAutoTransfer();
-      }
-    } catch (e) {
-      setMessages((prev) => prev.map((mm) =>
-        mm.id === aiMsgId ? { ...mm, streaming: false, text: '（迁移测试判分失败）' } : mm,
-      ));
-      setPhase('transfer');
-      setErr(e instanceof ApiError ? e.message : '迁移测试判分失败');
-    } finally {
-      setTransferBusy(false);
-    }
-  };
-
-  // 把本次练习对话（含判分）提取为知识卡片：无论是否通过都能沉淀
-  const extractCard = async () => {
-    if (!meta || cardBusy) return;
-    setCardBusy(true);
-    setErr('');
-    try {
-      await drill.extractCard(meta.runId);
-      setCardSaved(true);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '知识卡片提取失败');
-    } finally {
-      setCardBusy(false);
     }
   };
 
@@ -1471,13 +1522,156 @@ export function Drill() {
                         <div className="reasoning-text"><Markdown>{lessonReasoning}</Markdown></div>
                       </details>
                     )}
-                    <div className="tutor-text">
+                    <div className="tutor-text" onMouseUp={() => {
+                      const sel = window.getSelection();
+                      const txt = sel && !sel.isCollapsed ? sel.toString().trim() : '';
+                      if (txt && txt.length <= 500) setQaAnchor(txt);
+                    }}>
                       <Markdown>{lessonText || '（讲解内容为空）'}</Markdown>
                       {lessonBusy && <span className="tutor-caret" aria-hidden />}
                     </div>
                   </>
                 )}
               </div>
+
+              {/* 讲解页答疑：随时提问，AI 结合讲解回答（仅当前用户私有，可多选删除） */}
+              <div className="lesson-qa">
+                <div className="lesson-qa-head">
+                  <button
+                    className="lesson-qa-toggle"
+                    onClick={async () => {
+                      if (qaOpen) { resetQaPanel(); setQaOpen(false); }
+                      else await openLessonQa(t.conceptId, t.subPoints[t.curIdx]);
+                    }}
+                    title="针对这段讲解随时提问，AI 会结合讲解和你的学习资料回答"
+                  >
+                    <MessageCircle size={15} strokeWidth={1.8} />
+                    {qaOpen ? '收起答疑' : `答疑（${qaMessages.length > 0 ? qaMessages.filter(m => m.role === 'user').length : 0}）`}
+                  </button>
+                  {qaOpen && qaMessages.length > 0 && !qaBusy && (
+                    <div className="lesson-qa-head-actions">
+                      {qaSelecting ? (
+                        <>
+                          <span className="lesson-qa-select-hint">已选 {qaSelected.size} 条</span>
+                          <Button variant="ghost" className="btn-sm" onClick={() => { setQaSelecting(false); setQaSelected(new Set()); }}>
+                            取消
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="btn-sm"
+                            disabled={qaSelected.size === 0}
+                            onClick={() => deleteSelectedLessonQa(t.conceptId, t.subPoints[t.curIdx])}
+                          >
+                            删除
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" className="btn-sm" onClick={() => setQaSelecting(true)}>
+                          删除记录
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {qaOpen && (
+                  <div className="lesson-qa-body">
+                    {qaLoading ? (
+                      <div className="chat-row chat-row-ai chat-row-loading">
+                        <div className="chat-bubble chat-bubble-ai is-loading">
+                          <span className="spinner-sm" /> 读取答疑历史…
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="lesson-qa-thread" ref={qaThreadRef}>
+                        {qaMessages.length === 0 && !qaBusy ? (
+                          <div className="chat-row chat-row-ai">
+                            <div className="chat-bubble chat-bubble-ai is-muted">
+                              还没有提问。读讲解时有疑惑，可以直接在这里问，或选中讲解中的某句话再问。
+                            </div>
+                          </div>
+                        ) : (
+                          qaMessages.map((m) => (
+                            <div
+                              key={m.id}
+                              className={'chat-row ' + (m.role === 'user' ? 'chat-row-me' : 'chat-row-ai') + (qaSelecting ? ' is-qa-select' : '')}
+                              onClick={qaSelecting ? () => toggleQaSelect(m.id) : undefined}
+                            >
+                              {qaSelecting && (
+                                <span className={'lesson-qa-check' + (qaSelected.has(m.id) ? ' on' : '')} />
+                              )}
+                              <div className={'chat-bubble ' + (m.role === 'user' ? 'chat-bubble-me' : 'chat-bubble-ai')}>
+                                {m.anchor && m.role === 'user' && (
+                                  <div className="lesson-qa-anchor" title="你选中的讲解片段">
+                                    “{m.anchor}”
+                                  </div>
+                                )}
+                                {m.role === 'user' ? (
+                                  <p className="me-text">{m.text}</p>
+                                ) : (
+                                  <div className="tutor-text lesson-qa-answer">
+                                    <Markdown>{m.text || (qaStreamingId === m.id ? '…' : '')}</Markdown>
+                                    {qaStreamingId === m.id && <span className="tutor-caret" aria-hidden />}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                        {qaReasoning && qaBusy && (
+                          <details className="reasoning-panel" open>
+                            <summary>AI 思考过程</summary>
+                            <div className="reasoning-text"><Markdown>{qaReasoning}</Markdown></div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="lesson-qa-input">
+                      {qaAnchor && (
+                        <div className="lesson-qa-anchor-chip">
+                          <span className="lesson-qa-anchor-text" title={qaAnchor}>
+                            选中了讲解片段：“{qaAnchor}”
+                          </span>
+                          <button
+                            className="lesson-qa-anchor-clear"
+                            onClick={() => setQaAnchor(null)}
+                            title="取消这段引用"
+                          >
+                            <X size={13} strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      )}
+                      <div className="lesson-qa-input-row">
+                        <CodeMirror
+                          value={qaQuestion}
+                          placeholder={qaAnchor ? '就选中这段话提问（AI 会结合它回答）' : '针对这段讲解提问（如：为什么这里不能用 xxx？）'}
+                          height="auto"
+                          minHeight="44px"
+                          maxHeight="360px"
+                          editable={!qaBusy}
+                          extensions={qaExtensions}
+                          onChange={(val) => setQaQuestion(val)}
+                          onUpdate={(vu) => {
+                            // 渲染时记录当前答疑上下文，供 keymap（Mod-Enter 提问）读取
+                            qaCtxRef.current = { conceptId: t.conceptId, subPoint: t.subPoints[t.curIdx] };
+                            qaAnchorRef.current = qaAnchor;
+                            if (vu.view.composing) return;
+                          }}
+                          className="lesson-qa-textarea"
+                        />
+                        <Button
+                          onClick={() => sendLessonQa(t.conceptId, t.subPoints[t.curIdx], qaAnchor)}
+                          disabled={qaBusy || !qaQuestion.trim()}
+                        >
+                          {qaBusy ? '回答中…' : '提问'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="teach-foot">
                 <div className="teach-foot-left">
                   <Button variant="ghost" onClick={() => t && navigate(`/drill/teach/${t.conceptId}`)}>
@@ -1542,9 +1736,9 @@ export function Drill() {
   // ===== Learn（聊天式 SSE 练习）=====
   // AI 正在流式回复中：显示「暂停」而不是发送（回车=换行，Ctrl/⌘+回车=发送）
   const aiStreaming = messages.some((m) => m.streaming);
-  // 对话 / 迁移测试 / 已评分（教学对话）都可发送；发送键 Ctrl/⌘+回车
+  // 对话 / 已评分（教学对话）都可发送；发送键 Ctrl/⌘+回车
   const canSend =
-    (phase === 'chatting' || phase === 'transfer' || phase === 'graded') &&
+    (phase === 'chatting' || phase === 'graded') &&
     input.trim().length > 0 &&
     !aiStreaming;
   // 至少有一轮用户真实作答才能结束评分；已判分 run 上继续的对话不再重新评分，隐藏该按钮。
@@ -1588,7 +1782,7 @@ export function Drill() {
         </div>
 
         {/* 输入区：按 phase 分态（resumedGraded 时隐藏「结束并评分」）
-            三阶段：chatting=第一答即判；graded=已判分，保留输入框做教学对话（不评分）+ 迁移测试入口；transfer=迁移测试作答 */}
+            苏格拉底：chatting=答疑；graded=已判分，保留输入框做教学对话（不评分） */}
         <div className="chat-input card">
           {phase === 'finishing' ? (
             // 评分中：禁用
@@ -1599,7 +1793,7 @@ export function Drill() {
               </Button>
             </div>
           ) : (
-            // 对话 / 生成 / 已评分（教学对话） / 迁移测试：输入框 + 动作
+            // 对话 / 生成 / 已评分（教学对话）：输入框 + 动作
             <>
               <div className="chat-input-tools">
                 <button type="button" className="chat-tool-btn" onClick={insertCodeBlock} title="插入代码块（```语言 包裹）">
@@ -1646,20 +1840,19 @@ export function Drill() {
                 placeholder={
                   phase === 'generating'
                     ? '题目生成中…'
-                    : phase === 'transfer'
-                      ? '回答迁移测试题（结合已掌握知识点的新题）；答对可升级为 GOOD，答错不降级。Ctrl/⌘+回车发送。'
-                      : phase === 'graded' && !resumedGraded
-                        ? '已判分：可继续向 AI 提问（教学讲解，不再评分），或点「迁移测试」再考一轮。回车换行，Ctrl/⌘+回车发送。'
-                        : resumedGraded
-                          ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
-                          : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问。答完可点「结束并评分」，想直接看答案可点「看答案」。回车换行，Ctrl/⌘+回车发送。'
+                    : phase === 'graded' && !resumedGraded
+                      ? '已判分：可继续向 AI 提问（教学讲解，不再评分）。回车换行，Ctrl/⌘+回车发送。'
+                      : resumedGraded
+                        ? '向 AI 提问，继续聊这道题（已判分，不会重新评分）。回车换行，Ctrl/⌘+回车发送。'
+                        : '先回答主问题；AI 会判断你是否理解，再视情况逐条追问。答完可点「结束并评分」，想直接看答案可点「看答案」。回车换行，Ctrl/⌘+回车发送。'
                 }
                 editable={phase !== 'generating'}
                 extensions={cmExtensions}
                 autoFocus
                 onCreateEditor={(view) => { editorViewRef.current = view; }}
                 onChange={(val) => setInput(val)}
-                height="180px"
+                minHeight="44px"
+                maxHeight="360px"
               />
               <div className="chat-input-foot">
                 <div className="chat-input-actions">
@@ -1675,12 +1868,6 @@ export function Drill() {
                       <NotebookPen size={16} strokeWidth={1.6} /> 写内化笔记
                     </Button>
                   )}
-                  {phase === 'graded' && (
-                    <Button variant="ghost" onClick={extractCard} disabled={cardBusy}>
-                      {cardSaved ? <Check size={16} strokeWidth={1.8} /> : <FileText size={16} strokeWidth={1.6} />}
-                      {cardSaved ? '已保存知识卡片' : cardBusy ? '提取中…' : '提取知识卡片'}
-                    </Button>
-                  )}
                 </div>
                 <div className="chat-input-actions">
                   {canFinish && (
@@ -1692,22 +1879,12 @@ export function Drill() {
                       结束并评分
                     </Button>
                   )}
-                  {phase !== 'generating' && !revealed && phase !== 'transfer' && (
+                  {phase !== 'generating' && !revealed && (
                     <Button
                       variant="ghost"
                       onClick={() => sendAnswer(true)}
                       disabled={aiStreaming}
                       title="直接看参考答案（看答案后不再追问）"
-                    >
-                      看答案
-                    </Button>
-                  )}
-                  {phase === 'transfer' && !revealed && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => sendAnswer(true)}
-                      disabled={aiStreaming || transferBusy}
-                      title="看参考答案（看答案后不再追问）"
                     >
                       看答案
                     </Button>
@@ -1744,7 +1921,7 @@ export function Drill() {
                     </Button>
                   ) : (
                     <Button onClick={() => sendAnswer(false)} disabled={!canSend}>
-                      {phase === 'generating' ? '等待题目' : phase === 'transfer' ? '提交迁移作答' : '发送'}
+                      {phase === 'generating' ? '等待题目' : '发送'}
                     </Button>
                   )}
                   {phase === 'graded' && (
@@ -1758,8 +1935,8 @@ export function Drill() {
           )}
         </div>
 
-        {/* 评分总结：独立于聊天线程，显示在输入框下方。迁移测试升级后展示最终档位。 */}
-        {(grade || transferResult) && (
+        {/* 评分总结：独立于聊天线程，显示在输入框下方。 */}
+        {(grade) && (
           <div className="chat-verdict card">
             <VerdictPanel
               run={{
@@ -1767,8 +1944,8 @@ export function Drill() {
                 mode: 'LEARN',
                 status: 'GRADED',
                 sourceRunId: null,
-                rawScore: (transferResult ?? grade)?.rawScore ?? 0,
-                grade: (transferResult ?? grade)?.grade ?? 'AGAIN',
+                rawScore: grade?.rawScore ?? 0,
+                grade: grade?.grade ?? 'AGAIN',
                 answeredAt: '',
                 turns: [],
               }}
@@ -1776,9 +1953,9 @@ export function Drill() {
                 round: 0,
                 stem: '',
                 rawAnswer: '',
-                rawScore: (transferResult ?? grade)?.rawScore ?? 0,
-                passed: ((transferResult ?? grade)?.rawScore ?? 0) >= 60,
-                byConceptJson: (transferResult ?? grade)?.byConceptJson ?? null,
+                rawScore: grade?.rawScore ?? 0,
+                passed: (grade?.rawScore ?? 0) >= 60,
+                byConceptJson: grade?.byConceptJson ?? null,
                 tutorText: null,
               }}
             />

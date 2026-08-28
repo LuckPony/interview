@@ -1,0 +1,282 @@
+/* ===== 随手记弹窗（两栏：左侧历史列表 + 右侧 Markdown 编辑器） ===== */
+.casual-note-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  padding: var(--s-4);
+}
+.casual-note-dialog {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  width: min(1440px, 96vw);
+  height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .18);
+}
+
+/* —— 头部 —— */
+.casual-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.casual-note-head-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.casual-note-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.casual-note-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-faint);
+  line-height: 1;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.close-btn:hover { background: rgba(0, 0, 0, .06); color: var(--ink); }
+
+/* —— 两栏主体 —— */
+.casual-note-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+/* —— 左侧：历史列表 —— */
+.casual-note-side {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.casual-note-side-tools {
+  display: flex;
+  gap: 8px;
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.casual-note-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink-faint);
+}
+.casual-note-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.casual-note-search input::placeholder { color: var(--ink-faint); }
+.casual-note-new {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--cinnabar);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.casual-note-new:hover {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+}
+.casual-note-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-2);
+}
+.casual-note-empty {
+  padding: var(--s-4) var(--s-3);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+}
+.casual-note-item {
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.casual-note-item:hover {
+  background: var(--paper-3);
+}
+.casual-note-item.is-active {
+  background: var(--cinnabar-wash);
+  border-color: color-mix(in oklch, var(--cinnabar) 40%, var(--line));
+}
+.casual-note-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.casual-note-item-title {
+  font-weight: 600;
+  font-size: var(--fs-base);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.casual-note-item-del {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, background .15s, color .15s;
+}
+.casual-note-item:hover .casual-note-item-del,
+.casual-note-item.is-active .casual-note-item-del {
+  opacity: 1;
+}
+.casual-note-item-del:hover {
+  background: color-mix(in oklch, var(--bad) 12%, transparent);
+  color: var(--bad);
+}
+.casual-note-item-snippet {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.casual-note-item-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+/* —— 右侧：编辑器 —— */
+.casual-note-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  overflow-y: auto;
+}
+.casual-note-banner {
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklch, var(--bad) 10%, var(--paper));
+  border: 1px solid color-mix(in oklch, var(--bad) 35%, var(--line));
+  color: var(--bad);
+  font-size: var(--fs-sm);
+}
+.casual-note-title-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.casual-note-title-input:focus {
+  border-color: var(--cinnabar);
+}
+.casual-note-title-input::placeholder {
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+.casual-note-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+}
+/* 编辑器图片最大宽度限制（含预览区） */
+.casual-note-editor .w-md-editor-preview img,
+.casual-note-editor .wmde-markdown img {
+  max-width: 100%;
+  border-radius: var(--r-sm);
+}
+.casual-note-saved {
+  font-size: var(--fs-sm);
+  color: var(--good);
+  text-align: right;
+}
+.casual-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: auto;
+}
+.casual-note-hint {
+  margin-right: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+/* 编辑器高度跟随弹窗（视口自适应），浏览器与桌面端同一份样式 */
+.casual-note-editor .w-md-editor {
+  height: 100% !important;
+}

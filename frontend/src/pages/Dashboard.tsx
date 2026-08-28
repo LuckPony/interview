@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PenLine, MessagesSquare, Network, ArrowUpRight, NotebookPen } from 'lucide-react';
+import { PenLine, MessagesSquare, Network, ArrowUpRight, NotebookPen, RotateCcw } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { drill, studyPlan } from '../api/drill';
 import { knowledgeApi } from '../api/knowledge';
@@ -8,7 +8,7 @@ import { Card, Badge, Loading } from '../components/ui';
 import { PlanSwitcher } from '../components/PlanSwitcher';
 import { useActivePlan } from '../lib/useActivePlan';
 import { ApiError } from '../api/client';
-import type { DebtView, TopicProfile, PlanView } from '../api/types';
+import type { DebtView, TopicProfile, PlanView, DailyTaskView } from '../api/types';
 import './Dashboard.css';
 
 function msg(e: unknown): string {
@@ -21,7 +21,7 @@ export function Dashboard() {
   const [debt, setDebt] = useState<DebtView[] | null>(null);
   const [profile, setProfile] = useState<TopicProfile[] | null>(null);
   const [plans, setPlans] = useState<PlanView[]>([]);
-  const [cardTotal, setCardTotal] = useState<number | null>(null);
+  const [today, setToday] = useState<DailyTaskView[] | null>(null);
   const [cardDue, setCardDue] = useState<number | null>(null);
   const [err, setErr] = useState('');
 
@@ -29,8 +29,8 @@ export function Dashboard() {
     drill.debt().then(setDebt).catch((e) => setErr(msg(e)));
     drill.profile().then(setProfile).catch(() => undefined);
     studyPlan.list().then(setPlans).catch(() => undefined);
+    drill.today().then(setToday).catch(() => setToday([]));
     // 知识卡片统计：总数 + 到期待复习
-    knowledgeApi.list().then(cs => setCardTotal(cs.length)).catch(() => undefined);
     knowledgeApi.due().then(cs => setCardDue(cs.length)).catch(() => undefined);
   }, []);
 
@@ -41,6 +41,10 @@ export function Dashboard() {
   const topics = profile?.length ?? 0;
   const mastered = profile?.filter((t) => t.masteredLayer >= 3).length ?? 0;
   const debtCount = debtActive.length;
+  const todayTasks = today ?? [];
+  const activeTasks = todayTasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
+  const reviewTasks = activeTasks.filter((t) => t.kind === 'REVIEW');
+  const reviewCount = reviewTasks.length;
 
   return (
     <div className="page">
@@ -60,6 +64,32 @@ export function Dashboard() {
         </button>
       </div>
 
+      {reviewCount > 0 && (
+        <section className="dash-review">
+          <div className="dash-review-head">
+            <span className="dash-review-badge">
+              <RotateCcw size={17} strokeWidth={2} /> 今日待复习 {reviewCount}
+            </span>
+            <button className="dash-link" onClick={() => navigate('/drill')}>
+              去复习 <ArrowUpRight size={14} strokeWidth={1.6} />
+            </button>
+          </div>
+          <p className="dash-review-rule">
+            到期规则：已掌握的概念按间隔到期后进入复习；复习聚焦薄弱子知识点，做对延长间隔，做错降档并重新排期。
+          </p>
+          <ul className="dash-review-list">
+            {reviewTasks.slice(0, 5).map((t) => (
+              <li key={t.id} className="dash-review-item" onClick={() => navigate('/drill')}>
+                <span className="dash-review-dot" aria-hidden />
+                <span className="dash-review-plan">{t.planTitle}</span>
+                <strong className="dash-review-name">{t.conceptName}{t.subPoint ? ` · ${t.subPoint}` : ''}</strong>
+                <Badge kind="warn">待复习</Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="dash-actions">
         <button className="dash-primary" onClick={() => navigate('/drill')}>
           <span className="dash-primary-ico">
@@ -69,7 +99,11 @@ export function Dashboard() {
             <span className="dash-kicker">练习</span>
             <strong>继续学习</strong>
             <small>
-              {debtCount > 0 ? `有 ${debtCount} 条复盘待写，先去消化` : '服务端已为你选好下一题'}
+              {reviewCount > 0
+                ? `有 ${reviewCount} 项复习任务待完成，先进「今日学习」`
+                : debtCount > 0
+                  ? `有 ${debtCount} 条复盘待写，先去消化`
+                  : '服务端已为你选好下一题'}
             </small>
           </span>
           <ArrowUpRight size={20} strokeWidth={1.6} className="dash-go" />
@@ -91,7 +125,7 @@ export function Dashboard() {
         <Stat label="知识主题" value={topics} tone="soft" />
         <Stat label="已精熟主题" value={mastered} tone="good" />
         <Stat label="待复盘" value={debtCount} tone={debtCount > 0 ? 'bad' : 'soft'} />
-        <Stat label="知识卡片" value={cardTotal ?? 0} tone="soft" hint={cardTotal === null ? '加载中…' : undefined} />
+        <Stat label="待复习" value={reviewCount} tone={reviewCount > 0 ? 'bad' : 'soft'} hint={today === null ? '加载中…' : undefined} />
         <Stat label="待复习卡片" value={cardDue ?? 0} tone={(cardDue ?? 0) > 0 ? 'bad' : 'soft'} hint={cardDue === null ? '加载中…' : undefined} />
       </section>
 

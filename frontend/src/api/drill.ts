@@ -24,8 +24,8 @@ import type {
   LearningNextView,
   KnowledgePointsView,
   OutlineView,
+  LessonQaMessageView,
   KnowledgeCard,
-  TransferView,
 } from './types';
 
 export interface Timing {
@@ -343,6 +343,34 @@ export function lessonStream(
   }, { onToken, onReasoning, onDone: () => onDone(), onError });
 }
 
+/**
+ * 子知识点讲解答疑 SSE 流（POST /{conceptId}/lesson/chat?subPoint=...，SSE）：
+ * 学生提问 → 逐 token 推 AI 回答（data:{"text":...}），event:reasoning 推思考，
+ * event:done 带完整回答文本。答疑不判分、不进 run，仅当前用户私有并持久化。
+ * @param anchor 学生选中的讲解片段（可空，作为提问上下文）
+ */
+export function lessonChatStream(
+  conceptId: number,
+  subPoint: string,
+  question: string,
+  anchor: string | null,
+  onToken: (token: string) => void,
+  onReasoning: (text: string) => void,
+  onDone: (fullText?: string) => void,
+  onError: (status?: number, message?: string) => void,
+): TutorStream {
+  const token = getToken();
+  const url = `${API_BASE_SSE}/api/drill/${conceptId}/lesson/chat?subPoint=${encodeURIComponent(subPoint)}`;
+  return openSse(url, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ question, anchor: anchor ?? null }),
+  }, { onToken, onReasoning, onDone, onError });
+}
+
 export const drill = {
   next: () => apiFetch<QuestionView>('/drill/next', { method: 'POST' }),
 
@@ -356,6 +384,17 @@ export const drill = {
   // 先教后考：拆解知识点为子知识点清单（缓存 concept.lesson_outline）
   outline: (conceptId: number) =>
     apiFetch<OutlineView>(`/drill/${conceptId}/outline`, { method: 'POST' }),
+
+  // 讲解页答疑：历史消息（当前用户私有，按时间升序）
+  lessonQa: (conceptId: number, subPoint: string) =>
+    apiFetch<LessonQaMessageView[]>(`/drill/${conceptId}/lesson/qa?subPoint=${encodeURIComponent(subPoint)}`),
+
+  // 讲解页答疑：删除若干条消息（仅自己的记录，前端多选 + 二次确认）
+  deleteLessonQa: (conceptId: number, subPoint: string, ids: number[]) =>
+    apiFetch<{ ok: boolean; deleted: number }>(`/drill/${conceptId}/lesson/qa/delete?subPoint=${encodeURIComponent(subPoint)}`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
 
   // 手动「直接通过 / 取消通过」某个子知识点（简单知识点跳过做题）
   subPointPass: (conceptId: number, subPoint: string, passed: boolean) =>
@@ -460,29 +499,13 @@ export const drill = {
         body: JSON.stringify({ planId }),
       }),
 
-  // LEARN grade 卡"继续追问"：spawn 一条 mode=REHEARSAL 的追问场，复用 source questionId
-  followup: (runId: number) =>
-    apiFetch<RehearsalView>(`/drill/${runId}/followup`, { method: 'POST' }),
-
   // 主动结束追问 / 模拟面试：强制 settle
   rehearsalEnd: (runId: number) =>
     apiFetch<RehearsalView>(`/drill/rehearsal/${runId}/end`, { method: 'POST' }),
 
-  // 结束对话并评分：基于整轮对话一次性评分（不再逐答即判）
+  // 结束对话并评分：基于整轮对话一次性评分
   finish: (runId: number) =>
     apiFetch<GradeView>(`/drill/${runId}/finish`, { method: 'POST' }),
-
-  // 三阶段练习：迁移测试（阶段3）—— 结合已掌握知识点出新题考察；答对降级通过（封顶 GOOD），答错不降级
-  transfer: (runId: number) =>
-    apiFetch<TransferView>(`/drill/${runId}/transfer`, { method: 'POST' }),
-  // 自动迁移测试：AI 自主评判是否再考一道迁移题；返回新题视图或 {skipped:true}（不需要）
-  autoTransfer: (runId: number) =>
-    apiFetch<TransferView | { skipped: boolean }>(`/drill/${runId}/auto-transfer`, { method: 'POST' }),
-  transferAnswer: (runId: number, rawAnswer: string) =>
-    apiFetch<GradeView>(`/drill/${runId}/transfer-answer`, {
-      method: 'POST',
-      body: JSON.stringify({ rawAnswer }),
-    }),
 
   // 放弃本次作答（看答案后不再作答，按 AGAIN 结算闭环，放行下一题）
   abandon: (runId: number) =>
@@ -498,6 +521,9 @@ export const drill = {
   debt: () => apiFetch<DebtView[]>('/drill/debt'),
 
   profile: () => apiFetch<TopicProfile[]>('/drill/profile'),
+
+  /** 能力画像 md 文档（已训练能力清单） */
+  skillDoc: () => apiFetch<{ markdown: string }>('/drill/profile/skill-doc'),
 
   // 问答记录：按题聚合的对话线列表 + 单题完整对话线
   history: () => apiFetch<RunSummaryView[]>('/drill/history'),

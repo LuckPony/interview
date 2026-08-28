@@ -1,5 +1,5 @@
 import { apiFetch, ApiError, getToken, getLlmKeyHeader } from './client';
-import type { KnowledgeCard } from './types';
+import type { KnowledgeCard, CasualNote } from './types';
 
 export interface ChatMsg { role: 'user' | 'ai'; content: string }
 export interface AskStream { cancel: () => void }
@@ -141,5 +141,18 @@ export const knowledgeApi = {
     },
     remove(id: number): Promise<void> {
         return apiFetch<void>(`/knowledge/cards/${id}`, { method: 'DELETE' });
+    },
+    // ----- 随手记 (Casual Note) -----
+    listNotes(): Promise<CasualNote[]> {
+        return unwrap(apiFetch<Envelope<CasualNote[]>>('/knowledge/notes'));
+    },
+    createNote(req: { title: string; content: string; conceptId?: number; chatId?: number }): Promise<CasualNote> {
+        return unwrap(apiFetch<Envelope<CasualNote>>('/knowledge/notes', { method: 'POST', body: JSON.stringify(req) }));
+    },
+    updateNote(id: number, req: { title: string; content: string }): Promise<CasualNote> {
+        return unwrap(apiFetch<Envelope<CasualNote>>(`/knowledge/notes/${id}`, { method: 'PUT', body: JSON.stringify(req) }));
+    },
+    deleteNote(id: number): Promise<void> {
+        return apiFetch<void>(`/knowledge/notes/${id}`, { method: 'DELETE' });
     },
 };

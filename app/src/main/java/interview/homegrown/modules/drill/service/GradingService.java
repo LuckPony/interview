@@ -119,12 +119,21 @@ public class GradingService {
             turnRepo.save(turn);
         }
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed);
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
+                run.isGuided(), run.getGuideRounds(), run.isRevealed());
 
-        // 三阶段练习：阶段1（独立作答）判分锁定基础档位，进入教学讲解阶段。
-        // 之后阶段3（迁移测试）答对可「降级通过」升级（封顶 GOOD），答错不降级。
-        run.setFirstGrade(out.grade().name());
-        run.setPhase(DrillPhase.TUTORING);
+        // 苏格拉底 G1 预引导分：达标（GOOD/EASY）→ DONE + finalGrade；未达标 → GUIDED + preGrade（待引导/再考查）
+        Grade g1 = out.grade();
+        run.setPreGrade(g1.name());
+        if (run.isRevealed()) {
+            run.setFinalGrade(Grade.AGAIN.name());
+            run.setSocraticState(DrillPhase.DONE);
+        } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
+            run.setFinalGrade(g1.name());
+            run.setSocraticState(DrillPhase.DONE);
+        } else {
+            run.setSocraticState(DrillPhase.GUIDED);
+        }
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
 
@@ -167,17 +176,9 @@ public class GradingService {
             throw new ResponseStatusException(BAD_REQUEST, "尚无对话记录，无法评分");
         }
 
-        // —— 评分基准：只取「得到答案之前」的回答 ——
-        Integer revealRound = run.getAnswerRevealedRound();
+        // —— 评分基准：全部对话（看答案后封 AGAIN，不再按轮次截断） ——
         List<DrillTurn> gradeTurns = turns;
-        if (revealRound != null) {
-            List<DrillTurn> preReveal = turns.stream()
-                    .filter(t -> t.getRound() < revealRound)
-                    .toList();
-            boolean preRevealHasAnswer = preReveal.stream()
-                    .anyMatch(t -> t.getRawAnswer() != null && !t.getRawAnswer().isBlank());
-            if (preRevealHasAnswer) gradeTurns = preReveal;
-        }
+        boolean revealed = run.isRevealed();
 
         // —— 评分正文只取「第一次独立作答」 ——
         // 追问后的修正/复述只进入 conversation 供判分器参考（判断老师是否泄底、哪些点被实际考到），
@@ -233,11 +234,22 @@ public class GradingService {
         turn0.setRawScore(out.rawScore());
         turnRepo.save(turn0);
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed);
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
+                run.isGuided(), run.getGuideRounds(), run.isRevealed());
 
-        // 三阶段练习：对话判分同样锁定基础档位并进入讲解阶段（迁移测试入口由前端按档位展示）
-        run.setFirstGrade(out.grade().name());
-        run.setPhase(DrillPhase.TUTORING);
+        // 苏格拉底 G1 预引导分（延迟评分路径同 grade）
+        Grade g1 = out.grade();
+        run.setPreGrade(g1.name());
+        if (revealed) {
+            // 看过答案 → 封 AGAIN
+            run.setFinalGrade(Grade.AGAIN.name());
+            run.setSocraticState(DrillPhase.DONE);
+        } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
+            run.setFinalGrade(g1.name());
+            run.setSocraticState(DrillPhase.DONE);
+        } else {
+            run.setSocraticState(DrillPhase.GUIDED);
+        }
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
 
@@ -247,139 +259,58 @@ public class GradingService {
     }
 
     /**
-     * 阶段3（迁移测试）判分：基于 run 上暂存的迁移题（transferStem/transferPointsJson/transferConceptIdsJson）
-     * 判分，只允许「降级通过」——答对升一档（AGAIN→HARD→GOOD，封顶 GOOD），答错不降级。
-     * 判分落库后：更新 first_grade、transfer_count 递增；达到上限或升到 GOOD 则 phase=DONE。
+     * 苏格拉底 G2 引导后达标结算：SocraticJudge 已判 done（覆盖≥80%且无致命缺漏）。
+     * 落 GradeResult + applyMastery，最终分=GOOD（封顶，不给 EASY），覆盖 G1 的 preGrade。
+     * 用于 chat 流里 needs_guide 之后经引导再答完（done）的路径。
      *
-     * @return 迁移测试判分结果（grade 为升级后的档位）
+     * @return 落库后的 GradeView（rawScore 由 coverage 折算，满 100）
      */
     @Transactional
-    public GradeView gradeTransfer(Long userId, Long runId, String rawAnswer) {
+    public GradeView guidedPass(Long userId, Long runId, DrillTurn doneTurn) {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
-        if (run.getPhase() != DrillPhase.TRANSFER_TEST) {
-            throw new ResponseStatusException(BAD_REQUEST, "当前不在迁移测试阶段: " + run.getPhase());
+        if (run.getStatus() == DrillRunStatus.GRADED) {
+            throw new ResponseStatusException(BAD_REQUEST, "该作答已评分");
         }
-        if (run.getStatus() != DrillRunStatus.GRADED) {
-            throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可迁移测试: " + run.getStatus());
-        }
-        // 看答案后不再追问：阶段3 已揭示答案，继续考已无意义
-        if (run.getAnswerRevealedRound() != null) {
-            throw new ResponseStatusException(BAD_REQUEST, "已看答案，不再继续追问");
-        }
-        String stem = run.getTransferStem();
-        String pointsJson = run.getTransferPointsJson();
-        Integer[] conceptIds = parseConceptIds(run.getTransferConceptIdsJson());
-        if (stem == null || pointsJson == null || conceptIds == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "迁移测试题不存在");
-        }
+        QuestionBank q = qbRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+
         boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
+        double coverage = doneTurn.getCoverage() == null ? 0.8 : doneTurn.getCoverage().doubleValue();
+        double rawScore = Math.max(60, Math.min(100, coverage * 100));
 
-        Grader.GraderOutput out = graderText.gradeRaw(stem, pointsJson, conceptIds, rawAnswer, timed);
+        // 落 GradeResult（G2 判定：达标 → GOOD）
+        GradeResult gr = new GradeResult();
+        gr.setRunId(runId);
+        gr.setQuestionId(q.getId());
+        gr.setAnswerHash(Integer.toHexString(doneTurn.getRawAnswer() == null ? "".hashCode() : doneTurn.getRawAnswer().hashCode()));
+        gr.setByConceptJson("[]");
+        gr.setRawScore(java.math.BigDecimal.valueOf(rawScore));
+        gr.setGrade(Grade.GOOD);
+        gr.setPreGrade(run.getPreGrade());   // 记录 G1 预引导分
+        gr.setFinalGrade("GOOD");
+        gr.setGuided(true);
+        gr.setGuideRounds(run.getGuideRounds());
+        gr.setRevealed(run.isRevealed());
+        gradeRepo.save(gr);
 
-        // 降级通过：答对（GOOD/EASY）→ 基础档位升一档（封顶 GOOD）；答错 → 保持基础档位（不降级）
-        String base = run.getFirstGrade() == null ? "AGAIN" : run.getFirstGrade();
-        Grade upgraded = switch (out.grade()) {
-            case AGAIN, HARD -> Grade.valueOf(base);       // 迁移测试未通过：维持阶段1档位
-            case GOOD, EASY -> upgradeOnPass(base);        // 通过：升一档，封顶 GOOD
-        };
-        boolean passed = out.grade() == Grade.GOOD || out.grade() == Grade.EASY;
-        run.setFirstGrade(upgraded.name());
-        run.setTransferCount(run.getTransferCount() + 1);
-        // —— 动态追问轮数（需求：次数根据回答质量动态决定，不写死）——
-        // 答对 → 结束；答错 → 按本轮得分决定还能不能再考：
-        //   rawScore>=50（接近通过）→ 允许最多 3 轮；30~50（部分理解）→ 2 轮；
-        //   <30（完全没答对）→ 本轮即止。硬上限 3 轮防死循环。
-        if (passed) {
-            run.setPhase(DrillPhase.DONE);
-        } else {
-            int dynamicMax = dynamicTransferMax(
-                    out.rawScore() == null ? 0 : out.rawScore().doubleValue(), base);
-            run.setTransferMax(dynamicMax); // 持久化动态上限，前端/后续读一致
-            run.setPhase(run.getTransferCount() >= dynamicMax
-                    ? DrillPhase.DONE
-                    : DrillPhase.TUTORING);
-        }
+        // 更新 run：finalGrade=GOOD（覆盖 G1）、DONE、GRADED
+        run.setPreGrade(run.getPreGrade());
+        run.setFinalGrade(Grade.GOOD.name());
+        run.setSocraticState(DrillPhase.DONE);
+        run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
 
-        boolean transferExhausted = run.getPhase() == DrillPhase.DONE && !passed;
+        // 掌握度：G2 引导后达标 → 按 primary 概念升到 GOOD（guided 会缩短复习间隔）
+        Long primaryId = (q.getConceptIds() == null || q.getConceptIds().length == 0)
+                ? null : q.getConceptIds()[0].longValue();
+        List<ConceptScore> scores = primaryId == null ? List.of()
+                : List.of(new ConceptScore(primaryId, ConceptRole.PRIMARY,
+                        java.math.BigDecimal.valueOf(rawScore), Grade.GOOD));
+        applyMastery(userId, scores, run.getMode(), timed,
+                true, run.getGuideRounds(), run.isRevealed());
 
-        // 迁移测试通过 → 更新阶段1 落的那条 GradeResult 为「最终成绩」（升级后档位）：
-        // 让「子点通过」判定（findPassedFocusedRuns 按 GradeResult.rawScore >= 60）能看到降级通过，
-        // 否则 HARD 降级通过的 run 会因阶段1 分数不过线而永远不算达标。
-        // 同时保持「一 run 一条 GradeResult」不变式——history/review/note 都用
-        // gradeRepo.findByRunId()（Optional 单条），再落一条会让它们抛 IncorrectResultSize。
-        if (passed) {
-            GradeResult gr = gradeRepo.findByRunId(runId).orElse(null);
-            if (gr != null) {
-                gr.setAnswerHash(Integer.toHexString(rawAnswer.hashCode()));
-                gr.setByConceptJson(out.byConceptJson());
-                gr.setRawScore(out.rawScore());
-                gr.setGrade(upgraded);
-                gradeRepo.save(gr);
-            }
-        }
-
-        // 迁移测试通过 → 掌握度结算（降级通过）：
-        // 阶段1 独立作答已按基础档位 applyMastery 过一次（AGAIN 会把 level 降一档）。
-        // 迁移通过后 PRIMARY 概念 level 直接 +1（封顶 cap）：
-        //   AGAIN→HARD 通过 = 恢复到阶段1 之前的 level；
-        //   HARD→GOOD 通过 = 提升一级。
-        // ANCHOR（已掌握概念）只是陪考，不因迁移测试改变掌握度。
-        if (passed && out.conceptScores() != null && !out.conceptScores().isEmpty()) {
-            ConceptScore primary = out.conceptScores().get(0);
-            if (primary.role() == ConceptRole.PRIMARY) {
-                Mastery m = masteryRepo.findByUserIdAndConceptId(userId, primary.conceptId()).orElse(null);
-                int cur = m == null ? 0 : m.getMasteryLevel();
-                int cap = 2; // LEARN 概念级封顶 L2
-                int newLevel = Math.min(cap, cur + 1);
-                Instant due = scheduleService.nextDue(upgraded, timed);
-                masteryRepo.upsert(userId, primary.conceptId(), newLevel, upgraded.name(), due);
-            }
-        }
-
-        return new GradeView(runId, null,
-                out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
-                upgraded.name(), out.byConceptJson(), transferExhausted);
-    }
-
-    /**
-     * 动态迁移测试轮数上限（按本轮作答质量 + 基础档位）：
-     * <p>得分反映本轮理解，基础档位反映初始掌握：
-     * <ul>
-     *   <li>rawScore &gt;= 50（接近通过）→ 差一点就能过：HARD 允许最多 3 轮，AGAIN 最多 2 轮；</li>
-     *   <li>30 &lt;= rawScore &lt; 50（部分理解）→ 有点基础：最多 2 轮；</li>
-     *   <li>rawScore &lt; 30（几乎没答对）→ 再问也无意义：本轮即止（1 轮）。</li>
-     * </ul>
-     * 无论怎样硬上限 3 轮，防止 AI 无限出题（用户决策：追问要设置上限）。
-     */
-    private int dynamicTransferMax(double rawScore, String baseGrade) {
-        if (rawScore >= 50) {
-            return "HARD".equals(baseGrade) ? 3 : 2; // 差一点 + 原本就接近 → 最宽容
-        }
-        if (rawScore >= 30) {
-            return 2;
-        }
-        return 1;
-    }
-
-    /** 迁移测试通过时把基础档位升一档：AGAIN→HARD→GOOD，GOOD 封顶（EASY 保持）。 */
-    private Grade upgradeOnPass(String base) {
-        return switch (base) {
-            case "AGAIN" -> Grade.HARD;
-            case "HARD" -> Grade.GOOD;
-            case "GOOD", "EASY" -> Grade.GOOD;
-            default -> Grade.GOOD;
-        };
-    }
-
-    private Integer[] parseConceptIds(String json) {
-        if (json == null || json.isBlank()) return null;
-        try {
-            return objectMapper.readValue(json, Integer[].class);
-        } catch (Exception e) {
-            return null;
-        }
+        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]");
     }
 
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
@@ -408,14 +339,20 @@ public class GradingService {
         return s.substring(0, max) + "…";
     }
 
-    /** per concept 更新掌握度与下次复习时间 */
-    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed) {
+    /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */
+    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed,
+                             boolean guided, int guideRounds, boolean revealed) {
         for (ConceptScore cs : scores) {
             Grade effective = effectiveGrade(cs);
             int level = computeLevel(userId, cs.conceptId(), effective, cs.role(), mode);
-            Instant due = scheduleService.nextDue(effective, timed);
+            Instant due = scheduleService.nextDue(effective, timed, guided, guideRounds, revealed);
             masteryRepo.upsert(userId, cs.conceptId(), level, effective.name(), due);
         }
+    }
+
+    /** per concept 更新掌握度与下次复习时间（模拟面试 REHEARSAL 路径，无苏格拉底引导概念） */
+    public void applyMastery(Long userId, List<ConceptScore> scores, DrillMode mode, boolean timed) {
+        applyMastery(userId, scores, mode, timed, false, 0, false);
     }
 
     /** ANCHOR 封顶 GOOD：不给 EASY，避免"顺带答对"把复习间隔拉得太长 */

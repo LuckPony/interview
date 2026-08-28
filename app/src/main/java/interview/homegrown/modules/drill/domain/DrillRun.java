@@ -3,9 +3,7 @@ package interview.homegrown.modules.drill.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
-import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -47,15 +45,11 @@ public class DrillRun {
 
     private Integer activeSeconds;  // 有效作答时长（心跳累计）
 
-    /**
-     * 答案揭示边界：首次明确索要答案/提示的轮次（drill_turn.round）。
-     * null=从未索要，finish 评分拼接全部用户回答；非空=只拼接该轮之前的回答
-     * （之后可能是照着答案复述，不计入量化评分）。由 chat 端点在判分前写入。
-     */
-    private Integer answerRevealedRound;
-
     @Column(columnDefinition = "text")
     private String transcript;       // SPEAK 预留
+
+    /** 答案揭示边界：首次明确索要答案/提示的轮次（drill_turn.round）。模拟面试 REHEARSAL 仍在用。 */
+    private Integer answerRevealedRound;
 
     @Column(nullable = false)
     private int currentRound = 0;    // REHEARSAL 当前轮（0=主问）
@@ -77,39 +71,32 @@ public class DrillRun {
     @Column(name = "focus_sub_point", length = 300)
     private String focusSubPoint;
 
-    // ---------------------------------------------------- 三阶段练习（独立作答 → 讲解 → 迁移测试）
-    // 阶段1 submit 判分锁定 first_grade（基础档位），阶段3 迁移测试答对可「降级通过」升级（封顶 GOOD）。
+    // ---------------------------------------------------- 苏格拉底教学评分（取代旧三阶段 + 补救测试）
 
-    /** 当前阶段：FIRST_ANSWER（待独立作答）/ TUTORING（讲解中）/ TRANSFER_TEST（迁移测试中）/ DONE（已结束） */
+    /** 苏格拉底流程状态：ANSWERING（作答中，含引导循环）/ GUIDED（已进入引导，待再考查）/ DONE（已结束） */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private DrillPhase phase = DrillPhase.FIRST_ANSWER;
+    @Column(name = "socratic_state", nullable = false)
+    private DrillPhase socraticState = DrillPhase.ANSWERING;
 
-    /** 阶段1锁定的基础档位（AGAIN/HARD/GOOD/EASY）。null=尚未独立判分。 */
-    @Column(name = "first_grade", length = 10)
-    private String firstGrade;
+    /** G1 预引导分（用户首次独立答完后判定，AGAIN/HARD/GOOD/EASY）。null=尚未判分。诊断用，不参与最终档位。 */
+    @Column(name = "pre_grade", length = 10)
+    private String preGrade;
 
-    /** 已完成的迁移测试轮数（防无限追问）。 */
-    @Column(name = "transfer_count", nullable = false)
-    private int transferCount = 0;
+    /** 最终分（=G1 达标时，或 G2 引导后分；看答案封 AGAIN）。 */
+    @Column(name = "final_grade", length = 10)
+    private String finalGrade;
 
-    /** 迁移测试轮数上限（默认 2）。 */
-    @Column(name = "transfer_max", nullable = false)
-    private int transferMax = 2;
+    /** 是否经过苏格拉底引导（true→最终分封顶 BASIC）。 */
+    @Column(name = "guided", nullable = false)
+    private boolean guided = false;
 
-    /** 迁移测试题题干（结合已掌握知识点生成，不落 question_bank）。 */
-    @Column(name = "transfer_stem", columnDefinition = "text")
-    private String transferStem;
+    /** 引导轮数（诊断用）。 */
+    @Column(name = "guide_rounds", nullable = false)
+    private int guideRounds = 0;
 
-    /** 迁移测试题评分点（GeneratedQuestion JSON）。 */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "transfer_points", columnDefinition = "jsonb")
-    private String transferPointsJson;
-
-    /** 迁移测试题概念 id 顺序（index 0 = PRIMARY 当前概念）。 */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "transfer_concept_ids", columnDefinition = "jsonb")
-    private String transferConceptIdsJson;
+    /** 是否看过答案（true→最终分封 AGAIN）。 */
+    @Column(name = "revealed", nullable = false)
+    private boolean revealed = false;
 
     /** 学习工作流用途；综合检测仍复用普通聊天和评分，只额外记录统计口径。 */
     @Enumerated(EnumType.STRING)

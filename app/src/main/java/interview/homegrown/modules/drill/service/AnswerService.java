@@ -74,8 +74,9 @@ public class AnswerService {
             throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可放弃: " + run.getStatus());
         }
         run.setStatus(DrillRunStatus.GRADED);
-        run.setFirstGrade(Grade.AGAIN.name());
-        run.setPhase(DrillPhase.DONE);
+        run.setPreGrade(Grade.AGAIN.name());
+        run.setFinalGrade(Grade.AGAIN.name());
+        run.setSocraticState(DrillPhase.DONE);
         runRepo.save(run);
 
         GradeResult gr = new GradeResult();

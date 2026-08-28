@@ -3,7 +3,10 @@ package interview.homegrown.modules.drill.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.modules.drill.ai.LessonGenerator;
+import interview.homegrown.modules.drill.ai.LessonQaGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
+import interview.homegrown.modules.drill.ai.SocraticJudge;
+import interview.homegrown.modules.drill.ai.SocraticJudgeService;
 import interview.homegrown.modules.drill.domain.*;
 import interview.homegrown.modules.drill.repository.*;
 import interview.homegrown.modules.drill.service.*;
@@ -20,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +55,7 @@ public class DrillController {
     private final SelectionService selectionService;
     private final QuestionService questionService;
     private final AnswerService answerService;
+    private final GradingService gradingService;
     private final ProfileService profileService;
     private final RehearsalService rehearsalService;
     private final NoteService noteService;
@@ -66,16 +71,19 @@ public class DrillController {
     private final SubPointPassRepository subPointPassRepo;
     private final interview.homegrown.common.ai.AiSettingsService aiSettings;
     private final TutorGenerator tutorGenerator;
+    private final SocraticJudgeService socraticJudge;
     private final LessonGenerator lessonGenerator;
     private final ObjectMapper objectMapper;
     private final DailyPlanService dailyPlanService;
     private final LearningWorkflowService learningWorkflowService;
     private final ReviewService reviewService;
-    private final TransferTestService transferTestService;
     private final interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService;
+    private final LessonQaRepository lessonQaRepo;
+    private final LessonQaGenerator lessonQaGenerator;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
-                           AnswerService answerService, ProfileService profileService,
+                           AnswerService answerService, GradingService gradingService,
+                           ProfileService profileService,
                            RehearsalService rehearsalService, NoteService noteService,
                            HistoryService historyService, RecordCleanupService recordCleanupService,
                            CorpusService corpusService, ProgressContextService progressContext,
@@ -85,13 +93,16 @@ public class DrillController {
                            SubPointPassRepository subPointPassRepo,
                            interview.homegrown.common.ai.AiSettingsService aiSettings,
                            TutorGenerator tutorGenerator, LessonGenerator lessonGenerator,
+                           SocraticJudgeService socraticJudge,
                            ObjectMapper objectMapper,
                            DailyPlanService dailyPlanService, LearningWorkflowService learningWorkflowService,
-                           ReviewService reviewService, TransferTestService transferTestService,
-                           interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService) {
+                           ReviewService reviewService,
+                           interview.homegrown.modules.knowledge.service.ChatCaptureService chatCaptureService,
+                           LessonQaRepository lessonQaRepo, LessonQaGenerator lessonQaGenerator) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
+        this.gradingService = gradingService;
         this.profileService = profileService;
         this.rehearsalService = rehearsalService;
         this.noteService = noteService;
@@ -107,13 +118,15 @@ public class DrillController {
         this.subPointPassRepo = subPointPassRepo;
         this.aiSettings = aiSettings;
         this.tutorGenerator = tutorGenerator;
+        this.socraticJudge = socraticJudge;
         this.lessonGenerator = lessonGenerator;
         this.objectMapper = objectMapper;
         this.dailyPlanService = dailyPlanService;
         this.learningWorkflowService = learningWorkflowService;
         this.reviewService = reviewService;
-        this.transferTestService = transferTestService;
         this.chatCaptureService = chatCaptureService;
+        this.lessonQaRepo = lessonQaRepo;
+        this.lessonQaGenerator = lessonQaGenerator;
     }
 
     // ------------------------------------------------------------ LEARN
@@ -266,7 +279,7 @@ public class DrillController {
                 ? "这是大知识点综合检测。题目应综合该知识点下多个子知识点，考察组合运用，不要只重复单个定义。"
                 : "这是 L" + layer + " 层级综合检测。题目应在当前层的多个知识点间建立真实工程联系，难度不得超过当前层级。")
                 + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
-        QuestionBank q = questionService.generate(task, context);
+        QuestionBank q = questionService.generate(task, withSkillContext(uid, context));
         QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
         tagRun(view.runId(), purpose, planId, conceptId, layer);
         return view;
@@ -334,10 +347,18 @@ public class DrillController {
                 ? "这是整个知识点的综合练习。题目应综合这个知识点下的多个子知识点，考察组合运用，不要只重复单个子知识点。"
                 : "这是 L" + layer + " 整个层级的综合练习。题目应综合覆盖当前层级的多个知识点，在它们之间建立真实工程联系，难度不得超过 L" + layer + "。")
                 + "一次只出一道核心主问，后续仍使用普通聊天式作答。";
-        QuestionBank q = questionService.generate(task, context);
+        QuestionBank q = questionService.generate(task, withSkillContext(uid, context));
         QuestionView view = openRunOnQuestion(uid, q.getId(), planId, null);
         tagRun(view.runId(), purpose, planId, conceptId, layer);
         return view;
+    }
+
+    /** 把用户能力画像（已掌握知识点）追加进出题上下文，作为下次出题的「基于已学知识点考查」锚点。 */
+    private String withSkillContext(Long uid, String context) {
+        String skill = profileService.skillDoc(uid);
+        if (skill == null || skill.isBlank() || skill.startsWith("（用户暂无")) return context;
+        return (context == null ? "" : context + "\n\n")
+                + "【能力画像（用户已掌握的知识点，作为考查锚点参考）】\n" + skill;
     }
 
     private void tagRun(Long runId, DrillPurpose purpose, Long planId, Long conceptId, Integer layer) {
@@ -578,6 +599,152 @@ public class DrillController {
                 .body(body);
     }
 
+    // ------------------------------------------------------------ 子知识点讲解答疑（仅当前用户私有）
+
+    /** 讲解页答疑：拉取当前用户在该子知识点下的全部历史（按时间升序）。 */
+    @GetMapping("/{conceptId}/lesson/qa")
+    public List<LessonQaView> lessonQa(@PathVariable Long conceptId, @RequestParam String subPoint) {
+        Long uid = currentUserId();
+        conceptRepo.findById(conceptId).orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        return lessonQaRepo.findByUserIdAndConceptIdAndSubPointOrderByIdAsc(uid, conceptId, sub).stream()
+                .map(m -> new LessonQaView(m.getId(), m.getRole(), m.getText(), m.getAnchor(), m.getCreatedAt()))
+                .toList();
+    }
+
+    /**
+     * 讲解页答疑 SSE（POST /{conceptId}/lesson/chat?subPoint=...）：
+     * <ol>
+     *   <li>先持久化学生提问（写入 lesson_qa_message）；</li>
+     *   <li>逐 token 推 AI 回答（默认 message 事件，data:{"text":...}），event:reasoning 推思考；</li>
+     *   <li>event:done 带完整回答文本，随后把 AI 回答写入同表（前端可用 done 的全文兜底覆盖截断）；</li>
+     *   <li>event:error 流式中途异常。</li>
+     * </ol>
+     * 答疑与 run/判分/mastery 完全解耦：只存于讲解页自己的表，仅当前用户可见。
+     */
+    @PostMapping(value = "/{conceptId}/lesson/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> lessonChat(
+            @PathVariable Long conceptId,
+            @RequestParam String subPoint,
+            @RequestBody LessonChatRequest req) {
+        Long uid = currentUserId();
+        Concept concept = conceptRepo.findById(conceptId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        final String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        String question = req.question() == null ? "" : req.question().trim();
+        if (question.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "问题不能为空");
+        String anchor = req.anchor() == null ? null : req.anchor().trim();
+
+        // 讲解正文（最新缓存；refresh 后覆盖的就是它）
+        ConceptLesson lesson = conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub).orElse(null);
+        // 该用户自己的学习上下文（与出题/对话同一套装配：学生画像 + 概念要点 + 资料块 + 互联网）
+        String context = progressContext.contextFor(uid, conceptId);
+        // 该用户在此子点下已答过的历史（AI 避免重复已回答的内容）
+        List<LessonQaMessage> historyMsgs =
+                lessonQaRepo.findByUserIdAndConceptIdAndSubPointOrderByIdAsc(uid, conceptId, sub);
+        List<LessonQaGenerator.QaPair> history = new java.util.ArrayList<>();
+        for (int i = 0; i < historyMsgs.size() - 1; i++) {
+            LessonQaMessage m = historyMsgs.get(i);
+            if ("user".equals(m.getRole())) {
+                LessonQaMessage next = historyMsgs.get(i + 1);
+                if ("assistant".equals(next.getRole()) && next.getText() != null) {
+                    history.add(new LessonQaGenerator.QaPair(m.getText(), next.getText()));
+                }
+            }
+        }
+
+        // 学生提问先落库（id 会回传给前端用于删除）
+        LessonQaMessage userMsg = new LessonQaMessage();
+        userMsg.setUserId(uid);
+        userMsg.setConceptId(conceptId);
+        userMsg.setSubPoint(sub);
+        userMsg.setRole("user");
+        userMsg.setText(question);
+        userMsg.setAnchor(anchor);
+        userMsg = lessonQaRepo.save(userMsg);
+        final long userMsgId = userMsg.getId();
+
+        StreamingResponseBody body = out -> {
+            try {
+                out.write(("event: start\ndata: {\"userMessageId\":" + userMsgId + "}\n\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+
+                final StringBuilder buf = new StringBuilder();
+                String full = lessonQaGenerator.streamAnswer(
+                        concept.getName(), concept.getTopic(), concept.getLayer(),
+                        sub, lesson == null ? null : lesson.getLessonText(), anchor, context, history, question,
+                        token -> {
+                            buf.append(token);
+                            try {
+                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                            } catch (Exception e) {
+                                log.debug("lesson-qa token 推送异常（已吞）: {}", e.getMessage());
+                            }
+                        },
+                        r -> sseReasoning(out, r));
+
+                // AI 回答写库（与提问配对；失败不阻塞流）
+                if (full != null && !full.isBlank()) {
+                    LessonQaMessage aiMsg = new LessonQaMessage();
+                    aiMsg.setUserId(uid);
+                    aiMsg.setConceptId(conceptId);
+                    aiMsg.setSubPoint(sub);
+                    aiMsg.setRole("assistant");
+                    aiMsg.setText(full);
+                    try {
+                        lessonQaRepo.save(aiMsg);
+                    } catch (Exception e) {
+                        log.debug("lesson-qa AI 回答写库失败（忽略）: {}", e.getMessage());
+                    }
+                }
+
+                String donePayload = full == null ? "" : jsonEscape(full);
+                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (Exception e) {
+                log.warn("lesson-qa 流推送异常", e);
+                try {
+                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /** 删除当前用户在某个子知识点下的若干条答疑（仅自己的记录，前端多选 + 二次确认后调用）。 */
+    @PostMapping("/{conceptId}/lesson/qa/delete")
+    public Map<String, Object> deleteLessonQa(@PathVariable Long conceptId,
+                                              @RequestParam String subPoint,
+                                              @RequestBody LessonQaDeleteRequest req) {
+        Long uid = currentUserId();
+        String sub = subPoint.trim();
+        if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
+        if (req.ids() == null || req.ids().isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "请选择要删除的答疑记录");
+        }
+        int deleted = lessonQaRepo.deleteByIdsAndUser(uid, req.ids());
+        return Map.of("ok", true, "deleted", deleted);
+    }
+
+    public record LessonQaView(Long id, String role, String text, String anchor, Instant createdAt) {}
+
+    public record LessonChatRequest(String question, String anchor) {}
+
+    public record LessonQaDeleteRequest(List<Long> ids) {}
+
     // ------------------------------------------------------------ 今日任务（每日自动排期）
 
     /** 今日任务：确保生成（懒兜底）后返回列表（含预生成题干，READY 即秒开）。 */
@@ -690,7 +857,7 @@ public class DrillController {
                         + "对已经正确回答的内容换认知动作或应用场景，对暴露出的薄弱处做针对性考察。";
             }
         }
-        var q = questionService.generate(task, context, practicedStems);       // 出题（LLM 填空）
+        var q = questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
         return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
     }
 
@@ -957,63 +1124,107 @@ public class DrillController {
         // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
         // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
         // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
-        // 判分后（GRADED）看答案同样记录边界：三阶段流程里「看答案后不再迁移测试追问」。
+        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
         boolean reveal = Boolean.TRUE.equals(req.reveal());
-        boolean isPreGraded = run.getStatus() == DrillRunStatus.READY
-                || run.getStatus() == DrillRunStatus.ANSWERING;
-        boolean notFinished = run.getPhase() != DrillPhase.DONE;
-        if (reveal && notFinished && run.getAnswerRevealedRound() == null) {
-            run.setAnswerRevealedRound(nextRound);
+        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
+        if (reveal && notFinished && !run.isRevealed()) {
+            run.setRevealed(true);
             runRepo.save(run);
         }
 
         // 收集全部 turns（含刚创建的）供 AI 参考对话历史
         List<DrillTurn> allTurns = turnRepo.findByRunIdOrderByRoundAsc(runId);
-        // 追问安全阀（仅判分前）：学生已作答的轮数。
-        // 判分后（继续对话 = 用户向 AI 提问）传 -1，走通用苏格拉底引导、不限小问。
-        // reveal 时该值不影响：reveal 模式优先，直接给完整讲解、不再追问。
-        // 正常流程由 AI 按「小问 ≤ 4 个、确认理解后才出下一问」自行控制，这里只是兜底。
-        int followupIndex = isPreGraded
-                ? (int) allTurns.stream().filter(t -> t.getRawAnswer() != null
-                        && !t.getRawAnswer().isBlank()).count()
-                : -1;
         String stem = q.getStem();
         String pointsJson = q.getPointsJson();
-        // 出题时预生成的「追问小问」清单：老师按顺序逐条问，问完就停（学生提前掌握可提前收）。
-        final List<String> followups = extractFollowups(pointsJson);
         final DrillTurn fTurn = turn;
         final boolean fReveal = reveal;
         final String context = contextOf(uid, run.getQuestionId());
         final List<String> fImages = images;
 
+        // —— 苏格拉底三态判定（用户每轮作答后）——
+        // 判定结果写回 turn，并决定 AI 这轮的回复行为：
+        //   answering → AI 简短确认并等（不引导不评分）
+        //   needs_guide → AI 抛一个引导问题（不给答案）
+        //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
+        // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
+        boolean preGraded = run.getStatus() == DrillRunStatus.READY
+                || run.getStatus() == DrillRunStatus.ANSWERING;
+        final SocraticJudge judge = (fReveal || !preGraded) ? null : socraticJudge.judge(
+                stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+        if (judge != null) {
+            fTurn.setJudgeState(judge.state());
+            fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
+            fTurn.setFatalGap(judge.fatalGap());
+            turnRepo.save(fTurn);
+            if ("done".equalsIgnoreCase(judge.state())) {
+                // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
+                // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
+                boolean guided = run.getGuideRounds() > 0
+                        || run.getSocraticState() == DrillPhase.GUIDED;
+                if (guided) {
+                    gradingService.guidedPass(uid, runId, fTurn);
+                } else {
+                    run.setSocraticState(DrillPhase.DONE);
+                    run.setFinalGrade("GOOD");
+                    runRepo.save(run);
+                }
+            } else if ("needs_guide".equalsIgnoreCase(judge.state())) {
+                run.setSocraticState(DrillPhase.GUIDED);
+                run.setGuideRounds(run.getGuideRounds() + 1);
+                runRepo.save(run);
+            }
+        }
+
         StreamingResponseBody body = out -> {
-            // 客户端已断开（用户点「暂停」或离开页面）：AI 尚未送达的回复不落库。
-            // 流式生成无法中途打断，但跳过 tutorText 写入即可保证「暂停后未答完的内容」不进数据库。
             java.util.concurrent.atomic.AtomicBoolean clientGone =
                     new java.util.concurrent.atomic.AtomicBoolean(false);
             try {
-                // 揭示边界触发：先推 event:reveal，前端在聊天线程里渲染“参考答案”分隔线
+                // 揭示边界触发：先推 event:reveal
                 if (fReveal && notFinished) {
                     out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
-                String full = tutorGenerator.streamChat(stem, pointsJson, followups, allTurns, context,
-                        fImages,
-                        token -> {
-                            try {
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                clientGone.set(true);
-                                log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r),
-                        fReveal, followupIndex, TutorGenerator.SAFETY_ANSWER_CAP);
 
-                // 完整文本只写回 turn。AI 可以停止追问并提示用户点击按钮，但不得替用户结束或触发评分。
-                // 客户端已断开（暂停/离开）时跳过：该轮 AI 回复视为未完成，不进入对话历史与评分依据。
+                // 苏格拉底判定驱动的回复：
+                // - needs_guide → 直接推送 guideQuestion 作为引导问题（不走 streamChat）
+                // - done → 推送 praise + 提示结束
+                // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
+                String judgeReply = null;
+                if (judge != null && "needs_guide".equalsIgnoreCase(judge.state())
+                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank()) {
+                    judgeReply = judge.guideQuestion();
+                } else if (judge != null && "done".equalsIgnoreCase(judge.state())
+                        && judge.praise() != null && !judge.praise().isBlank()) {
+                    judgeReply = judge.praise();
+                }
+
+                String full;
+                if (judgeReply != null) {
+                    // 直接推送判定生成的引导/表扬文本
+                    for (String token : judgeReply.split("(?<=。|？|！|\\n)")) {
+                        if (token.isBlank()) continue;
+                        out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                    full = judgeReply;
+                } else {
+                    full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
+                            fImages,
+                            token -> {
+                                try {
+                                    out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
+                                            .getBytes(StandardCharsets.UTF_8));
+                                    out.flush();
+                                } catch (Exception e) {
+                                    clientGone.set(true);
+                                    log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
+                                }
+                            },
+                            r -> sseReasoning(out, r),
+                            fReveal);
+                }
+
                 if (full != null && !clientGone.get()) {
                     fTurn.setTutorText(full.trim());
                     turnRepo.save(fTurn);
@@ -1051,35 +1262,7 @@ public class DrillController {
     }
 
     /**
-     * 迁移测试（阶段3）：判分后基础档位未通过（AGAIN/HARD）时，结合已掌握知识点出新题考察。
-     * 返回迁移测试题 stem；用户作答后调 {@code POST /{runId}/transfer-answer} 判分。
-     */
-    @PostMapping("/{runId}/transfer")
-    public TransferTestService.TransferView transfer(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        return transferTestService.start(uid, runId);
-    }
-
-    /** 迁移测试作答判分：答对降级通过（基础档位升一档，封顶 GOOD），答错不降级。 */
-    @PostMapping("/{runId}/transfer-answer")
-    public GradeView transferAnswer(@PathVariable Long runId, @RequestBody ChatRequest req) {
-        Long uid = currentUserId();
-        return transferTestService.answer(uid, runId, req.rawAnswer());
-    }
-
-    /**
-     * 自动迁移测试：判分讲解结束后由前端自动调用，AI 自主评判是否再考一道迁移题。
-     * 若 AI 判定值得再考 → 返回迁移题视图（前端据此展示新题）；判定不需要或硬性不满足 → 返回 null。
-     */
-    @PostMapping("/{runId}/auto-transfer")
-    public ResponseEntity<?> autoTransfer(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        TransferTestService.TransferView view = transferTestService.autoStartIfApplicable(uid, runId);
-        return view == null ? ResponseEntity.ok(Map.of("skipped", true)) : ResponseEntity.ok(view);
-    }
-
-    /**
-     * 放弃本次作答（三阶段练习：未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
+     * 放弃本次作答（未独立作答即看答案，不再判分，按 AGAIN 结算闭环）。
      * 让 run 置 GRADED、物理闸门放行下一题——否则看答案后既不能评分也无法推进。
      */
     @PostMapping("/{runId}/abandon")
@@ -1216,17 +1399,6 @@ public class DrillController {
                 .body(body);
     }
 
-    /**
-     * LEARN grade 卡"继续追问"按钮：基于已 GRADED 的 LEARN run spawn 一条 mode=REHEARSAL 的追问场，
-     * 复用 questionId，maxRound=10 让用户追问到底，settle 跳过 mastery（不算正式面试，不取 L3）。
-     * 返回追问场第一轮的 RehearsalView。
-     */
-    @PostMapping("/{runId}/followup")
-    public RehearsalView followup(@PathVariable Long runId) {
-        Long uid = currentUserId();
-        return rehearsalService.spawnFollowup(uid, runId);
-    }
-
     /** 追问/模拟面试主动结束：用户点"下一题（结束追问）"或"结算本场"时调用 */
     @PostMapping("/rehearsal/{runId}/end")
     public RehearsalView rehearsalEnd(@PathVariable Long runId) {
@@ -1348,23 +1520,6 @@ public class DrillController {
         return b.toString();
     }
 
-    /** 从题目 points JSON 里取出出题时预生成的「追问小问」清单（空/异常则空列表）。 */
-    private List<String> extractFollowups(String pointsJson) {
-        try {
-            JsonNode root = objectMapper.readTree(pointsJson);
-            JsonNode fu = root == null ? null : root.get("followups");
-            if (fu == null || !fu.isArray()) return List.of();
-            List<String> out = new java.util.ArrayList<>();
-            for (JsonNode n : fu) {
-                String s = n.asText();
-                if (s != null && !s.isBlank()) out.add(s);
-            }
-            return out;
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
-
     // ------------------------------------------------------------- 内化
 
     @PostMapping("/{runId}/note")
@@ -1390,6 +1545,13 @@ public class DrillController {
     public List<ProfileService.TopicProfile> profile() {
         Long uid = currentUserId();
         return profileService.profile(uid);
+    }
+
+    /** 能力画像 md 文档（已训练能力清单），供用户画像页展示 + 注入下次出题 */
+    @GetMapping("/profile/skill-doc")
+    public Map<String, String> skillDoc() {
+        Long uid = currentUserId();
+        return Map.of("markdown", profileService.skillDoc(uid));
     }
 
     // -------------------------------------------------------- 问答记录
@@ -1465,6 +1627,23 @@ public class DrillController {
         QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
         if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
         return q.getConceptIds()[0].longValue();
+    }
+
+    /** 把 turns 拼成「老师/学生」对话实录，供 SocraticJudgeService 判定哪些点被实际考到。 */
+    private String buildConversationForJudge(List<DrillTurn> turns) {
+        if (turns == null || turns.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (DrillTurn t : turns) {
+            String ans = t.getRawAnswer();
+            if (ans != null && !ans.isBlank()) {
+                sb.append("学生：").append(ans, 0, Math.min(ans.length(), 400)).append("\n");
+            }
+            String tutor = t.getTutorText();
+            if (tutor != null && !tutor.isBlank()) {
+                sb.append("老师：").append(tutor, 0, Math.min(tutor.length(), 400)).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */
