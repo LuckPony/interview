@@ -1121,11 +1121,12 @@ public class DrillController {
         }
 
         // —— 答案揭示边界（“得到答案之前”的评分依据）——
-        // 只接受前端「看答案」按钮携带的 reveal=true。普通文本无论包含“怎么做”“如何实现”等词，
-        // 都一律视为学生作答或提问，不能靠关键词猜测其意图，否则会误截断评分并泄露答案。
-        // 自然语言索要答案时，辅导 AI 只会提示用户使用按钮，由用户显式确认后才揭示。
+        // 按钮 reveal=true 或文字明确索要答案（wantsAnswerNow）都触发揭示；text 触发是用户
+        // 显式表达「要答案/不会了/直接给我」，与按钮等效（评分同样封 AGAIN，防止骗答案刷分）。
+        // 普通文本如「怎么做」「如何实现」等不触发——那是正常作答过程，不能靠关键词猜测意图。
         // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
-        boolean reveal = Boolean.TRUE.equals(req.reveal());
+        boolean reveal = Boolean.TRUE.equals(req.reveal())
+                || wantsAnswerNow(req.rawAnswer());
         boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
         if (reveal && notFinished && !run.isRevealed()) {
             run.setRevealed(true);
@@ -1495,6 +1496,46 @@ public class DrillController {
                 .header("Cache-Control", "no-cache")
                 .header("X-Accel-Buffering", "no")
                 .body(body);
+    }
+
+    /**
+     * 检测用户消息是否<b>明确</b>表达「直接要答案 / 不会了 / 放弃独立作答」。
+     * <p>命中即触发答案揭示（与点「看答案」按钮等效），评分封 AGAIN。
+     * 防误判要点：
+     * <ul>
+     *   <li>只匹配<b>完整、明确的索要表达</b>，不匹配「怎么做」「如何实现」等可能只是思考过程的词；</li>
+     *   <li>消息要短（≤40 字符）——长消息多半是真实作答或含作答内容，不触发；</li>
+     *   <li>「我不会做/不会了」这类放弃表达单独成句才算，若夹杂长段作答不触发。</li>
+     * </ul>
+     */
+    static boolean wantsAnswerNow(String raw) {
+        if (raw == null) return false;
+        String s = raw.trim();
+        if (s.isEmpty() || s.length() > 40) return false;
+
+        // 中英文「直接要答案」短语（整体匹配，命中率高、误伤低）
+        String[] direct = {
+                "直接给我答案", "给我答案", "直接告诉我答案", "告诉我答案", "把答案给我", "答案是",
+                "直接给答案", "直接给", "给我完整答案", "我要答案", "我要完整答案", "答案是什么",
+                "give me the answer", "give me answer", "give me the solution", "tell me the answer",
+                "what's the answer", "what is the answer", "show me the answer", "i want the answer",
+                "直接告诉我", "直接给我", "告诉我怎么做", "教教我", "怎么做这道题"
+        };
+        for (String d : direct) {
+            if (s.contains(d)) return true;
+        }
+
+        // 「不会了/放弃」→ 只在消息本身极短、几乎只表达放弃时触发（≤12 字符），
+        // 防止「我不会做，但我想先试试……」（想尝试而非放弃）被误判成要答案。
+        if (s.length() <= 12) {
+            String[] giveUp = {"不会了", "我不会", "不会做", "做不出来", "做不出", "想不出来",
+                    "放弃", "太难了", "i don't know", "i can't", "i give up", "give up",
+                    "don't know how", "no idea"};
+            for (String g : giveUp) {
+                if (s.contains(g)) return true;
+            }
+        }
+        return false;
     }
 
     /**
