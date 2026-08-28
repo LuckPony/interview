@@ -57,12 +57,14 @@ public class GradingService {
     private final GraderText graderText;
     private final GraderMcq graderMcq;
     private final ScheduleService scheduleService;
+    private final SubPointPassService subPointPassService;
     private final ObjectMapper objectMapper;
 
     public GradingService(GradeResultRepository gradeRepo, DrillRunRepository runRepo,
                           QuestionBankRepository qbRepo, MasteryRepository masteryRepo,
                           DrillTurnRepository turnRepo,
                           GraderText graderText, GraderMcq graderMcq, ScheduleService scheduleService,
+                          SubPointPassService subPointPassService,
                           ObjectMapper objectMapper) {
         this.gradeRepo = gradeRepo;
         this.runRepo = runRepo;
@@ -72,6 +74,7 @@ public class GradingService {
         this.graderText = graderText;
         this.graderMcq = graderMcq;
         this.scheduleService = scheduleService;
+        this.subPointPassService = subPointPassService;
         this.objectMapper = objectMapper;
     }
 
@@ -131,6 +134,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
+            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -247,6 +252,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
+            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -300,6 +307,9 @@ public class GradingService {
         run.setSocraticState(DrillPhase.DONE);
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
+
+        // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
+        subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
 
         // 掌握度：G2 引导后达标 → 按 primary 概念升到 GOOD（guided 会缩短复习间隔）
         Long primaryId = (q.getConceptIds() == null || q.getConceptIds().length == 0)
