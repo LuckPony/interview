@@ -55,6 +55,7 @@ public class DrillController {
     private final SelectionService selectionService;
     private final QuestionService questionService;
     private final AnswerService answerService;
+    private final GradingService gradingService;
     private final ProfileService profileService;
     private final RehearsalService rehearsalService;
     private final NoteService noteService;
@@ -81,7 +82,8 @@ public class DrillController {
     private final LessonQaGenerator lessonQaGenerator;
 
     public DrillController(SelectionService selectionService, QuestionService questionService,
-                           AnswerService answerService, ProfileService profileService,
+                           AnswerService answerService, GradingService gradingService,
+                           ProfileService profileService,
                            RehearsalService rehearsalService, NoteService noteService,
                            HistoryService historyService, RecordCleanupService recordCleanupService,
                            CorpusService corpusService, ProgressContextService progressContext,
@@ -100,6 +102,7 @@ public class DrillController {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.answerService = answerService;
+        this.gradingService = gradingService;
         this.profileService = profileService;
         this.rehearsalService = rehearsalService;
         this.noteService = noteService;
@@ -1151,10 +1154,17 @@ public class DrillController {
             fTurn.setFatalGap(judge.fatalGap());
             turnRepo.save(fTurn);
             if ("done".equalsIgnoreCase(judge.state())) {
-                // G1 达标 → GOOD 结束
-                run.setSocraticState(DrillPhase.DONE);
-                run.setFinalGrade("GOOD");
-                runRepo.save(run);
+                // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
+                // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
+                boolean guided = run.getGuideRounds() > 0
+                        || run.getSocraticState() == DrillPhase.GUIDED;
+                if (guided) {
+                    gradingService.guidedPass(uid, runId, fTurn);
+                } else {
+                    run.setSocraticState(DrillPhase.DONE);
+                    run.setFinalGrade("GOOD");
+                    runRepo.save(run);
+                }
             } else if ("needs_guide".equalsIgnoreCase(judge.state())) {
                 run.setSocraticState(DrillPhase.GUIDED);
                 run.setGuideRounds(run.getGuideRounds() + 1);

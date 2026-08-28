@@ -258,6 +258,61 @@ public class GradingService {
                 out.grade().name(), out.byConceptJson());
     }
 
+    /**
+     * 苏格拉底 G2 引导后达标结算：SocraticJudge 已判 done（覆盖≥80%且无致命缺漏）。
+     * 落 GradeResult + applyMastery，最终分=GOOD（封顶，不给 EASY），覆盖 G1 的 preGrade。
+     * 用于 chat 流里 needs_guide 之后经引导再答完（done）的路径。
+     *
+     * @return 落库后的 GradeView（rawScore 由 coverage 折算，满 100）
+     */
+    @Transactional
+    public GradeView guidedPass(Long userId, Long runId, DrillTurn doneTurn) {
+        DrillRun run = runRepo.findByUserIdAndId(userId, runId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+        if (run.getStatus() == DrillRunStatus.GRADED) {
+            throw new ResponseStatusException(BAD_REQUEST, "该作答已评分");
+        }
+        QuestionBank q = qbRepo.findById(run.getQuestionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+
+        boolean timed = run.getTiming() != null && !run.getTiming().equals("NONE");
+        double coverage = doneTurn.getCoverage() == null ? 0.8 : doneTurn.getCoverage().doubleValue();
+        double rawScore = Math.max(60, Math.min(100, coverage * 100));
+
+        // 落 GradeResult（G2 判定：达标 → GOOD）
+        GradeResult gr = new GradeResult();
+        gr.setRunId(runId);
+        gr.setQuestionId(q.getId());
+        gr.setAnswerHash(Integer.toHexString(doneTurn.getRawAnswer() == null ? "".hashCode() : doneTurn.getRawAnswer().hashCode()));
+        gr.setByConceptJson("[]");
+        gr.setRawScore(java.math.BigDecimal.valueOf(rawScore));
+        gr.setGrade(Grade.GOOD);
+        gr.setPreGrade(run.getPreGrade());   // 记录 G1 预引导分
+        gr.setFinalGrade("GOOD");
+        gr.setGuided(true);
+        gr.setGuideRounds(run.getGuideRounds());
+        gr.setRevealed(run.isRevealed());
+        gradeRepo.save(gr);
+
+        // 更新 run：finalGrade=GOOD（覆盖 G1）、DONE、GRADED
+        run.setPreGrade(run.getPreGrade());
+        run.setFinalGrade(Grade.GOOD.name());
+        run.setSocraticState(DrillPhase.DONE);
+        run.setStatus(DrillRunStatus.GRADED);
+        runRepo.save(run);
+
+        // 掌握度：G2 引导后达标 → 按 primary 概念升到 GOOD（guided 会缩短复习间隔）
+        Long primaryId = (q.getConceptIds() == null || q.getConceptIds().length == 0)
+                ? null : q.getConceptIds()[0].longValue();
+        List<ConceptScore> scores = primaryId == null ? List.of()
+                : List.of(new ConceptScore(primaryId, ConceptRole.PRIMARY,
+                        java.math.BigDecimal.valueOf(rawScore), Grade.GOOD));
+        applyMastery(userId, scores, run.getMode(), timed,
+                true, run.getGuideRounds(), run.isRevealed());
+
+        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]");
+    }
+
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
     private String buildConversation(List<DrillTurn> turns) {
         StringBuilder sb = new StringBuilder();
