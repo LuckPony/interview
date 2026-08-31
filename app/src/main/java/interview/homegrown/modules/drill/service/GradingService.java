@@ -167,7 +167,9 @@ public class GradingService {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
         if (run.getStatus() == DrillRunStatus.GRADED) {
-            throw new ResponseStatusException(BAD_REQUEST, "该作答已评分");
+            // 幂等：已评分（如「结束并评分」双击/重复提交）→ 返回已有评分，不再 400。
+            // 前端重复请求拿到同一结果，正常进入已评分态，不会出现「已评分但按钮还在」。
+            return existingGradeView(userId, run, runId);
         }
         if (run.getStatus() != DrillRunStatus.READY && run.getStatus() != DrillRunStatus.ANSWERING) {
             throw new ResponseStatusException(BAD_REQUEST, "当前作答状态不可评分: " + run.getStatus());
@@ -271,6 +273,23 @@ public class GradingService {
     }
 
     /**
+     * 已评分 run 的幂等返回：从最新落库的 GradeResult 重建 GradeView。
+     * 供 finish 重复提交（双击「结束并评分」等）复用，避免「已评分但前端仍在评分按钮」的状态错乱。
+     * GUIDED（G1 未达标）也会走到这里：返回 G1 判定（run.finalGrade 为空时用 GradeResult.grade）。
+     */
+    private GradeView existingGradeView(Long userId, DrillRun run, Long runId) {
+        GradeResult gr = gradeRepo.findFirstByRunIdOrderByIdDesc(runId).orElse(null);
+        if (gr == null) {
+            // 理论上已 GRADED 必已落 GradeResult；兜底给出 AGAIN，避免空指针
+            return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]");
+        }
+        double rawScore = gr.getRawScore() == null ? 0 : gr.getRawScore().doubleValue();
+        String grade = run.getFinalGrade() != null ? run.getFinalGrade() : gr.getGrade().name();
+        String byConcept = gr.getByConceptJson() == null ? "[]" : gr.getByConceptJson();
+        return new GradeView(runId, run.getQuestionId(), rawScore, grade, byConcept);
+    }
+
+    /**
      * 苏格拉底 G2 引导后达标结算：SocraticJudge 已判 done（覆盖≥80%且无致命缺漏）。
      * 落 GradeResult + applyMastery，最终分=GOOD（封顶，不给 EASY），覆盖 G1 的 preGrade。
      * 用于 chat 流里 needs_guide 之后经引导再答完（done）的路径。
@@ -282,7 +301,8 @@ public class GradingService {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
         if (run.getStatus() == DrillRunStatus.GRADED) {
-            throw new ResponseStatusException(BAD_REQUEST, "该作答已评分");
+            // 幂等：该 run 已判分（如已评分后继续对话又判 done）→ 返回已有评分，不再 400。
+            return existingGradeView(userId, run, runId);
         }
         QuestionBank q = qbRepo.findById(run.getQuestionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));

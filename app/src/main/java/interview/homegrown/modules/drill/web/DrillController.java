@@ -182,9 +182,15 @@ public class DrillController {
         String reviewFocus = "review".equals(mode)
                 ? selectionService.pickReviewSubPoint(uid, task.conceptIds().get(0))
                 : null;
+        // 复习闭环：记录开 run 前的活跃 run——只有本次真正开了新 run（而非恢复了旧的活跃作答）
+        // 才消费今日待办里同方向同概念的 REVIEW 任务，否则复习完了「今日待办」仍会残留。
+        Set<Long> activeBefore = activeLearnIds(uid);
         QuestionView view = openRun(uid, task, req.planId(), targetLayer, targetConcept, reviewFocus);
         DrillPurpose purpose = "review".equals(mode) ? DrillPurpose.REVIEW : DrillPurpose.FREE_PRACTICE;
         tagRun(view.runId(), purpose, req.planId(), req.conceptId(), req.layer());
+        if ("review".equals(mode) && !activeBefore.contains(view.runId())) {
+            dailyPlanService.markReviewDone(uid, req.planId(), task.conceptIds().get(0));
+        }
         return view;
     }
 

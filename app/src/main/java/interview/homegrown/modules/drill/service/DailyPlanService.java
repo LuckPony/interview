@@ -136,12 +136,39 @@ public class DailyPlanService {
                 existing = taskRepo.findByUserIdAndTaskDate(userId, today);
             }
         }
+        // 清理孤儿任务：方向或知识点已被删除的任务置 SKIPPED（前端统一过滤该状态），
+        // 避免「今日待办」残留已删除方向的无效条目（删除方向/知识点时并未清 daily_task）。
+        skipOrphaned(existing);
         for (DailyTask t : existing) {
             if (DailyTask.STATUS_PENDING.equals(t.getStatus()) && t.getQuestionId() == null) {
                 generateAsync(t.getId());
             }
         }
         return existing;
+    }
+
+    /**
+     * 把「方向或知识点已不存在」的今日任务置 SKIPPED。幂等：已 SKIPPED 不重写。
+     * planId 为 null（全局任务）时只校验知识点是否存在。
+     */
+    private void skipOrphaned(List<DailyTask> tasks) {
+        if (tasks.isEmpty()) return;
+        Set<Long> planIds = tasks.stream().map(DailyTask::getPlanId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> planExists = planIds.isEmpty() ? Set.of()
+                : planRepo.findAllById(planIds).stream().map(StudyPlan::getId).collect(Collectors.toSet());
+        Set<Long> conceptIds = tasks.stream().map(DailyTask::getConceptId).collect(Collectors.toSet());
+        Set<Long> conceptExists = conceptRepo.findAllById(conceptIds).stream()
+                .map(Concept::getId).collect(Collectors.toSet());
+        for (DailyTask t : tasks) {
+            boolean orphaned = (t.getPlanId() != null && !planExists.contains(t.getPlanId()))
+                    || !conceptExists.contains(t.getConceptId());
+            // 已 SKIPPED 的不重写；DONE 的也一并作废——方向已删，其完成记录不再计入今日统计
+            if (orphaned && !DailyTask.STATUS_SKIPPED.equals(t.getStatus())) {
+                t.setStatus(DailyTask.STATUS_SKIPPED);
+                taskRepo.save(t);
+            }
+        }
     }
 
     /** 今日任务视图（含方向名、概念名、预生成题干）。 */
@@ -195,6 +222,24 @@ public class DailyPlanService {
             t.setStatus(DailyTask.STATUS_DONE);
             taskRepo.save(t);
         });
+    }
+
+    /**
+     * 复习闭环：计划卡「复习」入口（start-plan review）不经过任务开题端点，
+     * 用户在今日待办里的对应 REVIEW 任务会一直残留。这里把今日该方向该概念的
+     * REVIEW 任务一并置 DONE（幂等：已 DONE 的不重复写）。
+     */
+    @Transactional
+    public void markReviewDone(Long userId, Long planId, Long conceptId) {
+        for (DailyTask t : taskRepo.findByUserIdAndTaskDate(userId, LocalDate.now())) {
+            if (DailyTask.KIND_REVIEW.equals(t.getKind())
+                    && planId.equals(t.getPlanId())
+                    && conceptId.equals(t.getConceptId())
+                    && !DailyTask.STATUS_DONE.equals(t.getStatus())) {
+                t.setStatus(DailyTask.STATUS_DONE);
+                taskRepo.save(t);
+            }
+        }
     }
 
     /** 今日 READY 任务（按 id 升序，尚未作答的）。 */

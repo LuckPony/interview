@@ -186,17 +186,27 @@ export function Drill() {
 
   // —— 视图由路由派生：/drill=home，/drill/teach/:cid(/:subIdx)=先教后考，/drill/learn=做题 ——
   // 子路由让浏览器前进/后退与「返回」按钮直接走真实历史，不再用内部状态栈。
+  // 从子知识点进入的练习问答用嵌套路由 /drill/teach/:cid/:subIdx/learn，返回可回到该子点讲解页。
   const pathSegs = location.pathname.split('/').filter(Boolean); // ['drill', ...]
   const routeTeachCid = pathSegs[1] === 'teach' ? Number(pathSegs[2]) : undefined;
   const routeSubIdx = pathSegs[1] === 'teach' && pathSegs[3] != null ? Number(pathSegs[3]) : undefined;
+  // 子点嵌套练习：/drill/teach/:cid/:subIdx/learn —— 做题但保留子点上下文（返回回讲解页）
+  const subLearn = pathSegs[1] === 'teach' && pathSegs[4] === 'learn';
+  const subLearnCid = subLearn ? routeTeachCid : undefined;
+  const subLearnIdx = subLearn ? routeSubIdx : undefined;
   const view: 'home' | 'teach' | 'learn' =
-    pathSegs[1] === 'teach' ? 'teach' : pathSegs[1] === 'learn' ? 'learn' : 'home';
+    subLearn ? 'learn' : pathSegs[1] === 'teach' ? 'teach' : pathSegs[1] === 'learn' ? 'learn' : 'home';
   // teach 路由可携带工作流/任务上下文（?plan=&task=），进入做题时保持链式推进
   const planQ = Number(new URLSearchParams(location.search).get('plan')) || undefined;
   const taskQ = Number(new URLSearchParams(location.search).get('task')) || undefined;
 
-  // 「返回」按钮：有历史就后退（鼠标后退键同效），直达场景回学习计划首页
+  // 「返回」按钮：有历史就后退（鼠标后退键同效），直达场景回学习计划首页。
+  // 从子知识点进入的练习（/drill/teach/:cid/:subIdx/learn）→ 回该子点讲解页
   const backOrHome = () => {
+    if (subLearn && subLearnCid != null && subLearnIdx != null) {
+      navigate(`/drill/teach/${subLearnCid}/${subLearnIdx}`);
+      return;
+    }
     if (location.key === 'default') navigate('/drill');
     else navigate(-1);
   };
@@ -216,7 +226,13 @@ export function Drill() {
 
   // —— 路由 → teach 状态同步：进入/切换知识点拉 outline；切换子点播放讲解 ——
   useEffect(() => {
-    if (view !== 'teach') { teachRouteRef.current = null; resetQaPanel(); return; }
+    // 离开 teach 视图：清掉加载标记，下次回来重拉（普通离开）。
+    // 进入子点嵌套练习（/drill/teach/:cid/:subIdx/learn）时保留 teachRouteRef：
+    // 返回讲解页时不重复播放（讲解内容仍在页面状态里），只保留 ref 指向当前子点。
+    if (view !== 'teach') {
+      if (!subLearn) { teachRouteRef.current = null; resetQaPanel(); return; }
+      return;   // subLearn：保留 teach 状态，返回时不重放讲解
+    }
     const cid = routeTeachCid;
     if (cid == null || Number.isNaN(cid)) { navigate('/drill', { replace: true }); return; }
     const sub = routeSubIdx ?? -1;
@@ -444,8 +460,12 @@ export function Drill() {
     hasAnsweredRef.current = false;
     // 进入做题页：从知识点页/首页进入 → 压历史（返回可回到来源页）；
     // 已是做题页（下一题）→ replace，避免每一题都堆积一条历史
-    if (view === 'learn') navigate('/drill/learn', { replace: true });
-    else navigate('/drill/learn');
+    // 子知识点练习走嵌套路由 /drill/teach/:cid/:subIdx/learn：返回可回到该子点讲解页
+    const learnPath = sessionCtx.kind === 'teach'
+      ? `/drill/teach/${sessionCtx.conceptId}/${sessionCtx.subIndex}/learn`
+      : '/drill/learn';
+    if (view === 'learn') navigate(learnPath, { replace: true });
+    else navigate(learnPath);
 
     const stemId = nextMsgId();
     setMessages([{ id: stemId, role: 'ai', text: '', streaming: true, type: 'stem' }]);
@@ -692,17 +712,10 @@ export function Drill() {
     else directStart(conceptId);
   };
 
-  // 练习首页直接点某个子知识点（子知识点直通）：
-  // 开「先讲解再练习」→ 直达该子点讲解页（讲完再做题）；关 → 直接出该子点的题。
-  const pickSubPoint = (conceptId: number, subPoint: string, subIndex: number, planId?: number) => {
-    if (teachFirst) {
-      enterTeachAt(conceptId, planId, undefined, subIndex);
-    } else {
-      startQuestion(
-        () => drill.start(conceptId, subPoint),
-        { kind: 'teach', conceptId, subIndex, planId },
-      );
-    }
+  // 练习首页直接点某个子知识点：先进入该子点讲解页（讲解页有「开始做题」），
+  // 做题走嵌套路由 /drill/teach/:cid/:subIdx/learn，返回自然回到该子点讲解页。
+  const pickSubPoint = (conceptId: number, _subPoint: string, subIndex: number, planId?: number) => {
+    enterTeachAt(conceptId, planId, undefined, subIndex);
   };
 
   // 子知识点直通的「下一题」：从 subIndex 之后找下一个未完成的子点继续练（跳过已通过的）。
@@ -1752,12 +1765,12 @@ export function Drill() {
     <div className="page chat-page">
       <header className="page-head chat-head">
         <div className="chat-head-title">
-          <span className="eyebrow">练习 · LEARN</span>
-          <h1>练习</h1>
+          <span className="eyebrow">{subLearn ? '先教后考 · 子知识点练习' : '练习 · LEARN'}</span>
+          <h1>{subLearn ? '练习当前子知识点' : '练习'}</h1>
         </div>
         <div className="head-actions">
-          <button className="head-back" onClick={backOrHome} title="返回上一页（也支持鼠标后退键）">
-            <ArrowLeft size={14} strokeWidth={1.6} /> 返回
+          <button className="head-back" onClick={backOrHome} title={subLearn ? '返回该子知识点讲解页' : '返回上一页（也支持鼠标后退键）'}>
+            <ArrowLeft size={14} strokeWidth={1.6} /> {subLearn ? '回讲解页' : '返回'}
           </button>
           <button className="head-back" onClick={goHome}>
             <Compass size={14} strokeWidth={1.6} /> 换个方向
