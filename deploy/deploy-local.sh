@@ -51,19 +51,32 @@ step "1/5 构建后端 jar（gradle）"
 [ -f "$JAR" ] || { echo "❌ jar 构建失败：$JAR 不存在"; exit 1; }
 echo "   ✓ jar: $(ls -la "$JAR" | awk '{print $5}') bytes"
 
-# ---------- 2/5 构建 Web ----------
-step "2/5 构建 Web SPA（相对 API，nginx 同源代理 /api）"
+# ---------- 2/5 构建 Web（官网落地页 + /app SPA）----------
+step "2/5 构建 Web（官方站点 + SPA 打包至 /app）"
 npm --prefix frontend run build:web >/dev/null 2>&1 || { echo "❌ web 构建失败"; exit 1; }
 [ -f frontend/dist/index.html ] || { echo "❌ web 构建产物缺失"; exit 1; }
-echo "   ✓ web: frontend/dist"
+
+# 组装 nginx 根目录：根路径 = 官网落地页，/app/ = Web 应用 SPA
+WEB_STAGE="$ROOT/deploy/web-build/web"
+rm -rf "$WEB_STAGE" && mkdir -p "$WEB_STAGE"
+cp -R "$ROOT/official-site/." "$WEB_STAGE/"
+mkdir -p "$WEB_STAGE/app"
+cp -R "$ROOT/frontend/dist/." "$WEB_STAGE/app/"
+[ -f "$WEB_STAGE/index.html" ] || { echo "❌ 官网落地页缺失"; exit 1; }
+[ -f "$WEB_STAGE/app/index.html" ] || { echo "❌ SPA 产物缺失"; exit 1; }
+# 确保 nginx worker（非 root）可读：目录 a+rX + 文件 a+r，避免线上 403
+chmod -R a+rX "$WEB_STAGE"
+echo "   ✓ web: official-site (/) + SPA (/app)"
 
 # ---------- 3/5 上传产物 ----------
 step "3/5 上传产物到服务器"
 RSH="ssh -i $SSH_KEY -o StrictHostKeyChecking=no -p $SSH_PORT"
 rsync -az -e "$RSH" "$JAR" "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/backend/app.jar"
 echo "   ✓ backend/app.jar"
-rsync -az -e "$RSH" --delete frontend/dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/web-image/web/"
-echo "   ✓ web-image/web/"
+rsync -az -e "$RSH" --delete "$ROOT/deploy/web-build/web/" "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/web-image/web/"
+echo "   ✓ web-image/web/ (官网 + /app SPA)"
+rsync -az -e "$RSH" deploy/nginx.conf "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/web-image/nginx.conf"
+echo "   ✓ web-image/nginx.conf"
 rsync -az -e "$RSH" deploy/deploy-prod.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/deploy-prod.sh"
 echo "   ✓ deploy-prod.sh"
 

@@ -38,6 +38,19 @@
 
 当前图谱种子方向：Java 后端（JVM / 并发 / Spring / 数据库 / 分布式 / 网络），知识图谱按 `layer 1→5` 由浅入深（概念 → 机制 → 实现 → 权衡 → 故障），可通过「学习方向」对话动态扩展。
 
+## 🌐 官方网站
+
+> 独立的静态落地页（`official-site/`），与 Web 应用分离，根路径 `https://<你的域名>/`，Web 应用位于 `/app/`。版本与下载链接 **实时读取 GitHub Releases** —— 发布新 release 后官网自动更新，无需改代码。
+
+| 入口 | 地址 | 说明 |
+|---|---|---|
+| 🏠 官网 | `https://<你的域名>/` | 产品介绍、特性、截图画廊、下载、Star |
+| 💻 Web 应用 | `https://<你的域名>/app/` | 注册登录后的完整产品 |
+| 📦 桌面安装 | [GitHub Releases](https://github.com/LuckPony/interview/releases) | Windows / macOS 安装包 |
+| ⭐ 开源仓库 | [GitHub](https://github.com/LuckPony/interview) | 源码 + 文档，期待你的 Star |
+
+官网采用纯静态 HTML/CSS/JS（零构建依赖），部署在 nginx 根路径；本地预览：`python3 -m http.server 8899 --directory official-site`。
+
 ## 🎯 核心主张
 
 现有 AI 学习工具的一切毛病，根源是**把「当老师」这件事交给了 LLM**。LLM 没有你的长期状态、不知道你的知识边界，也没有动机拦住你说"这题你还没懂，不许走"，它只有"生成下一段合理文本"的本能。
@@ -320,7 +333,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 推送到 `main` 时，`Deploy to server` 工作流会自动构建并部署后端 + Web 到服务器（也可在 Actions 页手动触发）。采用**产物式部署**，与服务器 `/opt/mianba` 的实际结构一致：
 
 1. **CI 构建产物**：后端 fat jar（`./gradlew :app:bootJar`）+ Web SPA（`npm run build`）。
-2. **上传产物**：rsync 只上传 `app.jar → /opt/mianba/backend/app.jar`、`frontend/dist/* → /opt/mianba/web-image/web/`、同步 `deploy/deploy-prod.sh`；**不删除服务器上任何其它文件**（`.env`、`backups/`、自定义 `docker-compose.yml` 都保留）。
+2. **上传产物**：rsync 只上传 `app.jar → /opt/mianba/backend/app.jar`、`web-build/web/* → /opt/mianba/web-image/web/`（含官网落地页 `index.html` + `assets/` + SPA `app/`）、`deploy/nginx.conf → /opt/mianba/web-image/nginx.conf`、同步 `deploy/deploy-prod.sh`；**不删除服务器上任何其它文件**（`.env`、`backups/`、自定义 `docker-compose.yml` 都保留）。
 3. **复用镜像**：`deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）「已存在则复用、缺失才拉取」；backend/web 用 docker 层缓存构建（未变化的层直接复用）；`compose up` 带 `--no-build`；部署前自动备份 PostgreSQL，部署后健康检查。
 
 配置一次即可（仓库 **Settings → Secrets and variables → Actions**）：
@@ -402,6 +415,7 @@ interview/
 │       ├── db/migration/         # Flyway 建表与迁移脚本（common + postgresql）
 │       └── application.yml
 ├── frontend/                     # Vite + React + TS SPA（页面：首页/今日学习/练习/模拟面试/复盘/随手记/画像/设置…）
+├── official-site/                # 官网落地页（静态，根路径 /）：介绍/特性/截图/下载/Star
 ├── interview-desktop/            # Electron 桌面壳（本地/云端双模式）
 ├── docs/                         # 设计文档与实现清单
 └── docker-compose.dev.yml        # PostgreSQL / Redis / MinIO
