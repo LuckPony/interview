@@ -146,7 +146,9 @@ function MermaidDiagram({ source }: { source: string }) {
       import('mermaid').then(({ default: mermaid }) => {
         mermaid.initialize({
           startOnLoad: false,
-          securityLevel: 'strict',
+          // antiscript：允许 AI 生成的图使用 <br> 等 HTML 标签（strict 在 v11 下对部分含
+          // HTML 标签的图渲染失败），同时仍过滤 script 注入，比 loose 安全。
+          securityLevel: 'antiscript',
           theme: 'neutral',
           // 解析失败只抛异常给组件回退，不让 Mermaid 在 body 中绘制炸弹错误图。
           suppressErrorRendering: true,

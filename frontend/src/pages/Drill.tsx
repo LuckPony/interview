@@ -1761,12 +1761,72 @@ export function Drill() {
     !resumedGraded;
   const hasLowGrade = grade != null && grade.rawScore < 60;
 
+  // —— 练习页标题：按考察粒度展示当前知识点 / 子知识点 / L 层级 ——
+  const conceptNameOf = (conceptId: number | undefined): string => {
+    if (conceptId == null) return '';
+    if (teach && teach.conceptId === conceptId && teach.name) return teach.name;
+    for (const p of plans) {
+      const c = p.concepts.find((x) => x.id === conceptId);
+      if (c && c.name) return c.name;
+    }
+    return '';
+  };
+  const planTitleOf = (planId: number | undefined): string =>
+    planId != null ? (plans.find((p) => p.id === planId)?.title ?? '') : '';
+
+  let headEyebrow = '练习 · LEARN';
+  let headTitle = '练习';
+  if (ctx?.kind === 'teach' || subLearn) {
+    // 子知识点练习（先教后考讲解页进入）：展示「知识点 · 子知识点」
+    const subName = teach && teach.curIdx >= 0 ? teach.subPoints[teach.curIdx] ?? '' : '';
+    const cName = conceptNameOf(teach?.conceptId ?? subLearnCid);
+    headEyebrow = '先教后考 · 子知识点练习';
+    headTitle = subName
+      ? (cName ? `练习 · ${cName} · ${subName}` : `练习 · ${subName}`)
+      : (cName ? `练习 · ${cName}` : '练习 · 子知识点');
+  } else if (ctx?.kind === 'scoped' && ctx.scope === 'concept') {
+    // 整个知识点练习
+    const cName = conceptNameOf(ctx.conceptId);
+    headEyebrow = '练习 · 整个知识点';
+    headTitle = cName ? `练习 · ${cName}` : '练习 · 知识点';
+  } else if (ctx?.kind === 'scoped' && ctx.scope === 'layer') {
+    // 整层级练习
+    headEyebrow = '练习 · 层级考察';
+    headTitle = `练习 · L${ctx.layer ?? 0} 层级`;
+  } else if (ctx?.kind === 'concept') {
+    // 直接按知识点出题（未开讲解）
+    const cName = conceptNameOf(ctx.conceptId);
+    headEyebrow = '练习 · 知识点';
+    headTitle = cName ? `练习 · ${cName}` : '练习 · 知识点';
+  } else if (ctx?.kind === 'plan' && (ctx.mode === 'layer' || ctx.mode === 'layer-practice')) {
+    // 按 L 层级练习
+    headEyebrow = '练习 · 层级考察';
+    headTitle = `练习 · L${ctx.layer ?? 0} 层级`;
+  } else if (ctx?.kind === 'plan') {
+    // 计划继续 / 复习
+    const pTitle = planTitleOf(ctx.planId);
+    headEyebrow = '练习 · 学习方向';
+    headTitle = pTitle ? `练习 · ${pTitle}` : '练习 · 学习方向';
+  } else if (ctx?.kind === 'assessment') {
+    if (ctx.mode === 'concept-assessment') {
+      const cName = conceptNameOf(ctx.conceptId);
+      headEyebrow = '综合检测';
+      headTitle = cName ? `综合检测 · ${cName}` : '综合检测 · 知识点';
+    } else {
+      headEyebrow = '综合检测';
+      headTitle = `综合检测 · L${ctx.layer ?? 0} 层级`;
+    }
+  } else if (ctx?.kind === 'task') {
+    headEyebrow = '今日任务';
+    headTitle = '今日任务 · 练习';
+  }
+
   return (
     <div className="page chat-page">
       <header className="page-head chat-head">
         <div className="chat-head-title">
-          <span className="eyebrow">{subLearn ? '先教后考 · 子知识点练习' : '练习 · LEARN'}</span>
-          <h1>{subLearn ? '练习当前子知识点' : '练习'}</h1>
+          <span className="eyebrow">{headEyebrow}</span>
+          <h1>{headTitle}</h1>
         </div>
         <div className="head-actions">
           <button className="head-back" onClick={backOrHome} title={subLearn ? '返回该子知识点讲解页' : '返回上一页（也支持鼠标后退键）'}>

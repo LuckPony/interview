@@ -53,3 +53,10 @@ data/
 
 ### Tools ###
 .workbuddy/
+
+### 官网原始截图（121MB TIFF，勿入库；官网用的 Web 优化版在 official-site/assets/screenshots/）###
+pics/
+pics_thumbs/
+
+### 官网部署构建产物（本地组装，勿入库）###
+deploy/web-build/

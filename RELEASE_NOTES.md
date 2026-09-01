@@ -1,5 +1,15 @@
 # 面霸 · Release Notes
 
+## 官网上线
+
+### 🌐 官方网站（静态落地页）
+- 新增独立官网落地页 `official-site/`：品牌 Hero、产品核心主张、特性介绍、截图画廊（9 张真实界面截图）、桌面下载、技术栈、GitHub Star CTA。
+- **下载链接自动更新**：页面通过 GitHub API 实时读取最新 Release 与资产，发布新版本后官网自动更新，无需改代码。
+- 部署结构：官网在 nginx 根路径 `/`，Web 应用 SPA 移到 `/app/`（HashRouter 兼容子路径），`/api` 同源代理后端；桌面端加载安装包内嵌 SPA，不受影响。
+- 官网为纯静态 HTML/CSS/JS（零构建依赖），可部署到任意静态托管；本地预览：`python3 -m http.server 8899 --directory official-site`。
+
+---
+
 ## v0.4.4
 
 ### 🎓 苏格拉底评分体系（判分升级）
