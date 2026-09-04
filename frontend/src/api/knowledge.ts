@@ -1,7 +1,7 @@
 import { apiFetch, ApiError, getToken, getLlmKeyHeader } from './client';
 import type { KnowledgeCard, CasualNote } from './types';
 
-export interface ChatMsg { role: 'user' | 'ai'; content: string }
+export interface ChatMsg { role: 'user' | 'ai'; content: string; stopped?: boolean }
 export interface AskStream { cancel: () => void }
 
 /** 桌面端构建时 VITE_API_BASE 烘焙为后端地址；网页态为空走 dev 代理（相对 /api）。 */
@@ -40,6 +40,7 @@ async function unwrap<T>(p: Promise<Envelope<T>>): Promise<T> {
 /** 流式自由问答：逐 token 回调，done 结束。事件格式对齐后端 /api/knowledge/ask。 */
 export function askStream(
     question: string,
+    conversation: ChatMsg[],
     onToken: (text: string) => void,
     onDone: () => void,
     onError: (msg?: string) => void,
@@ -61,7 +62,12 @@ export function askStream(
             const res = await fetch(`${API_BASE_SSE}/api/knowledge/ask`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ question }),
+                body: JSON.stringify({
+                    question,
+                    conversation: conversation
+                        .filter(message => !message.stopped)
+                        .map(({ role, content }) => ({ role, content })),
+                }),
                 signal: controller.signal,
             });
             if (!res.ok || !res.body) { onError(`请求失败（${res.status}）`); return; }
@@ -117,7 +123,10 @@ export function askStream(
 export const knowledgeApi = {
     capture(conversation: ChatMsg[]): Promise<KnowledgeCard> {
         return unwrap(apiFetch<Envelope<KnowledgeCard>>('/knowledge/capture', {
-            method: 'POST', body: JSON.stringify({ conversation }),
+            method: 'POST',
+            body: JSON.stringify({
+                conversation: conversation.map(({ role, content }) => ({ role, content })),
+            }),
         })).then(normalizeCard);
     },
     list(planId?: number): Promise<KnowledgeCard[]> {

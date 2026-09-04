@@ -85,17 +85,54 @@
 .md-code-block {
   position: relative;
   margin: 0.75em 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  border-radius: var(--r-md);
+}
+.md-code-toolbar {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px var(--s-3);
+  background: color-mix(in oklch, var(--ink) 8%, var(--paper));
+  border-bottom: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
 }
 .md-code-lang {
-  position: absolute;
-  top: 9px;
-  right: 13px;
   font: 600 10.5px var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: color-mix(in oklch, var(--ink) 42%, transparent);
   user-select: none;
-  pointer-events: none;
+}
+.md-code-copy {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.md-code-copy:hover {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+}
+.md-code-copy.is-failed { color: var(--bad); }
+.md-code-block > pre,
+.md-code-block > div:not(.md-code-toolbar) {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.md-code-block .md-diagram,
+.md-code-block .md-diagram-loading {
+  margin: 0;
 }
 .md-code-block code {
   white-space: pre;

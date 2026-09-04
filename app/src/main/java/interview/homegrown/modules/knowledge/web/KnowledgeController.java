@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -50,8 +51,9 @@ public class KnowledgeController {
         }
     }
 
-    public record AskRequest(String question, String provider) {}
-    public record CaptureRequest(List<Msg> conversation) { public record Msg(String role, String content) {} }
+    public record Msg(String role, String content) {}
+    public record AskRequest(String question, String provider, List<Msg> conversation) {}
+    public record CaptureRequest(List<Msg> conversation) {}
     public record UpdateRequest(String question, String answer, String tags, Long planId, String detail) {}
     public record ReviewRequest(boolean mastered) {}
 
@@ -100,6 +102,8 @@ public class KnowledgeController {
                 2. 用 Markdown 组织内容：要点分条、关键术语加粗、涉及代码时用代码块、涉及对比时用表格，让回答可读性强。
                 3. 内容要有干货：先给结论/定义，再讲原理或推理过程，补一个具体例子，最后给易错点或延伸建议。
                 4. 不确定的地方明确说明，不要编造。
+                5. 当前问题如果是追问，必须结合提供的本会话历史理解“它”“这个”“上面”等指代。
+                6. 任何多行代码、配置或命令都必须使用带语言标识的 Markdown 三反引号代码块。
                 如果是闲聊或无需长期保存的话题，正常简短回应即可，同样不要输出字段标签。""";
 
         StreamingResponseBody body = out -> {
@@ -109,7 +113,7 @@ public class KnowledgeController {
             // 按请求解析 key（请求头 X-LLM-Key > 当前用户设置 > 启动配置），与讲解/出题/判分等其它流式端点一致。
             final String[] streamError = {null};
             try {
-                rawClient.stream(systemPrompt, req.question(),
+                rawClient.stream(systemPrompt, buildUserPrompt(req),
                         token -> {
                             try {
                                 String frame = "data: {\"text\":" + jsonEscape(token) + "}\n\n";
@@ -147,6 +151,37 @@ public class KnowledgeController {
                 .header("Cache-Control", "no-cache")
                 .header("X-Accel-Buffering", "no")
                 .body(body);
+    }
+
+    /**
+     * 自由问答客户端目前是无状态的，因此把最近六轮对话显式放进本次用户提示。
+     * 历史只用于理解指代与追问，当前问题始终单独放在末尾，避免模型把旧问题当成本轮任务。
+     */
+    static String buildUserPrompt(AskRequest req) {
+        String question = req.question() == null ? "" : req.question().trim();
+        List<Msg> history = req.conversation() == null ? List.of() : req.conversation();
+        if (history.isEmpty()) return question;
+
+        int fromIndex = Math.max(0, history.size() - 12);
+        List<String> lines = new ArrayList<>();
+        for (Msg message : history.subList(fromIndex, history.size())) {
+            if (message == null || message.content() == null || message.content().isBlank()) continue;
+            String role = "ai".equalsIgnoreCase(message.role()) ? "AI" : "用户";
+            String content = message.content().trim();
+            if (content.length() > 3000) content = content.substring(0, 3000) + "…";
+            lines.add(role + "：" + content);
+        }
+        if (lines.isEmpty()) return question;
+
+        return """
+                以下是当前会话最近的对话记录。请结合它理解指代、省略和追问，但以最后的当前问题为本轮回答目标。
+
+                <conversation>
+                %s
+                </conversation>
+
+                当前问题：%s
+                """.formatted(String.join("\n\n", lines), question).trim();
     }
     }
 

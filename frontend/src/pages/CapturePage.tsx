@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Send, Sparkles, X, PencilLine, Search, ChevronDown, ChevronUp, EyeOff, FileText, RotateCcw } from 'lucide-react';
+import { BookmarkPlus, Check, ChevronDown, ChevronUp, EyeOff, FileText, PencilLine, RotateCcw, Search, Send, Sparkles, Square, X } from 'lucide-react';
 import { knowledgeApi, askStream, type ChatMsg } from '../api/knowledge';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
@@ -20,6 +20,7 @@ const PAGE_SIZE = 8;
 /** 会话级持久化：切换路由再返回时恢复对话与卡片（同一标签页内有效） */
 const SESSION_MSGS = 'yan.capture.msgs';
 const SESSION_CARDS = 'yan.capture.cards';
+const SESSION_SAVED_TURNS = 'yan.capture.saved-turns';
 
 /** 模块级工具：从会话存储读取；实际读取在 useState 惰性初始化里（每次组件挂载都执行，SPA 路由回来也能拿到最新值） */
 function loadSession<T>(key: string): T | null {
@@ -36,6 +37,11 @@ function initialMsgs(): ChatMsg[] {
     // 去掉尾部未完成的空 AI 消息（流中断残留，避免恢复后卡在「思考中」）
     while (list.length > 0 && list[list.length - 1].role === 'ai' && !list[list.length - 1].content.trim()) list = list.slice(0, -1);
     return list;
+}
+
+function initialSavedTurns(): Set<number> {
+    const saved = loadSession<number[]>(SESSION_SAVED_TURNS) ?? [];
+    return new Set(saved.filter(Number.isSafeInteger));
 }
 
 /** 空状态示例问题（兜底：没有卡片/标签时用）；有标签时按标签频次动态推荐 */
@@ -103,6 +109,8 @@ export function CapturePage() {
     const [streaming, setStreaming] = useState(false);
     const [auto, setAuto] = useState(false);
     const [err, setErr] = useState('');
+    const [savedTurns, setSavedTurns] = useState<Set<number>>(initialSavedTurns);
+    const [savingTurns, setSavingTurns] = useState<Set<number>>(new Set());
     const [page, setPage] = useState(1);
     const [filterTag, setFilterTag] = useState<string | null>(null);
     const [search, setSearch] = useState('');
@@ -119,6 +127,7 @@ export function CapturePage() {
     const timer = useRef<number>();
     const streamRef = useRef<{ cancel: () => void } | null>(null);
     const composingRef = useRef(false);
+    const chatRef = useRef<HTMLDivElement>(null);
 
     const hadSessionCards = useRef(cards.length > 0);
     useEffect(() => {
@@ -134,6 +143,15 @@ export function CapturePage() {
     // 变更即写回会话存储（msgs 为空等常态也写，保证与真实状态一致）
     useEffect(() => { sessionStorage.setItem(SESSION_MSGS, JSON.stringify(msgs)); }, [msgs]);
     useEffect(() => { sessionStorage.setItem(SESSION_CARDS, JSON.stringify(cards)); }, [cards]);
+    useEffect(() => {
+        sessionStorage.setItem(SESSION_SAVED_TURNS, JSON.stringify([...savedTurns]));
+    }, [savedTurns]);
+
+    // 流式输出会持续改变最后一条消息的高度；每个 token 更新后跟随到底部。
+    useLayoutEffect(() => {
+        if (!streaming || !chatRef.current) return;
+        chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }, [msgs, streaming]);
 
     // ===== 卡片筛选 + 分页（本地计算，翻页/筛选零延迟） =====
     const allTags = useMemo(() => {
@@ -204,6 +222,7 @@ export function CapturePage() {
 
         const stream = askStream(
             q.trim(),
+            msgs,
             (token) => setMsgs(m => m.map((x, i) => i === m.length - 1 ? { ...x, content: x.content + token } : x)),
             () => { setStreaming(false); streamRef.current = null; },
             (e) => {
@@ -215,6 +234,47 @@ export function CapturePage() {
         streamRef.current = stream;
     };
 
+    const stopAnswer = () => {
+        if (!streaming) return;
+        streamRef.current?.cancel();
+        streamRef.current = null;
+        setStreaming(false);
+        setMsgs(current => current.map((item, index) => {
+            if (index !== current.length - 1 || item.role !== 'ai') return item;
+            return {
+                ...item,
+                stopped: true,
+                content: item.content.trim()
+                    ? `${item.content}\n\n> 已停止生成`
+                    : '（已停止生成）',
+            };
+        }));
+    };
+
+    const saveTurn = async (answerIndex: number) => {
+        const question = msgs[answerIndex - 1];
+        const answer = msgs[answerIndex];
+        if (!question || question.role !== 'user' || !answer || answer.role !== 'ai'
+            || !answer.content.trim() || answer.stopped || savingTurns.has(answerIndex)) return;
+
+        setErr('');
+        setSavingTurns(current => new Set(current).add(answerIndex));
+        try {
+            const card = await knowledgeApi.capture([question, answer]);
+            setCards(current => [card, ...current]);
+            setSavedTurns(current => new Set(current).add(answerIndex));
+            setPage(1);
+        } catch (e) {
+            setErr(msg(e));
+        } finally {
+            setSavingTurns(current => {
+                const next = new Set(current);
+                next.delete(answerIndex);
+                return next;
+            });
+        }
+    };
+
     const settle = async () => {
         if (msgs.length === 0 || streaming) return;
         setErr('');
@@ -222,6 +282,7 @@ export function CapturePage() {
             const card = await knowledgeApi.capture(msgs);
             setCards(c => [card, ...c]);
             setMsgs([]);
+            setSavedTurns(new Set());
             setPage(1); // 新卡在列表头部，回到第一页让用户看到
         } catch (e) {
             // 无价值对话 / 未配置 key / LLM 失败都会走到这里：明确提示，不清空对话，方便用户重试
@@ -235,11 +296,12 @@ export function CapturePage() {
         if (!window.confirm('当前对话还没有保存成卡片，确定开始新对话吗？')) return;
         streamRef.current?.cancel();
         setMsgs([]);
+        setSavedTurns(new Set());
         setErr('');
     };
 
     useEffect(() => {
-        if (!auto || msgs.length === 0 || streaming) return;
+        if (!auto || msgs.length === 0 || streaming || msgs[msgs.length - 1]?.stopped) return;
         timer.current = window.setTimeout(settle, 10000);
         return () => window.clearTimeout(timer.current);
     }, [msgs, auto, streaming]);
@@ -296,7 +358,7 @@ export function CapturePage() {
 
             {err && <div className="banner warn">{err}</div>}
 
-            <Card className="capture-chat">
+            <Card ref={chatRef} className="capture-chat">
                 {msgs.length === 0 ? (
                     <div className="capture-empty">
                         <Sparkles size={30} strokeWidth={1.4} className="capture-empty-icon" />
@@ -315,7 +377,30 @@ export function CapturePage() {
                             {m.role === 'user' ? (
                                 m.content
                             ) : m.content ? (
-                                <Markdown>{m.content}</Markdown>
+                                <>
+                                    <Markdown>{m.content}</Markdown>
+                                    {i > 0 && msgs[i - 1].role === 'user' && !m.stopped
+                                        && !(streaming && i === msgs.length - 1) && (
+                                        <div className="capture-turn-actions">
+                                            <button
+                                                type="button"
+                                                className="capture-turn-save"
+                                                onClick={() => saveTurn(i)}
+                                                disabled={savingTurns.has(i) || savedTurns.has(i)}
+                                                title="只把这一组问题和回答存成卡片"
+                                            >
+                                                {savedTurns.has(i)
+                                                    ? <Check size={14} />
+                                                    : <BookmarkPlus size={14} />}
+                                                {savingTurns.has(i)
+                                                    ? '保存中…'
+                                                    : savedTurns.has(i)
+                                                        ? '已存卡片'
+                                                        : '存卡片'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <span className="thinking">
                                     思考中<span className="thinking-dots">…</span>
@@ -358,9 +443,15 @@ export function CapturePage() {
                         <Button variant="ghost" onClick={newChat} disabled={msgs.length === 0 || streaming}>
                             <RotateCcw size={15} strokeWidth={1.6} /> 新对话
                         </Button>
-                        <Button onClick={() => ask(input)} disabled={streaming || !input.trim()}>
-                            <Send size={16} strokeWidth={1.6} /> 提问
-                        </Button>
+                        {streaming ? (
+                            <Button onClick={stopAnswer} variant="danger">
+                                <Square size={14} fill="currentColor" /> 停止
+                            </Button>
+                        ) : (
+                            <Button onClick={() => ask(input)} disabled={!input.trim()}>
+                                <Send size={16} strokeWidth={1.6} /> 提问
+                            </Button>
+                        )}
                         <Button onClick={settle} disabled={msgs.length === 0 || streaming} variant="primary">存成卡片</Button>
                     </div>
                 </div>

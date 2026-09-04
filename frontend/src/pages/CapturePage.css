@@ -175,6 +175,34 @@
 .msg.ai .md > p:last-child {
   margin-bottom: 0;
 }
+.capture-turn-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--s-3);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.capture-turn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font: 500 var(--fs-xs) var(--font-sans);
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.capture-turn-save:hover:not(:disabled) {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+}
+.capture-turn-save:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
 
 /* 流式光标：停在最后一个 token 后闪烁 */
 .cursor-blink {

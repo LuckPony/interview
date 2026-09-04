@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import './ui.css';
 
 type Variant = 'primary' | 'ghost' | 'quiet' | 'danger';
@@ -11,17 +11,15 @@ export function Button({
   return <button className={`btn btn-${variant} ${className}`} {...props} />;
 }
 
-export function Card({
-  children,
-  className = '',
-  ...rest
-}: { children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={`card ${className}`} {...rest}>
-      {children}
-    </div>
-  );
-}
+export const Card = forwardRef<HTMLDivElement, { children: ReactNode } & HTMLAttributes<HTMLDivElement>>(
+  function Card({ children, className = '', ...rest }, ref) {
+    return (
+      <div ref={ref} className={`card ${className}`} {...rest}>
+        {children}
+      </div>
+    );
+  },
+);
 
 export type Tone = 'good' | 'warn' | 'bad' | 'soft' | 'accent';
 

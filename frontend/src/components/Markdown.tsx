@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
+import { Check, Copy } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -121,6 +122,65 @@ const LANG_LABEL: Record<string, string> = {
   r: 'R',
 };
 
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // 非 HTTPS、WebView 权限受限等情况继续走兼容复制。
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('复制失败');
+}
+
+function CodeToolbar({ text, label = 'Code' }: { text: string; label?: string }) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const handleCopy = async () => {
+    try {
+      await copyText(text);
+      setStatus('copied');
+    } catch {
+      setStatus('failed');
+    }
+    window.setTimeout(() => setStatus('idle'), 1800);
+  };
+
+  const title = status === 'copied'
+    ? '已复制'
+    : status === 'failed'
+      ? '复制失败，请手动选择代码'
+      : '复制代码';
+
+  return (
+    <div className="md-code-toolbar">
+      <span className="md-code-lang">{label}</span>
+      <button
+        type="button"
+        className={`md-code-copy${status === 'failed' ? ' is-failed' : ''}`}
+        onClick={handleCopy}
+        title={title}
+        aria-label={title}
+      >
+        {status === 'copied' ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+    </div>
+  );
+}
+
 function removeMermaidArtifacts(id: string) {
   // mermaid.render() 默认把临时 SVG 挂到 document.body。解析失败时旧版本可能来不及自行移除，
   // 因而页面底部会残留“Syntax error in text”。这里成功、失败和卸载时都做兜底清理。
@@ -200,13 +260,18 @@ const components: Components = {
     if (match) {
       const requestedLang = match[1].toLowerCase();
       if (requestedLang === 'mermaid') {
-        return <MermaidDiagram source={text} />;
+        return (
+          <div className="md-code-block">
+            <CodeToolbar text={text} label="Mermaid" />
+            <MermaidDiagram source={text} />
+          </div>
+        );
       }
       const lang = (LANG_ALIAS[requestedLang] ?? requestedLang).toLowerCase();
       const label = LANG_LABEL[lang];
       return (
         <div className="md-code-block">
-          {label && <span className="md-code-lang">{label}</span>}
+          <CodeToolbar text={text} label={label ?? requestedLang} />
           <SyntaxHighlighter
             language={lang}
             style={oneLight}
@@ -241,9 +306,12 @@ const components: Components = {
     // （用原始文本判断换行，避免去掉尾换行后误判为行内 code）
     if (raw.includes('\n')) {
       return (
-        <pre className={className}>
-          <code {...props}>{children}</code>
-        </pre>
+        <div className="md-code-block">
+          <CodeToolbar text={text} />
+          <pre className={className}>
+            <code {...props}>{children}</code>
+          </pre>
+        </div>
       );
     }
     return <code className={className} {...props}>{children}</code>;
