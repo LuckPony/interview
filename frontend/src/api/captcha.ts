@@ -12,6 +12,10 @@ export interface CaptchaIssue {
     height: number;
     /** 滑块最大位移 */
     sliderMax: number;
+    /** 拼块图实际像素宽（前端锁定显示尺寸用） */
+    pieceWidth: number;
+    /** 拼块图实际像素高 */
+    pieceHeight: number;
 }
 
 export async function createCaptcha(): Promise<CaptchaIssue> {

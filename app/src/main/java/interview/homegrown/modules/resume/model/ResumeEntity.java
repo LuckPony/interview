@@ -27,7 +27,7 @@ public class ResumeEntity {
     @Column(name = "original_name", nullable = false)
     private String originalName;
 
-    @Size(max = 50)
+    @Size(max = 255)
     @NotNull
     @Column(name = "file_type", nullable = false, length = 50)
     private String fileType;

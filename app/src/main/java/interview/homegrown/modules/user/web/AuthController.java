@@ -24,26 +24,36 @@ public class AuthController {
         this.captchaService = captchaService;
     }
 
-    // ===== register 改动 =====
+    // ===== register：提交时带邮箱验证码，验证通过才创建账号 =====
     @PostMapping("/register")
     public AuthView register(@Valid @RequestBody RegisterRequest req) {
-        AuthService.AuthResult r = authService.register(req.email(), req.password(), req.captchaToken());
+        AuthService.AuthResult r = authService.register(req.email(), req.password(), req.code());
         return new AuthView(r.token(), String.valueOf(r.userId()), r.verified());
     }
 
-    // ===== 新增：前端询问本环境是否需要滑块 =====
-    @GetMapping("/config")
-    public ConfigView config() {
-        return new ConfigView(captchaService.isEnabled());
+    // ===== 注册前置发码：滑块通过后由前端调用，向邮箱发验证码（不创建账号） =====
+    @PostMapping("/send-register-code")
+    public void sendRegisterCode(@Valid @RequestBody SendCodeRequest req) {
+        authService.sendRegisterCode(req.email(), req.captchaToken());
     }
 
-    // ===== 新增请求体：captchaToken 可选（验证关闭的环境不传也行） =====
+    // ===== 前端询问本环境是否需要滑块 / 邮箱验证 =====
+    @GetMapping("/config")
+    public ConfigView config() {
+        return new ConfigView(captchaService.isEnabled(), authService.mailConfigured());
+    }
+
+    // ===== 请求体：code 在 SMTP 未配置的演示环境可空；captchaToken 在滑块关闭时可空 =====
     public record RegisterRequest(
             @NotBlank @Email(message = "邮箱格式不正确") String email,
             @NotBlank @Size(min = 6, max = 64, message = "密码长度需 6-64 位") String password,
+            String code) {}
+
+    public record SendCodeRequest(
+            @NotBlank @Email(message = "邮箱格式不正确") String email,
             String captchaToken) {}
 
-    public record ConfigView(boolean captchaRequired) {}
+    public record ConfigView(boolean captchaRequired, boolean emailVerifyRequired) {}
 
     @PostMapping("/verify")
     public AuthView verify(@Valid @RequestBody VerifyRequest req) {

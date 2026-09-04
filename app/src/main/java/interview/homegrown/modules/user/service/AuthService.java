@@ -44,39 +44,71 @@ public class AuthService {
         this.captchaService = captchaService;
     }
 
-    // ===== register 改签名 =====
+    // ===== 注册：SMTP 就绪时必须在提交时校验邮箱验证码，通过才创建账号 =====
+    // 关键语义：账号只在用户提交「邮箱+密码+验证码」时入库；
+    // 未输入验证码/验证失败绝不落库（修复“空邮箱占坑、下次注册提示已存在”的 bug）。
     @Transactional
-    public AuthResult register(String email, String password, String captchaToken) {
+    public AuthResult register(String email, String password, String code) {
         String normalized = normalizeEmail(email);
-        // 人机闸门：滑块验证开启时，必须先持有一次性 captchaToken（先验再干活，
-        // 也避免 register 变成“邮箱是否已注册”的探测接口）
-        if (captchaService.isEnabled() && !captchaService.consumeTicket(captchaToken)) {
-            throw new IllegalArgumentException("请先完成滑块验证");
-        }
         if (userRepo.existsByEmail(normalized)) {
             throw new IllegalArgumentException("该邮箱已注册");
         }
         if (password == null || password.length() < 6) {
             throw new IllegalArgumentException("密码至少 6 位");
         }
+        // SMTP 就绪：校验并消费发码接口下发的验证码；
+        // SMTP 未配（本地/演示）：无需验证码，直接注册成功。
+        if (mailService.isConfigured()) {
+            EmailVerifyCode rec = takeValidCode(normalized, code);
+            rec.setUsed(true);
+            codeRepo.save(rec);
+        }
         AppUser user = new AppUser();
         user.setEmail(normalized);
         user.setPasswordHash(passwordEncoder.encode(password));
-        // SMTP 就绪 → 需邮箱验证；否则（本地/演示）自动通过
-        boolean needVerify = mailService.isConfigured();
-        user.setVerified(!needVerify);
+        user.setVerified(true);   // 走到这里即代表邮箱已验证，注册即生效
         userRepo.save(user);
+        return new AuthResult(jwtUtil.generateToken(user.getId()), user.getId(), true);
+    }
 
-        if (needVerify) {
-            String code = issueCode(normalized);
-            boolean sent = mailService.sendVerificationCode(normalized, code);
-            if (!sent) {
-                // 邮件发不出去别把用户卡死：降级为自动通过
-                user.setVerified(true);
-                userRepo.save(user);
-            }
+    /**
+     * 注册前置发码：先过滑块（人机闸门）→ 再校验邮箱未被注册 → 最后发送验证码。
+     * 这里【不创建账号】，账号只在 register(邮箱+密码+验证码) 时创建。
+     */
+    @Transactional
+    public void sendRegisterCode(String email, String captchaToken) {
+        String normalized = normalizeEmail(email);
+        // 人机闸门放在最前：滑块开启时必须先持有一次性 captchaToken
+        // （同时避免把本接口变成“邮箱是否已注册”的探测接口）
+        if (captchaService.isEnabled() && !captchaService.consumeTicket(captchaToken)) {
+            throw new IllegalArgumentException("请先完成滑块验证");
         }
-        return new AuthResult(jwtUtil.generateToken(user.getId()), user.getId(), user.isVerified());
+        if (!mailService.isConfigured()) {
+            throw new IllegalArgumentException("当前环境未启用邮箱验证，无需获取验证码");
+        }
+        if (userRepo.existsByEmail(normalized)) {
+            throw new IllegalArgumentException("该邮箱已注册");
+        }
+        String code = issueCode(normalized);
+        if (!mailService.sendVerificationCode(normalized, code)) {
+            throw new IllegalArgumentException("验证码发送失败，请稍后重试");
+        }
+    }
+
+    /** 取该邮箱最新一条未使用且未过期的验证码；不合法统一抛错。 */
+    private EmailVerifyCode takeValidCode(String email, String code) {
+        if (code == null || code.isBlank()) {
+            throw new IllegalArgumentException("请输入邮箱验证码");
+        }
+        return codeRepo.findTopByEmailAndUsedFalseOrderByIdDesc(email)
+                .filter(c -> c.getExpiresAt().isAfter(Instant.now()))
+                .filter(c -> c.getCode().equals(code.trim()))
+                .orElseThrow(() -> new IllegalArgumentException("验证码错误或已过期，请重新获取"));
+    }
+
+    /** 供 /api/auth/config 告知前端本环境是否需要邮箱验证码。 */
+    public boolean mailConfigured() {
+        return mailService.isConfigured();
     }
 
     @Transactional
@@ -84,10 +116,7 @@ public class AuthService {
         String normalized = normalizeEmail(email);
         AppUser user = userRepo.findByEmail(normalized)
                 .orElseThrow(() -> new IllegalArgumentException("该邮箱尚未注册"));
-        EmailVerifyCode rec = codeRepo.findTopByEmailAndUsedFalseOrderByIdDesc(normalized)
-                .filter(c -> c.getExpiresAt().isAfter(Instant.now()))
-                .filter(c -> c.getCode().equals(code.trim()))
-                .orElseThrow(() -> new IllegalArgumentException("验证码错误或已过期"));
+        EmailVerifyCode rec = takeValidCode(normalized, code);
         rec.setUsed(true);
         codeRepo.save(rec);
         user.setVerified(true);
@@ -106,6 +135,8 @@ public class AuthService {
     }
 
     private String issueCode(String email) {
+        // 重发时先作废旧的未使用验证码，保证只有最新一条有效，避免输错“上一封”的码
+        codeRepo.invalidateUnused(email);
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         EmailVerifyCode rec = new EmailVerifyCode();
         rec.setEmail(email);

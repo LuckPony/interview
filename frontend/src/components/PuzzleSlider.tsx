@@ -20,6 +20,8 @@ export function PuzzleSlider({
     const draggingRef = useRef(false);
     const startXRef = useRef(0);
     const baseDragRef = useRef(0);
+    const bgRef = useRef<HTMLDivElement>(null);
+    const [scale, setScale] = useState(1); // 底图实际渲染宽度 / captcha.width（防 CSS 缩放错位）
 
     const load = async () => {
         setLoading(true);
@@ -40,6 +42,13 @@ export function PuzzleSlider({
         void load();
     }, []);
 
+    // captcha 渲染完成后，量底图实际渲染宽度算缩放系数；正常为 1
+    useEffect(() => {
+        if (!captcha) return;
+        const el = bgRef.current;
+        setScale(el && el.clientWidth > 0 ? el.clientWidth / captcha.width : 1);
+    }, [captcha]);
+
     const onPointerDown = (e: React.PointerEvent) => {
         if (passed) return;
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -51,7 +60,7 @@ export function PuzzleSlider({
     const onPointerMove = (e: React.PointerEvent) => {
         if (!draggingRef.current) return;
         const dx = e.clientX - startXRef.current;
-        const max = captcha?.sliderMax ?? 0;
+        const max = (captcha?.sliderMax ?? 0) * scale;
         setDrag(Math.max(0, Math.min(max, baseDragRef.current + dx)));
     };
 
@@ -66,7 +75,7 @@ export function PuzzleSlider({
         }
         setPassing(true);
         try {
-            const r = await verifyCaptcha(captcha.captchaId, drag);
+            const r = await verifyCaptcha(captcha.captchaId, Math.round(drag / scale));
             setPassed(true);
             setTimeout(() => onPass(r.captchaToken), 350);
         } catch (e) {
@@ -110,17 +119,23 @@ export function PuzzleSlider({
                     <>
                         <div className="ps-body">
                             <div
+                                ref={bgRef}
                                 className="ps-bg"
-                                style={{ width: captcha.width, height: captcha.height }}
+                                style={{ width: captcha.width * scale, height: captcha.height * scale }}
                             >
                                 <img src={captcha.bgImage} alt="验证图" draggable={false} />
-                                {/* 拼块：left = 滑块位移值，top = 后端给 pieceY */}
+                                {/* 拼块：left = 滑块位移值；坐标与尺寸乘 scale，与底图严格 1:1 */}
                                 <img
                                     className="ps-piece"
                                     src={captcha.pieceImage}
                                     alt=""
                                     draggable={false}
-                                    style={{ left: drag, top: captcha.pieceY }}
+                                    style={{
+                                        left: drag,
+                                        top: captcha.pieceY * scale,
+                                        width: captcha.pieceWidth * scale,
+                                        height: captcha.pieceHeight * scale,
+                                    }}
                                 />
                             </div>
                             {err && <div className="ps-err">{err}</div>}
@@ -129,14 +144,14 @@ export function PuzzleSlider({
 
                         <div
                             className="ps-track"
-                            style={{ width: captcha.width }}
+                            style={{ width: captcha.width * scale }}
                             onPointerDown={onPointerDown}
                             onPointerMove={onPointerMove}
                             onPointerUp={onPointerUp}
                         >
                             <div
                                 className="ps-progress"
-                                style={{ width: `${(drag / captcha.sliderMax) * 100}%` }}
+                                style={{ width: `${(drag / (captcha.sliderMax * scale)) * 100}%` }}
                             />
                             <div
                                 className="ps-thumb"

@@ -105,3 +105,58 @@
     padding: var(--s-7) var(--s-5);
   }
 }
+
+/* —— 注册：验证码行（输入框 + 获取按钮两列）与即时校验提示 —— */
+.code-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.code-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 46px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  font-size: var(--fs-md);
+  transition: border-color 0.3s var(--ease-out);
+}
+.code-input:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+}
+.send-btn {
+  flex: 0 0 auto;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.3s var(--ease-out), color 0.3s var(--ease-out);
+}
+.send-btn:hover:not(:disabled) {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar-deep);
+}
+.send-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.field-hint {
+  display: block;
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  color: #e5484d;
+}
+.field-note {
+  display: block;
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}

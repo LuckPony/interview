@@ -35,10 +35,10 @@ public class PuzzleCaptchaService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** 拼块/槽形状参数（凸起向右探出 bbox，整体宽度 = PIECE + TAB*2） */
-    private static final int PIECE = 44;      // 拼块主体边长
-    private static final int BUMP_R = 8;      // 右侧凸起的圆半径
-    private static final int SHADOW = 2;      // 拼块描边留白
+    /** 拼块/槽形状参数：主体 PIECE 见方，右侧一个半径 BUMP_R 的凸起。
+     *  槽、拼块、滑轨最大位移全部由这两个值推算，禁止任何地方用其它宽度。 */
+    private static final int PIECE = 40;      // 拼块主体边长
+    private static final int BUMP_R = 6;      // 右侧凸起的圆半径
 
     private final RedisService redis;
     private final boolean enabled;
@@ -79,21 +79,22 @@ public class PuzzleCaptchaService {
         return enabled;
     }
 
-    /** 拼块总宽度（含右侧凸起与描边）。 */
+    /** 拼块整体宽度 = 主体 + 右侧凸起（左右不留边距 → PNG(0,0) 恰为槽位左上角）。 */
     private int pieceWidth() {
-        return PIECE + BUMP_R + SHADOW;
+        return PIECE + BUMP_R;
     }
 
-    /** 拼块可到达的最大左移量（= 目标 X 的上限）。 */
+    /** 滑块最大位移（滑块在最右时，拼块左缘的坐标值）。 */
     public int sliderMax() {
         return width - pieceWidth();
     }
 
     /** 在 (x,y) 处构造拼块形状（拼块与槽共用同一形状 → 必然吻合）。 */
     private Area shapeAt(double x, double y) {
-        Area area = new Area(new RoundRectangle2D.Double(x, y, PIECE, PIECE, 8, 8));
-        // 右侧凸起圆：圆心在主体右缘外侧，半径 BUMP_R
-        area.add(new Area(new Ellipse2D.Double(x + PIECE - 2, y + PIECE / 2.0 - BUMP_R, BUMP_R * 2, BUMP_R * 2)));
+        Area area = new Area(new RoundRectangle2D.Double(x, y, PIECE, PIECE, 6, 6));
+        // 凸起圆圆心在主方块右缘中点：向左叠 BUMP_R、向右凸出 BUMP_R
+        area.add(new Area(new Ellipse2D.Double(
+                x + PIECE - BUMP_R, y + PIECE / 2.0 - BUMP_R, BUMP_R * 2, BUMP_R * 2)));
         return area;
     }
 
@@ -117,7 +118,7 @@ public class PuzzleCaptchaService {
 
         return new CaptchaIssue(captchaId,
                 toBase64Png(bg), toBase64Png(piece),
-                y, width, height, sliderMax());
+                y, width, height, sliderMax(), pieceWidth(), PIECE);
     }
 
     private int randomTargetX() {
@@ -172,7 +173,8 @@ public class PuzzleCaptchaService {
         return out;
     }
 
-    /** 挖槽：把 (x,y) 处形状区域清成透明，再描一圈浅槽边便于人眼定位。 */
+    /** 挖槽：把 (x,y) 处形状区域清成透明；槽的内描边裁到形状内部，
+     *  保证槽与拼块的可见轮廓完全等大。 */
     private BufferedImage punchHole(BufferedImage source, int x, int y) {
         BufferedImage bg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = bg.createGraphics();
@@ -184,35 +186,41 @@ public class PuzzleCaptchaService {
         g.setColor(Color.WHITE);
         g.fill(shape);
 
+        // 槽的内侧淡边（引导定位，但画在形状内部 → 不撑大槽的轮廓）
         g.setComposite(AlphaComposite.SrcOver);
-        g.setColor(new Color(0, 0, 0, 60));    // 槽的淡描边（引导对齐）
-        g.setStroke(new BasicStroke(1f));
+        g.setClip(shape);
+        g.setColor(new Color(255, 255, 255, 150));
+        g.setStroke(new BasicStroke(1.5f));
         g.draw(shape);
         g.dispose();
         return bg;
     }
 
-    /** 裁拼块：只把形状区域从底图抠出，四周留描边；返回紧贴的小图。 */
+    /** 裁拼块：画布(i,j) ⇔ 底图(x+i, y+j)，PNG(0,0) 正好是槽位左上角，
+     *  形状、内容、描边全部画在画布内，与槽位同形同大小。 */
     private BufferedImage cutPiece(BufferedImage source, int x, int y) {
         int pw = pieceWidth();
-        int ph = PIECE + SHADOW * 2;
-        int left = x - SHADOW;
-        int top = y - SHADOW;
-        BufferedImage piece = new BufferedImage(pw, ph, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage piece = new BufferedImage(pw, PIECE, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = piece.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.translate(-left, -top);              // 画布坐标系对齐到底图
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        // translate(-x,-y) 后：设备坐标 = 底图坐标 − (x,y)。
+        // 所以在设备里用「底图坐标系的 shapeAt(x,y)」做裁剪/描边 → 落在画布 0.. 区域；
+        // 注意：绝不能用 shapeAt(0,0)，那会被平移到画布外导致拼块全透明。
+        g.translate(-x, -y);
         g.setClip(shapeAt(x, y));
-        g.drawImage(source, 0, 0, null);
+        g.drawImage(source, 0, 0, null);  // 只把槽位那块的底图像素画进画布
         g.setClip(null);
-        // 白描边 + 阴影，让拼块在页面上清晰可辨
-        g.translate(left, top);
+
+        // 内描边：白边 + 细暗线（都裁在形状内 → 与槽的轮廓等大）
+        g.setClip(shapeAt(x, y));
         g.setStroke(new BasicStroke(2f));
-        g.setColor(new Color(255, 255, 255, 220));
+        g.setColor(new Color(255, 255, 255, 230));
         g.draw(shapeAt(x, y));
-        g.setColor(new Color(0, 0, 0, 40));
-        g.setStroke(new BasicStroke(4f));
-        g.draw(shapeAt(x, y + 1));
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(0, 0, 0, 90));
+        g.draw(shapeAt(x, y));
         g.dispose();
         return piece;
     }
@@ -274,6 +282,8 @@ public class PuzzleCaptchaService {
             int pieceY,          // 拼块应在底图中的垂直位置
             int width,
             int height,
-            int sliderMax        // 滑块最大位移（= 目标 X 上限）
+            int sliderMax,       // 滑块最大位移（= 目标 X 上限）
+            int pieceWidth,      // 拼块图实际像素宽（前端按此锁定显示尺寸）
+            int pieceHeight      // 拼块图实际像素高
     ) {}
 }
