@@ -56,15 +56,15 @@ export function InterviewHistory() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">模拟面试 · HISTORY</span>
-        <h1>面试历史</h1>
+        <span className="eyebrow">面试准备 · RECORDS</span>
+        <h1>面试记录</h1>
         <p>每一次模拟面试的评分与评估，点击查看完整问答回顾。</p>
       </header>
 
       {err && <div className="banner info">{err}</div>}
 
       {list === null ? (
-        <Loading label="读取面试历史…" />
+        <Loading label="读取面试记录…" />
       ) : list.length === 0 ? (
         <div className="empty">
           <h3>还没有面试记录</h3>

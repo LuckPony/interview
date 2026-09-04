@@ -263,7 +263,7 @@ export function Interview() {
       </header>
 
       <div className="iv-header-actions">
-        <a className="ih-back" href="#/rehearsal/history">查看面试历史</a>
+        <a className="ih-back" href="#/rehearsal/history">查看面试记录</a>
       </div>
 
       {err && <div className="banner warn">{err}</div>}
@@ -642,7 +642,7 @@ function InterviewResult({ session, onRestart }: { session: InterviewSession; on
 
       <div className="iv-result-actions">
         <Button variant="ghost" onClick={onRestart}>再来一场</Button>
-        <Button variant="primary" onClick={() => window.location.hash = '#/rehearsal/history'}>查看面试历史</Button>
+        <Button variant="primary" onClick={() => window.location.hash = '#/rehearsal/history'}>查看面试记录</Button>
       </div>
     </div>
   );

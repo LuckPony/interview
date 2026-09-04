@@ -149,11 +149,23 @@ export interface ResumeListItem {
   createdAt: string;
 }
 
+export interface ResumeDetail extends ResumeListItem {
+  storageKey: string;
+  errorMessage: string | null;
+  resumeText: string;
+  summary: string | null;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+}
+
 export const resumeApi = {
   list: () => unwrap(apiFetch<Envelope<ResumeListItem[]>>('/resumes')),
   upload: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return unwrap(apiFetch<Envelope<{ id: number }>>('/resumes/upload', { method: 'POST', body: form }));
+    return unwrap(apiFetch<Envelope<ResumeDetail>>('/resumes/upload', { method: 'POST', body: form }));
   },
+  detail: (id: number) => unwrap(apiFetch<Envelope<ResumeDetail>>(`/resumes/${id}`)),
+  remove: (id: number) => unwrap(apiFetch<Envelope<void>>(`/resumes/${id}`, { method: 'DELETE' })),
 };
