@@ -63,15 +63,18 @@ spring:
     baseline-on-migrate: true
     baseline-version: 1
   mail:
-    # 邮箱验证：不配 MAIL_HOST/FROM 则注册自动通过（本地/演示）
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8          # 中文邮件主题不乱码
     properties:
       mail:
         smtp:
           auth: true
+          # 163 的 465 端口是 SSL 隐式加密，必须开 ssl.enable（对应 .env 的 MAIL_SSL_ENABLE=true）
+          ssl:
+            enable: ${MAIL_SSL_ENABLE:false}
           starttls:
             enable: true
 springdoc:
@@ -133,6 +136,16 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET:drill-dev-secret-change-me-please-32bytes}
     expiration-ms: 5184000000  # 2 个月（60 天）
+  captcha:
+    # 图像拼图滑块验证：注册等敏感动作前的人机闸门。
+    # 本地不想滑可设 APP_CAPTCHA_ENABLED=false 关掉（此时 register 不再校验 ticket）
+    enabled: ${APP_CAPTCHA_ENABLED:true}
+    width: 320
+    height: 170
+    piece-size: 44
+    tolerance: 6          # 拼图容差（像素）
+    ttl-seconds: 120      # 题目有效期
+    ticket-ttl-seconds: 300  # 通过凭证有效期（须在此时间内完成注册提交）
   mail:
     from: ${MAIL_FROM:}
 

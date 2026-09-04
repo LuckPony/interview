@@ -1,0 +1,124 @@
+.ps-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(10, 12, 18, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.ps-card {
+    width: 340px;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+}
+.ps-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    background: #f7f8fa;
+    border-bottom: 1px solid #e8eaee;
+}
+.ps-head-actions { display: flex; gap: 6px; }
+.ps-icon-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #777;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 6px;
+}
+.ps-icon-btn:hover { background: #eceef2; color: #333; }
+.ps-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.ps-loading { height: 170px; align-items: center; justify-content: center; color: #999; }
+.ps-ok { align-items: center; justify-content: center; height: 170px; color: #12b76a; gap: 8px; }
+.ps-bg {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+    margin: 0 auto;
+}
+.ps-bg > img { display: block; width: 100%; user-select: none; }
+.ps-piece {
+    position: absolute;
+    pointer-events: none;
+    user-select: none;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+    will-change: left;
+}
+.ps-err {
+    color: #e5484d;
+    font-size: 12.5px;
+    text-align: center;
+}
+.ps-hint { color: #999; font-size: 12px; text-align: center; }
+.ps-track {
+    position: relative;
+    height: 40px;
+    margin: 4px auto 14px;
+    background: #eef1f5;
+    border-radius: 20px;
+    border: 1px solid #dde2e9;
+    user-select: none;
+    cursor: pointer;
+}
+.ps-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: #cdeedb;
+    border-radius: 20px;
+}
+.ps-thumb {
+    position: absolute;
+    top: -1px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #dde2e9;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f6bff;
+    font-weight: 700;
+    cursor: grab;
+}
+.ps-thumb:active { cursor: grabbing; }
+.ps-track-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12.5px;
+    color: #9aa3af;
+    pointer-events: none;
+}
+.ps-retry {
+    margin: 0 auto;
+    border: 1px solid #dde2e9;
+    background: #fff;
+    padding: 6px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #0f6bff;
+}
+.spin { animation: ps-spin 0.9s linear infinite; }
+@keyframes ps-spin { to { transform: rotate(360deg); } }

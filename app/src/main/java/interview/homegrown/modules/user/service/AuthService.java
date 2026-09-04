@@ -1,5 +1,6 @@
 package interview.homegrown.modules.user.service;
 
+import interview.homegrown.infrastructure.captcha.PuzzleCaptchaService;
 import interview.homegrown.modules.user.domain.AppUser;
 import interview.homegrown.modules.user.domain.EmailVerifyCode;
 import interview.homegrown.modules.user.repository.AppUserRepository;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+
 
 /**
  * 注册 / 邮箱验证 / 登录。
@@ -30,18 +32,27 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final MailService mailService;
 
+    private final PuzzleCaptchaService captchaService;
+
     public AuthService(AppUserRepository userRepo, EmailVerifyCodeRepository codeRepo,
-                       PasswordEncoder passwordEncoder, JwtUtil jwtUtil, MailService mailService) {
+                       PasswordEncoder passwordEncoder, JwtUtil jwtUtil, MailService mailService, PuzzleCaptchaService captchaService) {
         this.userRepo = userRepo;
         this.codeRepo = codeRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.mailService = mailService;
+        this.captchaService = captchaService;
     }
 
+    // ===== register 改签名 =====
     @Transactional
-    public AuthResult register(String email, String password) {
+    public AuthResult register(String email, String password, String captchaToken) {
         String normalized = normalizeEmail(email);
+        // 人机闸门：滑块验证开启时，必须先持有一次性 captchaToken（先验再干活，
+        // 也避免 register 变成“邮箱是否已注册”的探测接口）
+        if (captchaService.isEnabled() && !captchaService.consumeTicket(captchaToken)) {
+            throw new IllegalArgumentException("请先完成滑块验证");
+        }
         if (userRepo.existsByEmail(normalized)) {
             throw new IllegalArgumentException("该邮箱已注册");
         }

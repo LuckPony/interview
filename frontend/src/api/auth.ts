@@ -10,11 +10,19 @@ export async function login(email: string, password: string): Promise<LoginResp>
   });
 }
 
-export async function register(email: string, password: string): Promise<LoginResp> {
+export async function register(
+    email: string,
+    password: string,
+    captchaToken?: string,
+): Promise<LoginResp> {
   return apiFetch<LoginResp>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, captchaToken }),
   });
+}
+
+export async function getAuthConfig(): Promise<{ captchaRequired: boolean }> {
+  return apiFetch('/auth/config');
 }
 
 export async function verify(email: string, code: string): Promise<LoginResp> {

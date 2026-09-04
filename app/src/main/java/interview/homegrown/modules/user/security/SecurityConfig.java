@@ -31,7 +31,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verify").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verify",
+                                "/api/auth/config", "/api/auth/captcha/**").permitAll()
                         .requestMatchers("/api/drill/**", "/api/settings/**").authenticated()
                         .anyRequest().authenticated())
                 // 未登录/令牌失效访问受保护接口 → 401（而非默认 403），前端据此自动清会话

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import {useState, type FormEvent, useEffect} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -6,6 +6,8 @@ import { Button } from '../components/ui';
 import { ApiError } from '../api/client';
 import { register as apiRegister, verify as apiVerify } from '../api/auth';
 import './Login.css';
+import { PuzzleSlider } from '../components/PuzzleSlider';
+import { getAuthConfig } from '../api/auth';
 
 type Mode = 'login' | 'register' | 'verify';
 
@@ -19,6 +21,18 @@ export function Login() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [showCaptcha, setShowCaptcha] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(true); // 未知时按需滑块处理（更安全）
+  const [pendingRegister, setPendingRegister] = useState(false); // 是否处于“待完成注册”状态
+  const [captchaToken, setCaptchaToken] = useState('');
+
+  // 挂载时问一次后端是否需要滑块
+  useEffect(() => {
+    getAuthConfig()
+        .then((c) => setCaptchaRequired(c.captchaRequired))
+        .catch(() => { /* 后端没起来时保持默认 true，注册会报错自然引导 */ });
+  }, []);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr('');
@@ -28,14 +42,17 @@ export function Login() {
         await login(email.trim(), password);
         navigate('/', { replace: true });
       } else if (mode === 'register') {
-        const r = await apiRegister(email.trim(), password);
+        if (captchaRequired && !pendingRegister) {
+          // 第一步：填完邮箱密码，先弹滑块验证（通过后再发邮箱验证码）
+          setShowCaptcha(true);
+          return;
+        }
+        const r = await apiRegister(email.trim(), password, captchaToken);
         if (r.verified) {
-          // SMTP 未配（自动通过）→ 直接进入
           completeAuth(r);
           navigate('/', { replace: true });
         } else {
-          // 需要邮箱验证 → 切到输码步
-          setMode('verify');
+          setMode('verify');      // 滑块过了 + 邮件已发 → 进输码步
         }
       } else {
         const r = await apiVerify(email.trim(), code.trim());
@@ -149,6 +166,32 @@ export function Login() {
             )}
           </div>
         </div>
+        {showCaptcha && (
+            <PuzzleSlider
+                onPass={(token) => {
+                  setShowCaptcha(false);
+                  setCaptchaToken(token);
+                  setPendingRegister(true);
+                  // 滑块通过 → 真正提交注册（后端随即决定是否发邮箱验证码）
+                  void (async () => {
+                    try {
+                      const r = await apiRegister(email.trim(), password, token);
+                      if (r.verified) {
+                        completeAuth(r);
+                        navigate('/', { replace: true });
+                      } else {
+                        setMode('verify');
+                      }
+                    } catch (e2) {
+                      setErr(e2 instanceof ApiError ? e2.message : '操作失败，请确认后端已启动');
+                    } finally {
+                      setPendingRegister(false);
+                    }
+                  })();
+                }}
+                onClose={() => setShowCaptcha(false)}
+            />
+        )}
       </section>
     </div>
   );

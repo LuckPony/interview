@@ -1,16 +1,12 @@
 package interview.homegrown.modules.user.web;
 
+import interview.homegrown.infrastructure.captcha.PuzzleCaptchaService;
 import interview.homegrown.modules.user.service.AuthService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * 注册 / 邮箱验证 / 登录。成功后统一签发 JWT（userId 写入 token 的 sub）。
@@ -21,16 +17,33 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final PuzzleCaptchaService captchaService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService,PuzzleCaptchaService captchaService) {
         this.authService = authService;
+        this.captchaService = captchaService;
     }
 
+    // ===== register 改动 =====
     @PostMapping("/register")
-    public AuthView register(@Valid @RequestBody CredentialsRequest req) {
-        AuthService.AuthResult r = authService.register(req.email(), req.password());
+    public AuthView register(@Valid @RequestBody RegisterRequest req) {
+        AuthService.AuthResult r = authService.register(req.email(), req.password(), req.captchaToken());
         return new AuthView(r.token(), String.valueOf(r.userId()), r.verified());
     }
+
+    // ===== 新增：前端询问本环境是否需要滑块 =====
+    @GetMapping("/config")
+    public ConfigView config() {
+        return new ConfigView(captchaService.isEnabled());
+    }
+
+    // ===== 新增请求体：captchaToken 可选（验证关闭的环境不传也行） =====
+    public record RegisterRequest(
+            @NotBlank @Email(message = "邮箱格式不正确") String email,
+            @NotBlank @Size(min = 6, max = 64, message = "密码长度需 6-64 位") String password,
+            String captchaToken) {}
+
+    public record ConfigView(boolean captchaRequired) {}
 
     @PostMapping("/verify")
     public AuthView verify(@Valid @RequestBody VerifyRequest req) {
