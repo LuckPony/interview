@@ -96,7 +96,7 @@
   gap: var(--s-3);
   padding: 8px 10px;
   border-radius: 13px;
-  color: var(--ink-soft);
+  color: var(--ink);
   text-align: left;
   transition:
     color 180ms var(--ease-out),
@@ -111,9 +111,9 @@
   transform: translateX(2px);
 }
 .nav-item.active {
-  color: var(--cinnabar-deep);
-  background: var(--cinnabar-wash);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--cinnabar) 9%, transparent);
+  color: var(--on-accent);
+  background: linear-gradient(135deg, var(--cinnabar), var(--cinnabar-deep));
+  box-shadow: 0 9px 22px -12px color-mix(in oklch, var(--cinnabar) 88%, transparent);
 }
 
 .nav-icon {
@@ -123,8 +123,8 @@
   height: 38px;
   flex: 0 0 38px;
   border-radius: 10px;
-  color: var(--ink-faint);
-  background: var(--paper-3);
+  color: var(--ink-soft);
+  background: color-mix(in oklch, var(--ink) 7%, var(--paper-2));
   transition: color 180ms var(--ease-out), background 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
 .nav-item:hover .nav-icon,
@@ -133,8 +133,8 @@
   background: color-mix(in oklch, var(--ink) 9%, var(--paper-2));
 }
 .nav-item.active .nav-icon {
-  color: var(--cinnabar);
-  background: color-mix(in oklch, var(--cinnabar) 12%, var(--paper-2));
+  color: var(--on-accent);
+  background: color-mix(in oklch, var(--on-accent) 18%, transparent);
 }
 .nav-copy {
   display: flex;
@@ -146,7 +146,7 @@
 .nav-copy strong {
   overflow: hidden;
   font-size: var(--fs-base);
-  font-weight: 550;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -154,16 +154,20 @@
   overflow: hidden;
   margin-top: 4px;
   font-size: var(--fs-xs);
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nav-item.active .nav-copy strong {
-  font-weight: 650;
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.nav-item.active .nav-copy small {
+  color: color-mix(in oklch, var(--on-accent) 78%, transparent);
 }
 .nav-active-arrow {
   flex: 0 0 auto;
-  color: color-mix(in oklch, var(--cinnabar) 72%, transparent);
+  color: var(--on-accent);
 }
 
 .nav-group {
@@ -188,10 +192,17 @@
 }
 .nav-group-trigger.has-active-child {
   color: var(--cinnabar-deep);
+  background: color-mix(in oklch, var(--cinnabar) 7%, var(--paper-2));
+  box-shadow: inset 3px 0 0 color-mix(in oklch, var(--cinnabar) 78%, transparent);
 }
 .nav-group-trigger.has-active-child .nav-group-icon {
   color: var(--cinnabar);
   background: color-mix(in oklch, var(--cinnabar) 9%, var(--paper-2));
+}
+.nav-group-trigger .nav-copy strong {
+  font-size: 0.98rem;
+  font-weight: 720;
+  letter-spacing: 0.01em;
 }
 .nav-group-chevron {
   flex: 0 0 auto;
@@ -254,11 +265,21 @@
 .user-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
   min-width: 0;
-  padding: 10px;
-  border-radius: 13px;
-  background: linear-gradient(120deg, var(--cinnabar-wash), var(--paper-3));
+  padding: 8px;
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 17%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(130deg, color-mix(in oklch, var(--cinnabar) 11%, var(--paper-2)), var(--paper-2));
+  box-shadow: 0 8px 20px -18px color-mix(in oklch, var(--cinnabar) 65%, transparent);
+}
+.user-profile-link {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 10px;
+  padding: 2px;
+  border-radius: 10px;
 }
 .user-avatar {
   display: grid;
@@ -267,8 +288,11 @@
   height: 34px;
   flex: 0 0 34px;
   border-radius: 10px;
-  color: var(--cinnabar);
-  background: var(--paper-2);
+  color: var(--on-accent);
+  background: linear-gradient(145deg, var(--cinnabar), var(--cinnabar-deep));
+  font-size: var(--fs-sm);
+  font-weight: 750;
+  box-shadow: 0 7px 16px -10px color-mix(in oklch, var(--cinnabar) 80%, transparent);
 }
 .user-copy {
   display: flex;
@@ -279,16 +303,16 @@
 }
 .user-copy strong {
   overflow: hidden;
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: 0.96rem;
+  font-weight: 750;
   color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .user-copy small {
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--ink-faint);
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--ink-soft);
 }
 .logout {
   display: grid;

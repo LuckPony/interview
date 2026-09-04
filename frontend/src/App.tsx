@@ -17,6 +17,7 @@ import { IntakeChat } from './pages/IntakeChat';
 import { Settings } from './pages/Settings';
 import { CapturePage } from './pages/CapturePage';
 import { ResumeManagement } from './pages/ResumeManagement';
+import { AccountPage } from './pages/AccountPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { userId } = useAuth();
@@ -148,6 +149,16 @@ export function App() {
           <RequireAuth>
             <AppShell>
               <HistoryPage />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/account"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <AccountPage />
             </AppShell>
           </RequireAuth>
         }

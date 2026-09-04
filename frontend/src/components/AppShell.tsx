@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../logo.png';
 import {
-  BookOpenCheck,
   BrainCircuit,
   BriefcaseBusiness,
   ChevronDown,
@@ -21,6 +20,7 @@ import {
   PenLine,
   Settings,
   Sparkles,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -75,10 +75,33 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const SECONDARY_NAV: NavItem[] = [
+const REVIEW_NAV: NavItem[] = [
   { to: '/notes', label: '内化复盘', description: '整理笔记，巩固理解', icon: BrainCircuit },
+];
+
+const ACCOUNT_NAV: NavItem[] = [
+  { to: '/account', label: '个人中心', description: '完善你的个人信息', icon: UserRound },
   { to: '/settings', label: '设置', description: '模型、外观与偏好', icon: Settings },
 ];
+
+function fallbackUsername(userId: string | null): string {
+  if (!userId) return '霸仔';
+  const storageKey = `yan.fallback-username.${userId}`;
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved && /^霸仔[a-z0-9]{3}$/.test(saved)) return saved;
+
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const random = new Uint32Array(3);
+    crypto.getRandomValues(random);
+    const suffix = [...random].map(value => chars[value % chars.length]).join('');
+    const generated = `霸仔${suffix}`;
+    localStorage.setItem(storageKey, generated);
+    return generated;
+  } catch {
+    return `霸仔${String(userId).padStart(3, '0').slice(-3)}`;
+  }
+}
 
 function pathMatches(pathname: string, item: NavItem): boolean {
   if (item.exact || item.to === '/') return pathname === item.to;
@@ -125,11 +148,13 @@ function NavItemLink({
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { userId, logout } = useAuth();
+  const { userId, profile, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [pendingReview, setPendingReview] = useState(0);
   const [showCasualNote, setShowCasualNote] = useState(false);
+  const guestUsername = useMemo(() => fallbackUsername(userId), [userId]);
+  const displayUsername = profile?.username?.trim() || guestUsername;
   const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup['id']>>(() => {
     const active = NAV_GROUPS.find(group => group.items.some(item => pathMatches(location.pathname, item)));
     return active ? new Set([active.id]) : new Set();
@@ -241,8 +266,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
 
+          <div className="nav-section">
+            {REVIEW_NAV.map(item => (
+              <NavItemLink
+                key={item.to}
+                item={item}
+                pathname={location.pathname}
+                pendingReview={pendingReview}
+              />
+            ))}
+          </div>
+
           <div className="nav-section nav-section-secondary">
-            {SECONDARY_NAV.map(item => (
+            {ACCOUNT_NAV.map(item => (
               <NavItemLink
                 key={item.to}
                 item={item}
@@ -255,11 +291,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="side-foot">
           <div className="user-chip">
-            <span className="user-avatar" aria-hidden><BookOpenCheck size={16} strokeWidth={1.8} /></span>
-            <span className="user-copy">
-              <strong>面霸 #{userId}</strong>
-              <small>持续学习，稳步成长</small>
-            </span>
+            <NavLink to="/account" className="user-profile-link" title="打开个人中心">
+              <span className="user-avatar" aria-hidden>{displayUsername.slice(0, 1)}</span>
+              <span className="user-copy">
+                <small>尊敬的</small>
+                <strong>{displayUsername}</strong>
+              </span>
+            </NavLink>
             <button className="logout" onClick={onLogout} title="退出登录" aria-label="退出登录">
               <LogOut size={16} strokeWidth={1.7} />
             </button>
