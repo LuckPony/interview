@@ -1521,7 +1521,9 @@ export function Drill() {
                 <h2 className="teach-title">{t.subPoints[t.curIdx]}</h2>
               </div>
               <div className="teach-lesson-body">
-                {lessonBusy && !lessonText ? (
+                {/* 备课中：只在尚无任何推理与正文时显示纯 spinner；一旦有思考流先展示思考过程，
+                    否则长思考阶段只会一直“正在备课…”看不到模型在干嘛。 */}
+                {lessonBusy && !lessonText && !lessonReasoning ? (
                   <div className="chat-row chat-row-ai chat-row-loading">
                     <div className="chat-bubble chat-bubble-ai is-loading">
                       <span className="spinner-sm" /> 正在备课…
@@ -1540,7 +1542,13 @@ export function Drill() {
                       const txt = sel && !sel.isCollapsed ? sel.toString().trim() : '';
                       if (txt && txt.length <= 500) setQaAnchor(txt);
                     }}>
-                      <Markdown>{lessonText || '（讲解内容为空）'}</Markdown>
+                      {lessonText ? (
+                        <Markdown>{lessonText}</Markdown>
+                      ) : lessonBusy ? (
+                        <span className="spinner-sm" />
+                      ) : (
+                        '（讲解内容为空）'
+                      )}
                       {lessonBusy && <span className="tutor-caret" aria-hidden />}
                     </div>
                   </>

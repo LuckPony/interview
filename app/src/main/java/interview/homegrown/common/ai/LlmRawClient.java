@@ -244,6 +244,10 @@ public class LlmRawClient {
             // 思考模式：保持开启（模型更聪明），但 max_tokens 和超时要给足，
             // 否则 reasoning_content 会吃掉额度截断回答 / 思考+回答超时。
             applyDefaultTokens(body);
+            // 长思考（reasoning）与正文共享输出预算：深挖性内容容易把 8192 吃光，
+            // 导致正文被截断甚至为空（表现为「讲解生成失败」）。这里给足到 16384；
+            // 若某 provider 不认该上限，由 400 去参重试兜底。非思考 provider 仅作上限，无副作用。
+            applyGenerousBudget(body);
             // 按 provider 适配思考开关（deepseek/glm/doubao→thinking，qwen→enable_thinking），
             // 其余 provider 不加该参数 —— 让非 DeepSeek 的思考模型也能流式返回 reasoning_content/reasoning。
             applyThinkingStream(body);
@@ -413,6 +417,15 @@ public class LlmRawClient {
         }
     }
 
+    /** 流式思考模式：给足输出额度，避免 reasoning_content 抢占正文预算导致正文为空/被截断。 */
+    private void applyGenerousBudget(Map<String, Object> body) {
+        if (body.containsKey("max_completion_tokens")) {
+            body.put("max_completion_tokens", 16384);
+        } else {
+            body.put("max_tokens", 16384);
+        }
+    }
+
     private boolean hasOptionalParams(Map<String, Object> body) {
         return body.keySet().stream().anyMatch(OPTIONAL_KEYS::contains);
     }
@@ -472,7 +485,7 @@ public class LlmRawClient {
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                .timeout(Duration.ofSeconds(300))   // 思考模式耗时可能较长，放宽到 5 分钟
+                .timeout(Duration.ofSeconds(600))   // 思考+生成讲稿可能较久；与 nginx/proxy_read_timeout 及 Tomcat async-timeout 对齐
                 .build();
     }
 
