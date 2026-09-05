@@ -78,7 +78,15 @@ echo "   ✓ SSH 连通"
 
 # ---------- 1/5 构建后端 ----------
 step "1/5 构建后端 jar（gradle）"
-./gradlew :app:bootJar --console=plain
+# Windows 主机（含 WSL/Git Bash）：JDK 只有 java.exe，Unix 的 ./gradlew 找不到 bin/java，
+# 且经 WSL interop 调 Windows java 无法解析 /mnt/... 路径（报 "Unable to access jarfile"）。
+# 因此优先用 gradlew.bat（经 cmd.exe，用 Windows 路径解析 JAVA_HOME\bin\java.exe）。
+if [ -f gradlew.bat ] && command -v cmd.exe >/dev/null 2>&1; then
+  GRADLE_LAUNCHER="cmd.exe /c call gradlew.bat"
+else
+  GRADLE_LAUNCHER="./gradlew"
+fi
+$GRADLE_LAUNCHER :app:bootJar --console=plain
 [ -f "$JAR" ] || { echo "❌ jar 构建失败：$JAR 不存在"; exit 1; }
 echo "   ✓ jar: $(ls -la "$JAR" | awk '{print $5}') bytes"
 
