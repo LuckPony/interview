@@ -22,6 +22,46 @@ function fmt(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// —— 思考过程打字机：即使模型一次吐一大段，也逐字揭示，视觉上像流式 ——
+function useTypewriter(target: string, active: boolean, charsPerSec = 320): string {
+  const [revealed, setRevealed] = useState(0);
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  // 完成 / 非生成态：直接显示全部，避免停在半句话上
+  useEffect(() => {
+    if (!active) setRevealed(targetRef.current.length);
+  }, [active]);
+
+  // 生成中：逐步揭示，并持续追上新到达的文本
+  useEffect(() => {
+    if (!active) return;
+    const tick = Math.max(1, Math.round(charsPerSec / 20)); // ~50ms 一帧，每帧揭示若干字符
+    const id = setInterval(() => {
+      setRevealed(prev => {
+        if (!activeRef.current) return targetRef.current.length;
+        return Math.min(targetRef.current.length, prev + tick);
+      });
+    }, 50);
+    return () => clearInterval(id);
+  }, [active, charsPerSec]);
+
+  // 目标变短（切换子点 / 重置）时收敛揭示进度
+  useEffect(() => {
+    setRevealed(prev => Math.min(prev, targetRef.current.length));
+  }, [targetRef.current.length]);
+
+  return target.slice(0, revealed);
+}
+
+/** 思考过程正文：打字机式逐字渲染（仍用 Markdown，部分字符也成文）。 */
+function ReasoningText({ text, active, speed }: { text: string; active?: boolean; speed?: number }) {
+  const shown = useTypewriter(text, active ?? false, speed);
+  return <Markdown>{shown}</Markdown>;
+}
+
 // —— 聊天消息：stem(题干) / chat(对话) 两型；reasoning 为 AI 思考过程（可折叠展示）——
 interface ChatMsg {
   id: string;
@@ -1534,7 +1574,7 @@ export function Drill() {
                     {lessonReasoning && (
                       <details className="reasoning-panel" open>
                         <summary>AI 思考过程</summary>
-                        <div className="reasoning-text"><Markdown>{lessonReasoning}</Markdown></div>
+                        <div className="reasoning-text"><ReasoningText text={lessonReasoning} active={lessonBusy} /></div>
                       </details>
                     )}
                     <div className="tutor-text" onMouseUp={() => {
@@ -1642,7 +1682,7 @@ export function Drill() {
                         {qaReasoning && qaBusy && (
                           <details className="reasoning-panel" open>
                             <summary>AI 思考过程</summary>
-                            <div className="reasoning-text"><Markdown>{qaReasoning}</Markdown></div>
+                            <div className="reasoning-text"><ReasoningText text={qaReasoning} active={qaBusy} /></div>
                           </details>
                         )}
                       </div>
@@ -2110,7 +2150,7 @@ function ChatBubble({
             {m.reasoning && (
               <details className="reasoning-panel" open>
                 <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><Markdown>{m.reasoning}</Markdown></div>
+                <div className="reasoning-text"><ReasoningText text={m.reasoning} active={m.streaming} /></div>
               </details>
             )}
             <Markdown>{m.text}</Markdown>
@@ -2129,7 +2169,7 @@ function ChatBubble({
             {m.reasoning && (
               <details className="reasoning-panel" open>
                 <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><Markdown>{m.reasoning}</Markdown></div>
+                <div className="reasoning-text"><ReasoningText text={m.reasoning} active={m.streaming} /></div>
               </details>
             )}
             <Markdown>{m.text}</Markdown>

@@ -180,8 +180,7 @@ public class LlmRawClient {
             String content = textOrNull(msg.path("content"));
             if (content != null) return content;
 
-            String reasoning = textOrNull(msg.path("reasoning_content"));
-            if (reasoning == null) reasoning = textOrNull(msg.path("reasoning"));
+            String reasoning = firstReasoningToken(msg);
             if (reasoning != null) {
                 log.debug("content 为空，回退 reasoning（长度={}）", reasoning.length());
                 return reasoning;
@@ -274,14 +273,16 @@ public class LlmRawClient {
                     if (payload.isEmpty() || "[DONE]".equals(payload)) continue;
                     try {
                         JsonNode node = objectMapper.readTree(payload);
-                        JsonNode delta = node.path("choices").path(0).path("delta");
+                        JsonNode choice = node.path("choices").path(0);
+                        JsonNode delta = choice.path("delta");
                         // 推理内容独立推送（onReasoning 非空时走它，正文走 onToken，互不混用）。
+                        // 思考字段可能出现在 delta（流式）、choice 或 message（部分网关/模型在收尾帧才给），都兼容。
                         // 注意：不能用 textOrNull 过滤"纯空白"的 delta —— 流式模型常把单独的换行
                         // （"\n"）作为独立 token 下发，isBlank() 会把它当空丢掉，导致代码/段落换行丢失、
                         // markdown 代码块缺行。这里只判缺失/空，纯空白 token 原样保留。
-                        // 兼容多 provider 的思考字段名：deepseek/qwen/glm→reasoning_content，
-                        // OpenRouter 等→reasoning / reasoning_text。
                         String reasoning = firstReasoningToken(delta);
+                        if (reasoning == null) reasoning = firstReasoningToken(choice);
+                        if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
                         if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
                             onReasoning.accept(reasoning);
                         }
@@ -489,11 +490,17 @@ public class LlmRawClient {
                 .build();
     }
 
-    /** 从一个 delta / message 节点取出思考片段：兼容 reasoning_content / reasoning / reasoning_text。 */
-    private static String firstReasoningToken(JsonNode delta) {
-        String[] fields = {"reasoning_content", "reasoning", "reasoning_text"};
+    /**
+     * 从一个 delta / message / choice 节点取出思考片段：兼容所有 OpenAI 兼容格式的常见字段名。
+     * 思考型模型可能用 reasoning_content / reasoning / reasoning_text / reasoning_details /
+     * reasoning_summary / chain_of_thought（字符串、数组、或 {text}/{content}/{value}/{summary} 对象）。
+     * 非思考型模型没有这些字段，原样返回 null，不影响 content 正文。
+     */
+    private static String firstReasoningToken(JsonNode node) {
+        String[] fields = {"reasoning_content", "reasoning", "reasoning_text",
+                "reasoning_details", "reasoning_summary", "chain_of_thought"};
         for (String f : fields) {
-            JsonNode n = delta.get(f);
+            JsonNode n = node.get(f);
             if (n == null) continue;
             String s = reasonText(n);
             if (s != null && !s.isEmpty()) return s;
@@ -501,20 +508,24 @@ public class LlmRawClient {
         return null;
     }
 
+    /** 递归抽取一个 reasoning 节点里的正文：字符串 / 数组逐项拼接 / 对象取 text/content/value/summary。 */
     private static String reasonText(JsonNode n) {
         if (n == null || n.isMissingNode() || n.isNull()) return null;
         if (n.isTextual()) return n.asText();
         if (n.isArray()) {
             StringBuilder sb = new StringBuilder();
             for (JsonNode item : n) {
-                String t = item.path("text").asText("");
-                if (!t.isEmpty()) sb.append(t);
+                String t = reasonText(item);
+                if (t != null && !t.isEmpty()) sb.append(t);
             }
             return sb.length() == 0 ? null : sb.toString();
         }
         if (n.isObject()) {
-            String t = n.path("text").asText("");
-            return t.isEmpty() ? null : t;
+            // OpenAI 兼容常见的嵌套形态：{text} / {content} / {value} / {summary}
+            for (String k : new String[]{"text", "content", "value", "summary"}) {
+                String t = reasonText(n.get(k));
+                if (t != null && !t.isEmpty()) return t;
+            }
         }
         return null;
     }
