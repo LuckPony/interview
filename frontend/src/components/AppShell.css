@@ -100,7 +100,7 @@
   gap: var(--s-3);
   padding: 8px 10px;
   border-radius: 13px;
-  color: var(--ink);
+  color: #475569;
   text-align: left;
   transition:
     color 180ms var(--ease-out),
@@ -147,29 +147,35 @@
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  line-height: 1.25;
 }
-.nav-copy strong {
+.nav-title {
+  display: block;
   overflow: hidden;
-  font-size: var(--fs-base);
-  font-weight: 650;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nav-copy small {
+.nav-description {
+  display: block;
   overflow: hidden;
-  margin-top: 4px;
-  font-size: var(--fs-xs);
-  color: var(--ink-soft);
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nav-item.active .nav-copy strong {
-  color: #4338ca;
-  font-weight: 700;
+.nav-item:hover .nav-title,
+.nav-group-trigger:hover .nav-title {
+  color: #0f172a;
 }
-.nav-item.active .nav-copy small {
-  color: #7379a7;
+.nav-item.active .nav-title,
+.nav-group-trigger.has-active-child .nav-title {
+  color: #4f46e5;
+  font-weight: 600;
 }
 .nav-active-arrow {
   flex: 0 0 auto;
@@ -204,11 +210,6 @@
 .nav-group-trigger.has-active-child .nav-group-icon {
   color: #4f46e5;
   background: rgba(224, 231, 255, 0.82);
-}
-.nav-group-trigger .nav-copy strong {
-  font-size: 0.98rem;
-  font-weight: 720;
-  letter-spacing: 0.01em;
 }
 .nav-group-chevron {
   flex: 0 0 auto;
@@ -274,8 +275,12 @@
   color: #a5b4fc;
   background: rgba(49, 46, 129, 0.5);
 }
-[data-theme='dark'] .nav-item.active .nav-copy strong { color: #c7d2fe; }
-[data-theme='dark'] .nav-item.active .nav-copy small { color: #9ca3c4; }
+[data-theme='dark'] .nav-title { color: #94a3b8; }
+[data-theme='dark'] .nav-description { color: #64748b; }
+[data-theme='dark'] .nav-item:hover .nav-title,
+[data-theme='dark'] .nav-group-trigger:hover .nav-title { color: #ffffff; }
+[data-theme='dark'] .nav-item.active .nav-title,
+[data-theme='dark'] .nav-group-trigger.has-active-child .nav-title { color: #818cf8; }
 [data-theme='dark'] .nav-group-trigger.has-active-child {
   color: #a5b4fc;
   background: rgba(49, 46, 129, 0.25);
@@ -464,12 +469,12 @@
     height: 32px;
     flex-basis: 32px;
   }
-  .nav-copy small,
+  .nav-description,
   .nav-active-arrow,
-  .nav-group-trigger .nav-copy small {
+  .nav-group-trigger .nav-description {
     display: none;
   }
-  .nav-copy strong {
+  .nav-title {
     font-size: var(--fs-sm);
   }
   .nav-group::before {
