@@ -354,8 +354,12 @@ public class LlmRawClient {
 
     /** 不同 provider 易报 400「Unrecognized argument / invalid parameter」的可选参数。 */
     private static final Set<String> OPTIONAL_KEYS = Set.of(
-            "thinking", "enable_thinking", "max_tokens", "max_completion_tokens",
+            "thinking", "enable_thinking", "reasoning_effort", "max_tokens", "max_completion_tokens",
             "temperature", "top_p", "n", "frequency_penalty", "presence_penalty", "stream_options");
+
+    /** 流式思考的推理力度：越低思考越短、生成越快。DeepSeek V4/GLM 默认 high、OpenAI 默认中高；
+     *  讲解这类 200-2000 字的知识点不需要深度思考，用 low 即可；想更深入可改 "medium"/"high"。 */
+    private static final String STREAM_REASONING_EFFORT = "low";
 
     private String modelLower() {
         return cfg().model() == null ? "" : cfg().model().toLowerCase();
@@ -394,12 +398,18 @@ public class LlmRawClient {
         }
     }
 
-    /** 流式讲解 / 问答：开启思考，便于读取 reasoning 展示。其余 provider 不加参数。 */
+    /** 流式讲解 / 问答：开启思考，便于读取 reasoning 展示。其余 provider 不加参数。
+     *  同时把 reasoning_effort 压到 low，让思考更短、生成更快（DeepSeek 默认 high、OpenAI 默认中高）；
+     *  不认识的 provider 不加该参数，避免未知参数 400（即使加了也会被去参兜底剥离）。 */
     private void applyThinkingStream(Map<String, Object> body) {
         if (isThinkingParamProvider()) {
             body.put("thinking", Map.of("type", "enabled"));
+            body.put("reasoning_effort", STREAM_REASONING_EFFORT);
         } else if (isQwenThinkingProvider()) {
             body.put("enable_thinking", true);
+        } else if (isOpenAiReasoning()) {
+            // OpenAI 推理模型无 thinking/{type} 参数，用 reasoning_effort 控制思考深度
+            body.put("reasoning_effort", STREAM_REASONING_EFFORT);
         }
     }
 
@@ -407,6 +417,12 @@ public class LlmRawClient {
      * token 上限适配：OpenAI 推理模型（o1/o3/o4、gpt-5）用 {@code max_completion_tokens} 且不支持 temperature；
      * 其余一律 {@code max_tokens}。避免 "Unknown parameter: max_tokens" 这类 400。
      */
+    /** 是否 OpenAI 推理模型（o1/o3/o4 / gpt-5）：用 max_completion_tokens，且可用 reasoning_effort 控制思考深度。 */
+    private boolean isOpenAiReasoning() {
+        String m = modelLower();
+        return m.matches("^o[134](-|$).*") || m.matches("^gpt-5.*");
+    }
+
     private void applyDefaultTokens(Map<String, Object> body) {
         String m = modelLower();
         boolean openAiReasoning = m.matches("^o[134](-|$).*") || m.matches("^gpt-5.*");
