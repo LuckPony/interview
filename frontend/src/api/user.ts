@@ -39,3 +39,14 @@ export const userProfileApi = {
     body: JSON.stringify(profile),
   })),
 };
+
+export const userPasswordApi = {
+  sendCode: (captchaToken: string) => unwrap(apiFetch<Envelope<{ emailHint: string }>>('/user/password/code', {
+    method: 'POST',
+    body: JSON.stringify({ captchaToken }),
+  })),
+  change: (code: string, newPassword: string) => unwrap(apiFetch<Envelope<void>>('/user/password', {
+    method: 'PUT',
+    body: JSON.stringify({ code, newPassword }),
+  })),
+};

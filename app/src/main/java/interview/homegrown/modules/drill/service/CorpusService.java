@@ -1,5 +1,7 @@
 package interview.homegrown.modules.drill.service;
 
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.ai.FileParser;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.Corpus;
@@ -8,6 +10,7 @@ import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -16,6 +19,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -69,6 +73,25 @@ public class CorpusService {
         this.conceptRepo = conceptRepo;
         this.parser = parser;
         this.indexer = indexer;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Corpus> list(Long userId) {
+        return corpusRepo.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    @Transactional
+    public void delete(Long corpusId, Long userId) {
+        Corpus corpus = corpusRepo.findById(corpusId)
+                .filter(item -> item.getUserId().equals(userId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
+        if (planRepo.existsByUserIdAndCorpusId(userId, corpusId)) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "该资料正在被学习计划使用，请先删除或调整关联的学习计划"
+            );
+        }
+        corpusRepo.delete(corpus);
     }
 
     public Corpus upload(MultipartFile file, Long userId) {

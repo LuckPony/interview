@@ -1,4 +1,4 @@
-import { apiFetch, getToken, getLlmKeyHeader } from './client';
+import { apiFetch, ApiError, getToken, getLlmKeyHeader } from './client';
 import type {
   QuestionView,
   QuestionMeta,
@@ -654,6 +654,7 @@ export const aiSettings = {
 
 // 个人资料：上传书 / 项目文档，解析文本后供规划与出题引用
 export const corpus = {
+  list: () => apiFetch<CorpusView[]>('/corpus'),
   // 网页态：浏览器上传字节
   upload: (file: File) => {
     const form = new FormData();
@@ -672,4 +673,14 @@ export const corpus = {
   // 资料候选知识点（异步拆块+LLM 标注完成后返回；indexed=false 表示还在处理）
   knowledgePoints: (corpusId: number) =>
     apiFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
+  remove: async (corpusId: number) => {
+    const response = await apiFetch<{ ok?: boolean; code?: number; message?: string }>(`/corpus/${corpusId}`, {
+      method: 'DELETE',
+    });
+    // Corpus 旧接口返回裸 DTO；业务异常则由全局处理器包装为 Result，需在这里统一识别。
+    if (typeof response.code === 'number' && response.code !== 200) {
+      throw new ApiError(response.code, response.message || '删除资料失败');
+    }
+    return { ok: response.ok === true };
+  },
 };

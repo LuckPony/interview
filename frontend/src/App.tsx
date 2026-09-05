@@ -18,6 +18,7 @@ import { Settings } from './pages/Settings';
 import { CapturePage } from './pages/CapturePage';
 import { ResumeManagement } from './pages/ResumeManagement';
 import { AccountPage } from './pages/AccountPage';
+import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { userId } = useAuth();
@@ -149,6 +150,26 @@ export function App() {
           <RequireAuth>
             <AppShell>
               <HistoryPage />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/knowledge-base"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <KnowledgeBasePage />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/knowledge-base/import"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <KnowledgeBasePage />
             </AppShell>
           </RequireAuth>
         }

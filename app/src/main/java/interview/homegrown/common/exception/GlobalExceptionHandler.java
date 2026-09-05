@@ -21,7 +21,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.OK)
     public Result<Void> handleBusinessException(BusinessException e){
         log.warn("业务异常：code={}, message={}", e.getErrorCode().getCode(),e.getMessage());
-        return Result.error(e.getErrorCode());
+        return Result.error(e.getErrorCode().getCode(), e.getMessage());
     }
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

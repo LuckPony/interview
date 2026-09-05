@@ -8,6 +8,7 @@ import interview.homegrown.modules.drill.service.CorpusService;
 import interview.homegrown.modules.drill.web.dto.CorpusView;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,14 +46,14 @@ public class CorpusController {
     @PostMapping("/upload")
     public CorpusView upload(@RequestParam("file") MultipartFile file) {
         Corpus c = service.upload(file, currentUserId());
-        return new CorpusView(c.getId(), c.getName(), c.getCharCount());
+        return toView(c);
     }
 
     /** 桌面端免上传：直接读本地文件 / 文件夹（仅本地部署有意义）。 */
     @PostMapping("/from-path")
     public CorpusView fromPath(@RequestBody FromPathRequest req) {
         Corpus c = service.fromPath(req.path(), currentUserId());
-        return new CorpusView(c.getId(), c.getName(), c.getCharCount());
+        return toView(c);
     }
 
     /** 云端桌面端：Electron 在本机读好文件字节传上来，服务端 Tika 解析合并。 */
@@ -60,7 +61,18 @@ public class CorpusController {
     public CorpusView fromFiles(@RequestParam("files") MultipartFile[] files,
                                 @RequestParam(value = "folderName", required = false) String folderName) {
         Corpus c = service.fromFiles(files, folderName, currentUserId());
-        return new CorpusView(c.getId(), c.getName(), c.getCharCount());
+        return toView(c);
+    }
+
+    @GetMapping
+    public List<CorpusView> list() {
+        return service.list(currentUserId()).stream().map(this::toView).toList();
+    }
+
+    @DeleteMapping("/{corpusId}")
+    public DeleteResult delete(@PathVariable Long corpusId) {
+        service.delete(corpusId, currentUserId());
+        return new DeleteResult(true);
     }
 
     /**
@@ -99,6 +111,16 @@ public class CorpusController {
         }
     }
 
+    private CorpusView toView(Corpus corpus) {
+        return new CorpusView(
+                corpus.getId(),
+                corpus.getName(),
+                corpus.getCharCount(),
+                corpus.getSourceType(),
+                corpus.getCreatedAt()
+        );
+    }
+
     private Long currentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof Long)) {
@@ -108,4 +130,6 @@ public class CorpusController {
     }
 
     public record FromPathRequest(String path) {}
+
+    public record DeleteResult(boolean ok) {}
 }

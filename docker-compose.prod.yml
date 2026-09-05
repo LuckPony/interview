@@ -97,6 +97,7 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_SSL_ENABLE: ${MAIL_SSL_ENABLE:-false}
     depends_on:
       postgres:
         condition: service_healthy

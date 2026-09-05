@@ -1,5 +1,21 @@
-import { apiFetch } from './client';
+import { apiFetch, ApiError } from './client';
 import type { LoginResp } from './types';
+
+interface AuthEnvelope {
+  code: number;
+  message: string;
+  data: LoginResp | null;
+}
+
+function unwrapAuth(response: LoginResp | AuthEnvelope): LoginResp {
+  if ('code' in response) {
+    if (response.code !== 200 || !response.data) {
+      throw new ApiError(response.code, response.message || '认证失败');
+    }
+    return response.data;
+  }
+  return response;
+}
 
 // 真实账号体系：邮箱 + 密码 + 邮箱验证码。
 // 注册拆两步：① sendRegisterCode（滑块通过后发码，不建账号）② register（输码验证通过才入库）。
@@ -16,10 +32,11 @@ export async function register(
     password: string,
     code?: string,
 ): Promise<LoginResp> {
-  return apiFetch<LoginResp>('/auth/register', {
+  const response = await apiFetch<LoginResp | AuthEnvelope>('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ email, password, code }),
   });
+  return unwrapAuth(response);
 }
 
 /** 注册前置发码：滑块通过后调用，向邮箱发送验证码（后端此时不创建账号）。 */
@@ -43,8 +60,9 @@ export async function getAuthConfig(): Promise<{
 
 /** 给遗留的未验证账号补验邮箱（新注册流程已不再使用）。 */
 export async function verify(email: string, code: string): Promise<LoginResp> {
-  return apiFetch<LoginResp>('/auth/verify', {
+  const response = await apiFetch<LoginResp | AuthEnvelope>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ email, code }),
   });
+  return unwrapAuth(response);
 }

@@ -294,7 +294,7 @@ npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 
 ```bash
 bash deploy/deploy-local.sh
-# 构建 jar + Web SPA → rsync 上传 → 服务器跑 deploy-prod.sh（PG 备份→docker 重启→健康检查）
+# 构建 jar + Web SPA → scp/tar 上传 → 服务器跑 deploy-prod.sh（PG 备份→docker 重启→健康检查）
 # 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
 ```
 
@@ -333,7 +333,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 推送到 `main` 时，`Deploy to server` 工作流会自动构建并部署后端 + Web 到服务器（也可在 Actions 页手动触发）。采用**产物式部署**，与服务器 `/opt/mianba` 的实际结构一致：
 
 1. **CI 构建产物**：后端 fat jar（`./gradlew :app:bootJar`）+ Web SPA（`npm run build`）。
-2. **上传产物**：rsync 只上传 `app.jar → /opt/mianba/backend/app.jar`、`web-build/web/* → /opt/mianba/web-image/web/`（含官网落地页 `index.html` + `assets/` + SPA `app/`）、`deploy/nginx.conf → /opt/mianba/web-image/nginx.conf`、同步 `deploy/deploy-prod.sh`；**不删除服务器上任何其它文件**（`.env`、`backups/`、自定义 `docker-compose.yml` 都保留）。
+2. **上传产物**：Windows 兼容的 `scp + ssh/tar` 上传 `app.jar → /opt/mianba/backend/app.jar`、Web 静态文件、`deploy/nginx.conf → /opt/mianba/web-image/nginx.conf` 和 `deploy/deploy-prod.sh`；有 `official-site/index.html` 时整体更新官网与 `/app`，缺少官网源码时只更新 `/app` 并保留服务器现有官网；`.env`、`backups/`、自定义 `docker-compose.yml` 都保留。
 3. **复用镜像**：`deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）「已存在则复用、缺失才拉取」；backend/web 用 docker 层缓存构建（未变化的层直接复用）；`compose up` 带 `--no-build`；部署前自动备份 PostgreSQL，部署后健康检查。
 
 配置一次即可（仓库 **Settings → Secrets and variables → Actions**）：

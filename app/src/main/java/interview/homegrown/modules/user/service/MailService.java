@@ -33,6 +33,15 @@ public class MailService {
 
     /** 发送验证码。失败返回 false，调用方据此降级为自动通过。 */
     public boolean sendVerificationCode(String to, String code) {
+        return sendCode(to, code, "面霸 · 邮箱验证码", "你的面霸账号验证码是：");
+    }
+
+    /** 修改密码验证码使用独立主题，用户能明确识别这封安全邮件的用途。 */
+    public boolean sendPasswordChangeCode(String to, String code) {
+        return sendCode(to, code, "面霸 · 修改密码验证码", "你正在修改面霸账号密码，验证码是：");
+    }
+
+    private boolean sendCode(String to, String code, String subject, String prefix) {
         if (!isConfigured()) {
             log.info("SMTP 未配置，跳过发送验证码给 {}（验证码：{}）", to, code);
             return false;
@@ -41,8 +50,8 @@ public class MailService {
             SimpleMailMessage msg = new SimpleMailMessage();
             msg.setFrom(from);
             msg.setTo(to);
-            msg.setSubject("面霸 · 邮箱验证码");
-            msg.setText("你的面霸账号验证码是：" + code + "，15 分钟内有效。");
+            msg.setSubject(subject);
+            msg.setText(prefix + code + "，15 分钟内有效。若非本人操作，请忽略此邮件。");
             mailSender.send(msg);
             log.info("已发送验证码到 {}", to);
             return true;

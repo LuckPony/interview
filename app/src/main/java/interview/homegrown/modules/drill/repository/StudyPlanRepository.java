@@ -15,6 +15,8 @@ public interface StudyPlanRepository extends JpaRepository<StudyPlan, Long> {
 
     Optional<StudyPlan> findByUserIdAndProjectImportId(Long userId, Long projectImportId);
 
+    boolean existsByUserIdAndCorpusId(Long userId, Long corpusId);
+
     /** 定时任务用：列出所有有学习方向的用户 id */
     @Query("select distinct p.userId from StudyPlan p")
     List<Long> findDistinctUserIds();

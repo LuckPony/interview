@@ -9,7 +9,9 @@ import {
   ChevronRight,
   ClipboardList,
   Compass,
+  Database,
   FileStack,
+  FolderUp,
   GraduationCap,
   History,
   Home,
@@ -37,7 +39,7 @@ interface NavItem {
 }
 
 interface NavGroup {
-  id: 'learning' | 'interview';
+  id: 'learning' | 'interview' | 'knowledge';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -78,6 +80,19 @@ const NAV_GROUPS: NavGroup[] = [
 const REVIEW_NAV: NavItem[] = [
   { to: '/notes', label: '内化复盘', description: '整理笔记，巩固理解', icon: BrainCircuit },
 ];
+
+const KNOWLEDGE_GROUP: NavGroup = {
+  id: 'knowledge',
+  label: '知识管理',
+  description: '沉淀、导入与整理资料',
+  icon: Database,
+  items: [
+    { to: '/knowledge-base', label: '知识库管理', description: '查看资料与提取知识点', icon: Database, exact: true },
+    { to: '/knowledge-base/import', label: '资料导入', description: '上传新的学习资料', icon: FolderUp, exact: true },
+  ],
+};
+
+const ALL_NAV_GROUPS = [...NAV_GROUPS, KNOWLEDGE_GROUP];
 
 const ACCOUNT_NAV: NavItem[] = [
   { to: '/account', label: '个人中心', description: '完善你的个人信息', icon: UserRound },
@@ -140,10 +155,61 @@ function NavItemLink({
         <span className="nav-review-badge" title={`有 ${pendingReview} 项复习任务待完成`}>
           {pendingReview}
         </span>
-      ) : active ? (
+      ) : active && item.to !== '/capture' ? (
         <ChevronRight className="nav-active-arrow" size={16} strokeWidth={1.9} aria-hidden />
       ) : null}
     </NavLink>
+  );
+}
+
+function NavGroupBlock({
+  group,
+  pathname,
+  pendingReview,
+  expanded,
+  onToggle,
+}: {
+  group: NavGroup;
+  pathname: string;
+  pendingReview: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const groupActive = group.items.some(item => pathMatches(pathname, item));
+  const GroupIcon = group.icon;
+
+  return (
+    <section className={`nav-group${expanded ? ' expanded' : ''}`}>
+      <button
+        type="button"
+        className={`nav-group-trigger${groupActive ? ' has-active-child' : ''}`}
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={`nav-group-${group.id}`}
+      >
+        <span className="nav-icon nav-group-icon" aria-hidden>
+          <GroupIcon size={19} strokeWidth={1.75} />
+        </span>
+        <span className="nav-copy">
+          <strong>{group.label}</strong>
+          <small>{group.description}</small>
+        </span>
+        <ChevronDown className="nav-group-chevron" size={17} strokeWidth={1.9} aria-hidden />
+      </button>
+      <div className="nav-group-collapse" id={`nav-group-${group.id}`}>
+        <div className="nav-group-items">
+          {group.items.map(item => (
+            <NavItemLink
+              key={item.to}
+              item={item}
+              pathname={pathname}
+              pendingReview={pendingReview}
+              nested
+            />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -156,13 +222,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const guestUsername = useMemo(() => fallbackUsername(userId), [userId]);
   const displayUsername = profile?.username?.trim() || guestUsername;
   const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup['id']>>(() => {
-    const active = NAV_GROUPS.find(group => group.items.some(item => pathMatches(location.pathname, item)));
+    const active = ALL_NAV_GROUPS.find(group => group.items.some(item => pathMatches(location.pathname, item)));
     return active ? new Set([active.id]) : new Set();
   });
 
   // 从页面内链接进入某个模块时自动展开所属分组，避免当前页面在侧栏里不可见。
   useEffect(() => {
-    const active = NAV_GROUPS.find(group => group.items.some(item => pathMatches(location.pathname, item)));
+    const active = ALL_NAV_GROUPS.find(group => group.items.some(item => pathMatches(location.pathname, item)));
     if (!active) return;
     setExpandedGroups(current => {
       if (current.has(active.id)) return current;
@@ -227,44 +293,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </div>
 
-          {NAV_GROUPS.map(group => {
-            const expanded = expandedGroups.has(group.id);
-            const groupActive = group.items.some(item => pathMatches(location.pathname, item));
-            const GroupIcon = group.icon;
-            return (
-              <section className={`nav-group${expanded ? ' expanded' : ''}`} key={group.id}>
-                <button
-                  type="button"
-                  className={`nav-group-trigger${groupActive ? ' has-active-child' : ''}`}
-                  onClick={() => toggleGroup(group.id)}
-                  aria-expanded={expanded}
-                  aria-controls={`nav-group-${group.id}`}
-                >
-                  <span className="nav-icon nav-group-icon" aria-hidden>
-                    <GroupIcon size={19} strokeWidth={1.75} />
-                  </span>
-                  <span className="nav-copy">
-                    <strong>{group.label}</strong>
-                    <small>{group.description}</small>
-                  </span>
-                  <ChevronDown className="nav-group-chevron" size={17} strokeWidth={1.9} aria-hidden />
-                </button>
-                <div className="nav-group-collapse" id={`nav-group-${group.id}`}>
-                  <div className="nav-group-items">
-                    {group.items.map(item => (
-                      <NavItemLink
-                        key={item.to}
-                        item={item}
-                        pathname={location.pathname}
-                        pendingReview={pendingReview}
-                        nested
-                      />
-                    ))}
-                  </div>
-                </div>
-              </section>
-            );
-          })}
+          {NAV_GROUPS.map(group => (
+            <NavGroupBlock
+              key={group.id}
+              group={group}
+              pathname={location.pathname}
+              pendingReview={pendingReview}
+              expanded={expandedGroups.has(group.id)}
+              onToggle={() => toggleGroup(group.id)}
+            />
+          ))}
 
           <div className="nav-section">
             {REVIEW_NAV.map(item => (
@@ -275,6 +313,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 pendingReview={pendingReview}
               />
             ))}
+          </div>
+
+          <div className="nav-knowledge-block">
+            <NavGroupBlock
+              group={KNOWLEDGE_GROUP}
+              pathname={location.pathname}
+              pendingReview={pendingReview}
+              expanded={expandedGroups.has(KNOWLEDGE_GROUP.id)}
+              onToggle={() => toggleGroup(KNOWLEDGE_GROUP.id)}
+            />
           </div>
 
           <div className="nav-section nav-section-secondary">

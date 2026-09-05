@@ -1,4 +1,4 @@
-/* 应用框架：侧栏使用 guide 的白底、图标方块和靛蓝激活态，正文继续复用 homegrown 的设计令牌。 */
+/* 应用框架：侧栏复用 Guide 的浅靛蓝双层激活态，正文继续复用 homegrown 的设计令牌。 */
 .app-frame {
   display: grid;
   grid-template-columns: 276px minmax(0, 1fr);
@@ -20,6 +20,8 @@
     radial-gradient(130% 52% at 0 0, var(--cinnabar-wash), transparent 58%),
     var(--paper-2);
   box-shadow: 12px 0 34px -30px color-mix(in oklch, var(--ink) 35%, transparent);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
 }
 
 .brand {
@@ -81,9 +83,11 @@
   flex-direction: column;
   gap: 5px;
 }
-.nav-section-secondary {
+.nav-knowledge-block {
   padding-top: var(--s-3);
+  padding-bottom: var(--s-3);
   border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .nav-item,
@@ -111,9 +115,11 @@
   transform: translateX(2px);
 }
 .nav-item.active {
-  color: var(--on-accent);
-  background: linear-gradient(135deg, var(--cinnabar), var(--cinnabar-deep));
-  box-shadow: 0 9px 22px -12px color-mix(in oklch, var(--cinnabar) 88%, transparent);
+  color: #4f46e5;
+  background: rgba(238, 242, 255, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(199, 210, 254, 0.42),
+    0 8px 20px -18px rgba(79, 70, 229, 0.52);
 }
 
 .nav-icon {
@@ -133,8 +139,8 @@
   background: color-mix(in oklch, var(--ink) 9%, var(--paper-2));
 }
 .nav-item.active .nav-icon {
-  color: var(--on-accent);
-  background: color-mix(in oklch, var(--on-accent) 18%, transparent);
+  color: #4f46e5;
+  background: rgba(224, 231, 255, 0.94);
 }
 .nav-copy {
   display: flex;
@@ -159,15 +165,15 @@
   white-space: nowrap;
 }
 .nav-item.active .nav-copy strong {
-  color: var(--on-accent);
+  color: #4338ca;
   font-weight: 700;
 }
 .nav-item.active .nav-copy small {
-  color: color-mix(in oklch, var(--on-accent) 78%, transparent);
+  color: #7379a7;
 }
 .nav-active-arrow {
   flex: 0 0 auto;
-  color: var(--on-accent);
+  color: #818cf8;
 }
 
 .nav-group {
@@ -191,13 +197,13 @@
   cursor: pointer;
 }
 .nav-group-trigger.has-active-child {
-  color: var(--cinnabar-deep);
-  background: color-mix(in oklch, var(--cinnabar) 7%, var(--paper-2));
-  box-shadow: inset 3px 0 0 color-mix(in oklch, var(--cinnabar) 78%, transparent);
+  color: #4f46e5;
+  background: rgba(238, 242, 255, 0.68);
+  box-shadow: inset 0 0 0 1px rgba(199, 210, 254, 0.3);
 }
 .nav-group-trigger.has-active-child .nav-group-icon {
-  color: var(--cinnabar);
-  background: color-mix(in oklch, var(--cinnabar) 9%, var(--paper-2));
+  color: #4f46e5;
+  background: rgba(224, 231, 255, 0.82);
 }
 .nav-group-trigger .nav-copy strong {
   font-size: 0.98rem;
@@ -258,6 +264,24 @@
   line-height: 1;
 }
 
+[data-theme='dark'] .nav-item.active {
+  color: #a5b4fc;
+  background: rgba(49, 46, 129, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.16);
+}
+[data-theme='dark'] .nav-item.active .nav-icon,
+[data-theme='dark'] .nav-group-trigger.has-active-child .nav-group-icon {
+  color: #a5b4fc;
+  background: rgba(49, 46, 129, 0.5);
+}
+[data-theme='dark'] .nav-item.active .nav-copy strong { color: #c7d2fe; }
+[data-theme='dark'] .nav-item.active .nav-copy small { color: #9ca3c4; }
+[data-theme='dark'] .nav-group-trigger.has-active-child {
+  color: #a5b4fc;
+  background: rgba(49, 46, 129, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.13);
+}
+
 .side-foot {
   padding: var(--s-4);
   border-top: 1px solid var(--line);
@@ -267,9 +291,9 @@
   align-items: center;
   min-width: 0;
   padding: 8px;
-  border: 1px solid color-mix(in oklch, var(--cinnabar) 17%, var(--line));
+  border: 1px solid rgba(199, 210, 254, 0.72);
   border-radius: 14px;
-  background: linear-gradient(130deg, color-mix(in oklch, var(--cinnabar) 11%, var(--paper-2)), var(--paper-2));
+  background: linear-gradient(130deg, rgba(238, 242, 255, 0.96), var(--paper-2));
   box-shadow: 0 8px 20px -18px color-mix(in oklch, var(--cinnabar) 65%, transparent);
 }
 .user-profile-link {
@@ -414,10 +438,12 @@
     flex-direction: row;
     gap: 5px;
   }
-  .nav-section-secondary {
+  .nav-knowledge-block {
     padding-top: 0;
+    padding-bottom: 0;
     padding-left: 5px;
     border-top: none;
+    border-bottom: none;
     border-left: 1px solid var(--line);
   }
   .nav-item,

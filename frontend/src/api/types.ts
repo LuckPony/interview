@@ -242,6 +242,8 @@ export interface CorpusView {
   id: number;
   name: string;
   charCount: number;
+  sourceType?: 'UPLOAD' | 'LOCAL_FILE' | 'LOCAL_FOLDER' | string;
+  createdAt?: string | null;
 }
 
 // ============ 问答记录（按题聚合的对话线） ============
