@@ -486,7 +486,7 @@ public class LlmRawClient {
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                .timeout(Duration.ofSeconds(600))   // 思考+生成讲稿可能较久；与 nginx/proxy_read_timeout 及 Tomcat async-timeout 对齐
+                .timeout(Duration.ofSeconds(3600))   // 首字节前的等待可因模型先思考而不流式泄露而很长；放宽到 1 小时，与 nginx/Tomcat 对齐
                 .build();
     }
 

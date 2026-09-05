@@ -523,9 +523,9 @@ public class DrillController {
         final String context = progressContext.contextFor(uid, conceptId);
 
         StreamingResponseBody body = out -> {
-            try {
-                out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
+            boolean[] broken = {false};
+            try (SseWriter sw = new SseWriter(out)) {
+                sw.write("event: start\ndata: {}\n\n");
 
                 if (useCache) {
                     String cachedText = cachedLesson.getLessonText();
@@ -536,9 +536,7 @@ public class DrillController {
                         cachedLesson.setCharCount(normalized.length());
                         conceptLessonRepo.save(cachedLesson);
                     }
-                    out.write(("data: {\"text\":\"" + jsonEscape(normalized) + "\"}\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
+                    sw.write("data: {\"text\":\"" + jsonEscape(normalized) + "\"}\n\n");
                 } else {
                     // 讲解避重：把同概念下其他子点已生成讲解的摘要注入 prompt，让本讲解只讲自己独有的部分、
                     // 避免与兄弟子点重复（含例子/结构）。这是本轮生成时才需要，缓存命中直接读缓存。
@@ -549,44 +547,50 @@ public class DrillController {
                             token -> {
                                 buf.append(token);
                                 try {
-                                    out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                            .getBytes(StandardCharsets.UTF_8));
-                                    out.flush();
+                                    sw.write("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n");
                                 } catch (Exception e) {
+                                    broken[0] = true;
                                     log.debug("lesson token 推送异常（已吞）: {}", e.getMessage());
                                 }
                             },
-                            r -> sseReasoning(out, r));
+                            r -> {
+                                try {
+                                    sw.write("event: reasoning\ndata: {\"text\":\"" + jsonEscape(r) + "\"}\n\n");
+                                } catch (Exception e) {
+                                    broken[0] = true;
+                                    log.debug("lesson reasoning 推送异常（已吞）: {}", e.getMessage());
+                                }
+                            });
 
                     if (full != null && !full.isBlank()) {
-                        // refresh 时覆盖旧缓存；否则插入新缓存（并发撞唯一索引则忽略）
-                        conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
-                                .ifPresentOrElse(exist -> {
-                                    exist.setLessonText(full);
-                                    exist.setCharCount(full.length());
-                                    conceptLessonRepo.save(exist);
-                                }, () -> {
-                                    ConceptLesson cl = new ConceptLesson();
-                                    cl.setConceptId(conceptId);
-                                    cl.setSubPoint(sub);
-                                    cl.setLessonText(full);
-                                    cl.setCharCount(full.length());
-                                    try {
-                                        conceptLessonRepo.save(cl);
-                                    } catch (Exception e) {
-                                        // 并发/重复插入撞唯一索引：忽略，已有缓存即可
-                                        log.debug("子知识点讲解缓存写回冲突（忽略）: {}", e.getMessage());
-                                    }
-                                });
+                        // refresh 时覆盖旧缓存；否则插入新缓存（并发撞唯一索引则忽略）。
+                        // 连接已断时跳过写回：异步完成后 EntityManager/Session 已关闭，写回会抛异常。
+                        if (!broken[0]) {
+                            try {
+                                conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
+                                        .ifPresentOrElse(exist -> {
+                                            exist.setLessonText(full);
+                                            exist.setCharCount(full.length());
+                                            conceptLessonRepo.save(exist);
+                                        }, () -> {
+                                            ConceptLesson cl = new ConceptLesson();
+                                            cl.setConceptId(conceptId);
+                                            cl.setSubPoint(sub);
+                                            cl.setLessonText(full);
+                                            cl.setCharCount(full.length());
+                                            conceptLessonRepo.save(cl);
+                                        });
+                            } catch (Exception e) {
+                                // 并发/重复插入撞唯一索引、或异步完成后 Session 已关闭：忽略，已有缓存即可
+                                log.debug("子知识点讲解缓存写回失败（忽略）: {}", e.getMessage());
+                            }
+                        }
                     } else {
-                        out.write(("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n")
-                                .getBytes(StandardCharsets.UTF_8));
-                        out.flush();
+                        sw.write("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n");
                     }
                 }
 
-                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
+                sw.write("event: done\ndata: {}\n\n");
             } catch (Exception e) {
                 log.warn("lesson-stream 推送异常", e);
                 try {
