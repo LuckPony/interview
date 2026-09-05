@@ -73,6 +73,7 @@ public class ResumeUploadService {
         String resumeText = documentParseService.parseText(bytes,originalName);
         //落库
         ResumeEntity resume = new ResumeEntity();
+        resume.setUserId(userId);
         resume.setOriginalName(originalName);
         resume.setFileType(contentType);
         resume.setFileSize((long) bytes.length);

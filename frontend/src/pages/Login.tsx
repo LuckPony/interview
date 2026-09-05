@@ -96,7 +96,7 @@ export function Login() {
       setResendIn(60);
       setSentNote(`验证码已发送至 ${email.trim()}，15 分钟内有效。`);
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : '验证码发送失败，请确认后端已启动');
+      setErr(e2 instanceof ApiError ? e2.message : '验证码发送失败，请检查网络后重试');
     } finally {
       setSendingCode(false);
     }
@@ -122,7 +122,7 @@ export function Login() {
         await login(email.trim(), password);
         navigate('/', { replace: true });
       } catch (e2) {
-        setErr(e2 instanceof ApiError ? e2.message : '操作失败，请确认后端已启动');
+        setErr(e2 instanceof ApiError ? e2.message : '无法连接服务，请检查网络后重试');
       } finally {
         setBusy(false);
       }
@@ -144,7 +144,7 @@ export function Login() {
       completeAuth(r);
       navigate('/', { replace: true });
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : '操作失败，请确认后端已启动');
+      setErr(e2 instanceof ApiError ? e2.message : '无法连接服务，请检查网络后重试');
     } finally {
       setBusy(false);
     }

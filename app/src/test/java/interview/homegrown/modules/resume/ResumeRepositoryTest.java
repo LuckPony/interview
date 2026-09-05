@@ -23,11 +23,12 @@ public class ResumeRepositoryTest {
     private ResumeRepository resumeRepository;
 
     @Test
-    @DisplayName("保存简历并按内容哈希查询")
+    @DisplayName("保存 DOCX 简历并按内容哈希查询")
     void shouldSaveAndFindByHash(){
         ResumeEntity resume = new ResumeEntity();
-        resume.setOriginalName("张三-后端开发.pdf");
-        resume.setFileType("application.pdf");
+        resume.setUserId(1L);
+        resume.setOriginalName("张三-后端开发.docx");
+        resume.setFileType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         resume.setFileSize(102400L);
         resume.setStorageKey("uuid.pdf");
         resume.setContentHash("13457456253");
@@ -39,7 +40,8 @@ public class ResumeRepositoryTest {
         //使用单元测试中的“断言”来判断测试结果是否满足我预期的结果
         assertThat(found).isPresent();
         assertThat(found.get().getStatus()).isEqualTo(ResumeStatus.UPLOADED);
-        assertThat(found.get().getOriginalName()).isEqualTo("张三-后端开发.pdf");
+        assertThat(found.get().getOriginalName()).isEqualTo("张三-后端开发.docx");
+        assertThat(found.get().getUserId()).isEqualTo(1L);
 
     }
 }

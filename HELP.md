@@ -169,7 +169,7 @@ bash deploy/deploy-local.sh
 SSH_HOST=103.236.92.40 \
 SSH_PORT=37777 \
 SSH_USER=root \
-SSH_KEY="/c/Users/26680/.ssh/"本机公钥"" \
+SSH_KEY="/c/Users/26680/.ssh/"id_ed25519"" \
 DEPLOY_DIR=/opt/mianba \
 bash deploy/deploy-local.sh
 ```
