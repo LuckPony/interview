@@ -8,7 +8,6 @@ directories:
 files:
   - src/**/*
   - package.json
-  - config.json
   - app-dist/**/*
 # 自包含后端运行时（Windows 版 JRE + fat jar，见 scripts/build-win.sh 生成 ../runtime-win）
 extraResources:

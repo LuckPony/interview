@@ -8,11 +8,11 @@ directories:
 files:
   - src/**/*
   - package.json
-  - config.json
   - app-dist/**/*
 # 云模式桌面端：后端部署在服务器，这里只打包「Electron 壳 + 前端 SPA」，
 # 不内嵌 jlink JRE / Spring Boot fat jar（对比 electron-builder.yml / electron-builder.win.yml）。
-# 前端在构建时已把 VITE_API_BASE 烘焙为 MIANBA_SERVER，config.json 写入 serverUrl →
+# 前端在构建时已把 VITE_API_BASE 烘焙为 MIANBA_SERVER，
+# app-dist/desktop-config.json 写入 serverUrl →
 # main.js 启动时识别为云模式（不拉本地后端）。
 icon: build/icon.png
 # mac 无 Apple 证书时补 ad-hoc 签名：把「包含恶意软件」降级为「无法验证开发者」（右键→打开即可）

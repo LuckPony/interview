@@ -125,18 +125,49 @@ const SPLASH_HTML = `<!doctype html>
 </html>`;
 
 // —— 云/本地双模式 ——
-// 打包时写入 config.json（见 sync-spa:cloud 脚本）。serverUrl 非空且非 localhost → 云模式：
+// 云构建把标记写进 app-dist/desktop-config.json（该目录会稳定进入 app.asar）。
+// 同时兼容读取旧版根目录 config.json。serverUrl 非空且非 localhost → 云模式：
 // 不拉本地后端，直接加载 SPA（VITE_API_BASE 已在构建时烘焙为服务器地址）。
 function loadConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'config.json'), 'utf8'));
-  } catch {
-    return {};
+  const candidates = [
+    path.join(app.getAppPath(), 'app-dist', 'desktop-config.json'),
+    path.join(app.getAppPath(), 'config.json'),
+  ];
+  for (const configPath of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch {
+      // 尝试下一个兼容路径。
+    }
   }
+  return {};
 }
+
+function bundledBackendPaths() {
+  return {
+    javaBin: path.join(
+      process.resourcesPath,
+      'runtime',
+      'jre',
+      'bin',
+      process.platform === 'win32' ? 'java.exe' : 'java'
+    ),
+    jarPath: path.join(process.resourcesPath, 'runtime', 'app.jar'),
+  };
+}
+
+function hasBundledBackend() {
+  if (!app.isPackaged) return true;
+  const { javaBin, jarPath } = bundledBackendPaths();
+  return fs.existsSync(javaBin) && fs.existsSync(jarPath);
+}
+
 function isCloud(cfg) {
   const url = (cfg.serverUrl || '').trim();
-  return url && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url);
+  if (url && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(url)) return true;
+  // 云端包按设计不包含 runtime。即使模式标记意外缺失，也不能误启本地 Java；
+  // API 地址已烘焙在 SPA 中，可安全按云模式加载。
+  return app.isPackaged && !hasBundledBackend();
 }
 
 function spawnBackend() {
@@ -157,14 +188,7 @@ function spawnBackend() {
     // 打包版：拉起内嵌精简 JRE + fat jar（electron-builder extraResources 塞进 Resources/runtime）
     // cwd 指向 userData：本地文件（./data/files）落用户数据目录；数据库使用外部 PostgreSQL。
     // —— .app 包内只读，绝不能往里写。
-    const javaBin = path.join(
-      process.resourcesPath,
-      'runtime',
-      'jre',
-      'bin',
-      process.platform === 'win32' ? 'java.exe' : 'java'
-    );
-    const jarPath = path.join(process.resourcesPath, 'runtime', 'app.jar');
+    const { javaBin, jarPath } = bundledBackendPaths();
     backend = spawn(javaBin, ['-jar', jarPath], {
       cwd: app.getPath('userData'),
       detached: true,

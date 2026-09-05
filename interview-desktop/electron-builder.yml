@@ -8,7 +8,6 @@ directories:
 files:
   - src/**/*
   - package.json
-  - config.json
   - app-dist/**/*
 # 自包含后端运行时：jlink 精简 JRE + Spring Boot fat jar（../runtime/{jre,app.jar}）
 # 打包进安装包的 Resources/runtime，运行期由 main.js 从 process.resourcesPath 拉起。

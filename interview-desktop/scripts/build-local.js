@@ -26,6 +26,7 @@ if (build.status !== 0) {
 
 fs.rmSync(path.join(DESKTOP, 'app-dist'), { recursive: true, force: true });
 fs.cpSync(dist, path.join(DESKTOP, 'app-dist'), { recursive: true });
-// config.json 存在时会被识别为云模式；本地构建必须确保它不存在。
+// 兼容清理旧版根目录云模式标记；新的 desktop-config.json 位于 app-dist，
+// 上面的整目录重建已经确保本地 SPA 中不存在该文件。
 fs.rmSync(path.join(DESKTOP, 'config.json'), { force: true });
 console.log('本地 SPA 构建完成 → API http://127.0.0.1:23333');
