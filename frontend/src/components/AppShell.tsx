@@ -148,8 +148,8 @@ function NavItemLink({
         <Icon size={19} strokeWidth={1.75} />
       </span>
       <span className="nav-copy">
-        <strong>{item.label}</strong>
-        <small>{item.description}</small>
+        <span className="nav-title">{item.label}</span>
+        <span className="nav-description">{item.description}</span>
       </span>
       {item.to === '/drill' && pendingReview > 0 ? (
         <span className="nav-review-badge" title={`有 ${pendingReview} 项复习任务待完成`}>
@@ -191,8 +191,8 @@ function NavGroupBlock({
           <GroupIcon size={19} strokeWidth={1.75} />
         </span>
         <span className="nav-copy">
-          <strong>{group.label}</strong>
-          <small>{group.description}</small>
+          <span className="nav-title">{group.label}</span>
+          <span className="nav-description">{group.description}</span>
         </span>
         <ChevronDown className="nav-group-chevron" size={17} strokeWidth={1.9} aria-hidden />
       </button>
