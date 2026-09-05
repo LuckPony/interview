@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { getStoredUserId, clearSession, setSession, apiFetch } from '../api/client';
+import { getStoredUserId, getToken, clearSession, setSession } from '../api/client';
 import { login as apiLogin } from '../api/auth';
 import type { LoginResp } from '../api/types';
 import { userProfileApi, type UserProfile } from '../api/user';
 
 interface AuthApi {
+  authReady: boolean;
   userId: string | null;
   profile: UserProfile | null;
   login: (email: string, password: string) => Promise<void>;
@@ -15,6 +16,7 @@ interface AuthApi {
 }
 
 const Ctx = createContext<AuthApi>({
+  authReady: false,
   userId: null,
   profile: null,
   login: async () => {},
@@ -24,7 +26,10 @@ const Ctx = createContext<AuthApi>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [userId, setUserId] = useState<string | null>(() => getStoredUserId());
+  const [authReady, setAuthReady] = useState(false);
+  // 不能直接信任 localStorage 中的 userId。必须先由后端验证 token，
+  // 否则应用会短暂进入主页并提前发起依赖用户信息的请求。
+  const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const refreshProfile = useCallback(async () => {
@@ -46,16 +51,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onLogout = () => {
       setUserId(null);
       setProfile(null);
+      setAuthReady(true);
     };
     window.addEventListener('yan:logout', onLogout);
     return () => window.removeEventListener('yan:logout', onLogout);
   }, []);
 
-  // 启动校验 token：localStorage 有 userId 时向鉴权接口发一次请求，
-  // token 无效/过期会收到 401 → 触发 yan:logout → 跳登录页（而不是残留 id 闪现主界面）
+  // 启动时先验证完整登录态。验证结束前 App 不渲染任何业务页面，
+  // 因而首次启动或旧登录态失效时会稳定地落到登录页。
   useEffect(() => {
-    if (!getStoredUserId()) return;
-    apiFetch('/study-plan').catch(() => { /* 401 已在 client 层广播 logout */ });
+    const storedUserId = getStoredUserId();
+    if (!storedUserId || !getToken()) {
+      clearSession();
+      setAuthReady(true);
+      return;
+    }
+
+    let active = true;
+    userProfileApi.get()
+      .then((next) => {
+        if (!active) return;
+        setProfile(next);
+        setUserId(storedUserId);
+        setAuthReady(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearSession();
+        setProfile(null);
+        setUserId(null);
+        setAuthReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -68,21 +98,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(resp.token, resp.userId);
     setProfile(null);
     setUserId(resp.userId);
+    setAuthReady(true);
   };
 
   const completeAuth = (resp: LoginResp) => {
     setSession(resp.token, resp.userId);
     setProfile(null);
     setUserId(resp.userId);
+    setAuthReady(true);
   };
 
   const logout = () => {
     clearSession();
     setProfile(null);
     setUserId(null);
+    setAuthReady(true);
   };
 
-  return <Ctx.Provider value={{ userId, profile, login, completeAuth, refreshProfile, logout }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ authReady, userId, profile, login, completeAuth, refreshProfile, logout }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth(): AuthApi {

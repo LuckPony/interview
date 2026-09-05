@@ -21,12 +21,16 @@ import { AccountPage } from './pages/AccountPage';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { userId } = useAuth();
+  const { authReady, userId } = useAuth();
+  if (!authReady) return null;
   return userId ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 export function App() {
-  const { userId } = useAuth();
+  const { authReady, userId } = useAuth();
+  // 已保存的 token 必须先通过云端/本地后端验证；校验期间不挂载 AppShell，
+  // 避免侧栏、主页等组件抢先请求用户设置。
+  if (!authReady) return null;
   return (
     <Routes>
       <Route

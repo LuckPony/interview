@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>面霸 · 把 AI 当教具，把判断留给自己</title>
+  <meta name="description" content="面霸是一款学习型面试 Agent：分层知识图谱、先教后考、理解型判分、FSRS 间隔排程、模拟面试。把「教学决策权」从 LLM 手里收回来。" />
+  <meta name="keywords" content="面霸, AI 面试, 面试备考, 学习 Agent, 知识图谱, FSRS, 间隔复习, 模拟面试, Spring Boot, Electron" />
+  <meta property="og:title" content="面霸 · 学习型面试 Agent" />
+  <meta property="og:description" content="把教学决策权从 LLM 手里拿回来。学什么、多难、何时复习、能否进下一题，一律由服务端确定性算法决定。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/screenshots/shot-1.png" />
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+<body data-repo="LuckPony/interview">
+
+  <!-- ===================== Nav ===================== -->
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="nav-brand" href="#top">
+        <img src="assets/logo.png" alt="面霸 logo" />
+        <span>面霸</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">特性</a>
+        <a href="#gallery">截图</a>
+        <a href="#download">下载</a>
+        <a href="#tech">技术</a>
+      </nav>
+      <div class="nav-cta">
+        <a class="btn btn-ghost" href="https://github.com/LuckPony/interview" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          GitHub
+        </a>
+        <a class="btn btn-primary" href="https://github.com/LuckPony/interview/releases" target="_blank" rel="noopener">桌面下载</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== Hero ===================== -->
+  <section class="hero" id="top">
+    <div class="container hero-grid">
+      <div>
+        <div class="hero-kicker">AI 学习 · 面试备考平台</div>
+        <h1>把 AI 当教具，<br /><span class="hl">把判断留给自己。</span></h1>
+        <p class="hero-sub">
+          学什么、多难、何时复习、能否进下一题 —— 这四个决策一律不进 Prompt。
+          面霸把「教学决策权」收归服务端的确定性算法，LLM 只负责出题、评分、讲解、追问。
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#download">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+            下载桌面版
+          </a>
+          <a class="btn btn-ghost" id="web-app-btn" href="/app/">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+            在线使用 Web 版
+          </a>
+        </div>
+        <div class="hero-meta">
+          <div class="m"><b data-releases>—</b> 最新版本</div>
+          <div class="m"><b data-stars>—</b> GitHub Stars</div>
+          <div class="m"><b data-license>MIT</b> 开源许可证</div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-shot">
+          <img src="assets/screenshots/shot-9.png" alt="面霸登录页 · 品牌主张" />
+        </div>
+        <div class="hero-float f1">
+          <div class="ico">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div>理解型判分<div class="small">只评被问到的内容</div></div>
+        </div>
+        <div class="hero-float f2">
+          <div class="ico">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-6-10H2m20 0h-4M5.6 5.6l2.8 2.8m7.2 7.2 2.8 2.8m0-12.8-2.8 2.8M8.4 18.4 5.6 21.2"/></svg>
+          </div>
+          <div>FSRS 间隔排程<div class="small">到期自动复习</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 核心主张 ===================== -->
+  <section class="section" id="philosophy">
+    <div class="container">
+      <div class="command-banner">
+        <div class="inner">
+          <div>
+            <span class="eyebrow" style="background:rgba(108,92,231,.2);color:#fff;">核心主张</span>
+            <h3>教学决策权归服务的确定性算法，LLM 降级为教具。</h3>
+            <p>
+              现有 AI 学习工具的一切毛病，根源是把「当老师」交给了 LLM——它没有你的长期状态，不知道你的知识边界，
+              也没有动机拦住你说「这题没懂，不许走」。面霸把凡是能算清楚的决策全部收进服务端：
+            </p>
+          </div>
+          <div class="quote">
+            <div class="q">「能算清楚的，一律不进 Prompt。」</div>
+            <div class="a">选哪题、分怎么算、闸门怎么拦、间隔多久、要不要去重 —— 都由确定性算法决定，可复现、可审计。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 特性 ===================== -->
+  <section class="section section-alt" id="features">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">产品特性</span>
+        <h2>像一位真的老师那样，一直盯着你。</h2>
+        <p>一套完整的「学习 → 作答 → 判分 → 复习 → 沉淀」闭环，外加真实面试演练。</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature">
+          <div class="fic f-p1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 10v9m-6-4h12"/></svg></div>
+          <h3>分层知识图谱</h3>
+          <p>概念按 layer 1–5 由浅入深组织，选题闸门优先从底层未掌握的点起步，保证永远学到新东西。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6.2c2-2 5.3-2 7.3 0s2 5.3 0 7.3L12 21l-7.3-7.5c-2-2-2-5.3 0-7.3s5.3-2 7.3 0Z"/></svg></div>
+          <h3>先教后考</h3>
+          <p>进入练习前把知识点拆成 3–8 个子点，逐个讲解再做；讲解流式生成，支持 Markdown、代码高亮与 Mermaid。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5 2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg></div>
+          <h3>理解型判分</h3>
+          <p>判分前先确定老师实际问过什么，只评被问到的内容；看意思不看措辞，换种说法、意思一致即算命中。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2 2m6-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg></div>
+          <h3>FSRS 间隔排程</h3>
+          <p>AGAIN/HARD/GOOD/EASY 四档，到期自动复习；没过当天重来。掌握度按概念粒度持续更新。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg></div>
+          <h3>7 种认知探针题型</h3>
+          <p>RECALL / CLOZE / REVERSE / TRAP / SCENARIO / CONTRAST / INTEGRATION，换形式反复检测，杜绝只背答案。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p6"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-4 4V5Z"/></svg></div>
+          <h3>对话沉淀 + 知识卡片</h3>
+          <p>自由问答一键收敛成知识卡片，当天到期进内化复盘；复习反馈同步回写掌握画像，沉淀不脱钩。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 面试模式 ===================== -->
+  <section class="section" id="modes">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">两种备考场景</span>
+        <h2>学习与面试，一套系统全搞定。</h2>
+        <p>不是刷题库，而是一个知道你学到第几层、该复习什么、没搞懂就不许往前走的学习型 Agent。</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature">
+          <div class="fic f-p1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18m0-15 3 3m-3-3-3 3M4 21h16"/></svg></div>
+          <h3>LEARN · 学习模式</h3>
+          <p>日常学习 / 备考。先教后考：知识拆解 → 逐子点讲解 → 对话式作答 → 理解型判分，一题一闭环。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l1.5 4L11 8.5 6.5 10 5 14l-1.5-4L-1 8.5 3.5 7 5 3Zm14 6 1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5Z"/></svg></div>
+          <h3>REHEARSAL · 模拟面试</h3>
+          <p>面试前冲刺。闭卷、强制倒计时、提交后不可编辑、追问封顶 2 轮，用文字模拟「说出口收不回」的压力。</p>
+        </div>
+        <div class="feature">
+          <div class="fic f-p5"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13M9 9l12-2M4 18a2 2 0 1 0 0-4 2 2 0 0 1 0 4Zm0 0h9"/></svg></div>
+          <h3>INTERVIEW · 完整面试</h3>
+          <p>选面试方式、依据（简历 + 学习方向）、难度与题数，逐题流式问答并逐题回顾，结束后 AI 评估打分。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 画廊 ===================== -->
+  <section class="section section-alt" id="gallery">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">界面预览</span>
+        <h2>干净、专注、一眼看懂。</h2>
+        <p>以下均为真实产品截图。点击任意一张可放大查看细节。</p>
+      </div>
+      <div class="gallery-tabs" id="gallery-tabs"></div>
+      <div class="gallery" id="gallery-grid"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 下载 ===================== -->
+  <section class="section" id="download">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">下载安装</span>
+        <h2>桌面应用，双模式开箱即用。</h2>
+        <p>安装包自带精简 JRE + 后端，无需配置 Java、Docker 或数据库；也可连接你自己的服务器。</p>
+      </div>
+      <div class="dl-wrap">
+        <div class="dl-card">
+          <div class="dl-os">
+            <div class="dl-ico" style="background:linear-gradient(135deg,#4C6FFF,#5A48D6);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18v14H3zM3 9h18M7 9v7"/></svg>
+            </div>
+            <h3>Windows</h3>
+          </div>
+          <p class="dl-note">推荐使用 <b>.exe</b> 安装版以获得完整的自动更新能力；<b>.zip</b> 用于便携运行。</p>
+          <div class="dl-links" id="dl-win"></div>
+        </div>
+        <div class="dl-card">
+          <div class="dl-os">
+            <div class="dl-ico" style="background:linear-gradient(135deg,#5A48D6,#FF6B9D);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M4 12h16"/></svg>
+            </div>
+            <h3>macOS</h3>
+          </div>
+          <p class="dl-note">提供苹果芯片（<b>arm64</b>）与 Intel（<b>x64</b>）两种架构；未签名时首次启动请右键「打开」。</p>
+          <div class="dl-links" id="dl-mac"></div>
+        </div>
+      </div>
+      <p class="marquee-note">
+        版本与下载链接由 GitHub Releases 实时读取 —— 发布新 release 后此页面会自动更新，无需手动改代码。
+        <br />更多历史版本见 <a href="https://github.com/LuckPony/interview/releases" target="_blank" rel="noopener"><code>GitHub Releases</code></a>；
+        源码与说明见 <a href="https://github.com/LuckPony/interview" target="_blank" rel="noopener"><code>GitHub 仓库</code></a>。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== 技术栈 ===================== -->
+  <section class="section section-alt" id="tech">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">技术栈</span>
+        <h2>现代、可靠、可自托管。</h2>
+        <p>Spring Boot 4 后端 + React 18 前端 + Electron 桌面壳，多 Provider 支持。</p>
+      </div>
+      <div class="tech">
+        <div class="t"><span class="dot" style="background:#6DB33F"></span>Spring Boot 4</div>
+        <div class="t"><span class="dot" style="background:#ff7d1a"></span>Java 21</div>
+        <div class="t"><span class="dot" style="background:#61DAFB"></span>React 18</div>
+        <div class="t"><span class="dot" style="background:#3178C6"></span>TypeScript</div>
+        <div class="t"><span class="dot" style="background:#4169E1"></span>PostgreSQL</div>
+        <div class="t"><span class="dot" style="background:#A855F7"></span>Spring AI</div>
+        <div class="t"><span class="dot" style="background:#0F5132"></span>Electron</div>
+        <div class="t"><span class="dot" style="background:#F5A623"></span>FSRS 排程</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Star CTA ===================== -->
+  <section class="section" id="star">
+    <div class="container">
+      <div class="star-cta">
+        <div class="inner">
+          <h3>如果你被这个思路打动，给它一颗 Star。</h3>
+          <p>开源不易，每一颗 Star 都是继续打磨的最大动力。感谢支持！</p>
+          <a class="btn" href="https://github.com/LuckPony/interview" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8-6.2-3.9-6.2 3.9 1.6-6.8L3.2 8.9l6.9-.6L12 2Z"/></svg>
+            Star on GitHub
+          </a>
+          <div class="star-row">
+            <div class="star-stat"><div class="n" data-stars>—</div><div class="l">GitHub Stars</div></div>
+            <div class="star-stat"><div class="n" data-releases>—</div><div class="l">最新版本</div></div>
+            <div class="star-stat"><div class="n">MIT</div><div class="l">开源许可</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Footer ===================== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="面霸" />
+        <span>面霸 · 面试备考</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/LuckPony/interview" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/LuckPony/interview/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="/app/" target="_blank" rel="noopener">Web 版</a>
+        <a href="https://github.com/LuckPony/interview/blob/main/README.md" target="_blank" rel="noopener">文档</a>
+      </div>
+      <div class="footer-copy">© <span id="year"></span> 面霸 (Mianba) · Maintained with ❤️ · <a href="https://github.com/LuckPony/interview/blob/main/LICENSE" target="_blank" rel="noopener" style="color:var(--muted)">MIT License</a></div>
+    </div>
+  </footer>
+
+  <button class="totop" id="totop" aria-label="回到顶部">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
+  </button>
+
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" src="" alt="" />
+    <div class="lb-cap" id="lightbox-cap"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="assets/site.js"></script>
+</body>
+</html>

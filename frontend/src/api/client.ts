@@ -4,8 +4,14 @@
 // 服务器不落库、也不共享任何默认 key。
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
-const TOKEN_KEY = 'yan.token';
-const USER_KEY = 'yan.userId';
+// Electron 的 file:// 页面在本地版、云端版之间共用 localStorage。若使用固定键，
+// 本地后端签发的登录态会被云端包误读，导致先进入主页再因用户接口失败而显示异常。
+// 按 API 地址隔离登录态；浏览器环境本身还会继续受到 origin 隔离。
+const SESSION_SCOPE = API_BASE || 'same-origin';
+const TOKEN_KEY = `yan.token:${SESSION_SCOPE}`;
+const USER_KEY = `yan.userId:${SESSION_SCOPE}`;
+const LEGACY_TOKEN_KEY = 'yan.token';
+const LEGACY_USER_KEY = 'yan.userId';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -40,6 +46,9 @@ export function setSession(token: string, userId: string): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  // 清理旧版本的无作用域登录态，避免它继续影响升级后的桌面端。
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_USER_KEY);
 }
 export function getStoredUserId(): string | null {
   return localStorage.getItem(USER_KEY);
