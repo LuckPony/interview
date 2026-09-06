@@ -36,6 +36,142 @@
   font-size: var(--fs-sm);
   color: var(--good);
 }
+
+/* —— AI Provider / 模型选择 —— */
+.provider-picker {
+  position: relative;
+  width: 100%;
+}
+.provider-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.provider-picker-trigger:hover,
+.provider-picker.is-open .provider-picker-trigger {
+  border-color: var(--cinnabar);
+}
+.provider-picker.is-open .provider-picker-trigger {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinnabar) 11%, transparent);
+}
+.provider-picker-trigger svg {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  transition: transform .18s var(--ease-out);
+}
+.provider-picker.is-open .provider-picker-trigger svg {
+  transform: rotate(180deg);
+}
+.provider-picker-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-lg);
+}
+.provider-picker-option {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  border-radius: 9px;
+  color: var(--ink-soft);
+}
+.provider-picker-option:hover,
+.provider-picker-option.is-selected {
+  background: var(--cinnabar-wash);
+  color: var(--cinnabar-deep);
+}
+.provider-picker-option-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 42px;
+  padding: 0 10px;
+  text-align: left;
+}
+.provider-picker-option-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-picker-option-main small {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.provider-picker-delete {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 5px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  color: var(--ink-faint);
+  transition: color .15s, background .15s;
+}
+.provider-picker-delete:hover {
+  color: var(--bad);
+  background: var(--bad-wash);
+}
+.provider-picker-create {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--s-2);
+  min-height: 42px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  color: var(--cinnabar);
+  text-align: left;
+}
+.provider-picker-create:hover,
+.provider-picker-create.is-selected {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+}
+.provider-custom-input {
+  margin-top: var(--s-2);
+}
+.provider-model-select {
+  min-height: 46px;
+  cursor: pointer;
+}
+.settings-card .note-input.is-prefilled {
+  color: var(--ink-soft);
+  background: var(--paper-3);
+  cursor: default;
+}
+.provider-local-notice {
+  display: block;
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--good);
+}
+.provider-security-note {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+}
 .reminder-card {
   overflow: visible;
 }

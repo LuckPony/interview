@@ -1,21 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ConfigProvider, Segmented, Switch, TimePicker } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Bell, CalendarDays, Check } from 'lucide-react';
+import { Bell, CalendarDays, Check, ChevronDown, Plus, X } from 'lucide-react';
 import { aiSettings, type AiSettingsView } from '../api/drill';
 import { Button, Card, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
 import { useAppearance } from '../lib/useAppearance';
 import type { ThemeMode } from '../lib/appearance';
+import {
+  BUILT_IN_PROVIDER_PRESETS,
+  createCustomProviderPreset,
+  loadCustomProviderPresets,
+  saveCustomProviderPresets,
+  type ProviderPreset,
+} from '../lib/providerPresets';
 import './Settings.css';
 
 function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '保存失败';
 }
 
+function isValidProviderUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 /** 是否运行在桌面端（Electron 提供了本机 key 桥）。 */
 const isDesktop = typeof window !== 'undefined' && !!window.electronAPI?.getLlmKey;
+const CREATE_PROVIDER_VALUE = '__create_provider__';
+const MANUAL_MODEL_VALUE = '__manual_model__';
 
 /* —— 外观（主题 + 字号）选项 —— */
 const THEME_OPTS: { value: ThemeMode; label: string }[] = [
@@ -94,6 +112,100 @@ function ColorField({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProviderPicker({
+  value,
+  options,
+  onChange,
+  onDelete,
+}: {
+  value: string;
+  options: ProviderPreset[];
+  onChange: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((item) => item.id === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  const choose = (id: string) => {
+    onChange(id);
+    setOpen(false);
+  };
+
+  return (
+    <div className={`provider-picker${open ? ' is-open' : ''}`} ref={rootRef}>
+      <button
+        type="button"
+        className="provider-picker-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{value === CREATE_PROVIDER_VALUE ? '创建新的 Provider' : selected?.label ?? '请选择 Provider'}</span>
+        <ChevronDown size={17} strokeWidth={1.8} aria-hidden />
+      </button>
+
+      {open && (
+        <div className="provider-picker-menu" role="listbox" aria-label="Provider">
+          {options.map((item) => (
+            <div
+              key={item.id}
+              className={`provider-picker-option${item.id === value ? ' is-selected' : ''}`}
+              role="option"
+              aria-selected={item.id === value}
+            >
+              <button type="button" className="provider-picker-option-main" onClick={() => choose(item.id)}>
+                <span>{item.label}</span>
+                <small>{item.builtIn ? '内置' : '仅本机'}</small>
+              </button>
+              {!item.builtIn && (
+                <button
+                  type="button"
+                  className="provider-picker-delete"
+                  aria-label={`删除自定义 Provider：${item.label}`}
+                  title="删除本地 Provider"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(item.id);
+                  }}
+                >
+                  <X size={14} strokeWidth={2} aria-hidden />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className={`provider-picker-create${value === CREATE_PROVIDER_VALUE ? ' is-selected' : ''}`}
+            role="option"
+            aria-selected={value === CREATE_PROVIDER_VALUE}
+            onClick={() => choose(CREATE_PROVIDER_VALUE)}
+          >
+            <Plus size={16} strokeWidth={2} aria-hidden />
+            创建新的 Provider
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -366,53 +478,162 @@ function ReminderCard() {
  *  桌面端：key 只存在本机（不传服务器）；Web 端：key 按登录用户保存到服务器（每人一份，互不可见）。 */
 export function Settings() {
   const [cfg, setCfg] = useState<AiSettingsView | null>(null);
+  const [customProviders, setCustomProviders] = useState<ProviderPreset[]>(loadCustomProviderPresets);
+  const [selectedProviderId, setSelectedProviderId] = useState('');
   const [provider, setProvider] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [model, setModel] = useState('');
+  const [manualModel, setManualModel] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [temperature, setTemperature] = useState('0.7');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState(false);
+  const [providerNotice, setProviderNotice] = useState('');
+
+  const providerOptions = [...BUILT_IN_PROVIDER_PRESETS, ...customProviders];
+  const selectedPreset = providerOptions.find((item) => item.id === selectedProviderId);
+  const isCreatingProvider = selectedProviderId === CREATE_PROVIDER_VALUE;
 
   useEffect(() => {
     aiSettings
       .get()
       .then((v) => {
+        const knownProviders = [...BUILT_IN_PROVIDER_PRESETS, ...loadCustomProviderPresets()];
+        const normalizedBaseUrl = v.baseUrl.replace(/\/$/, '');
+        const exact = knownProviders.find((item) => (
+          item.provider.toLowerCase() === v.provider.toLowerCase()
+          && item.baseUrl.replace(/\/$/, '') === normalizedBaseUrl
+        ));
+        const matched = exact ?? knownProviders.find(
+          (item) => item.provider.toLowerCase() === v.provider.toLowerCase(),
+        );
         setCfg(v);
         setProvider(v.provider);
         setBaseUrl(v.baseUrl);
         setModel(v.model);
+        setSelectedProviderId(matched?.id ?? CREATE_PROVIDER_VALUE);
+        setManualModel(!matched?.models.includes(v.model));
         setTemperature(String(v.temperature));
       })
       .catch((e) => setErr(msg(e)));
   }, []);
 
+  const selectProvider = (id: string) => {
+    setSelectedProviderId(id);
+    setSaved(false);
+    setProviderNotice('');
+    setErr('');
+    if (id === CREATE_PROVIDER_VALUE) {
+      setProvider('');
+      setBaseUrl('');
+      setModel('');
+      setManualModel(true);
+      return;
+    }
+    const preset = providerOptions.find((item) => item.id === id);
+    if (!preset) return;
+    setProvider(preset.provider);
+    setBaseUrl(preset.baseUrl);
+    setModel(preset.models[0] ?? '');
+    setManualModel(false);
+  };
+
+  const deleteCustomProvider = (id: string) => {
+    const removed = customProviders.find((item) => item.id === id);
+    const next = customProviders.filter((item) => item.id !== id);
+    setCustomProviders(next);
+    saveCustomProviderPresets(next);
+    setProviderNotice(removed ? `已从本机删除“${removed.label}”及其 URL、模型记录。` : '已删除本地 Provider。');
+    setSaved(false);
+    if (selectedProviderId === id) {
+      const fallback = BUILT_IN_PROVIDER_PRESETS[0];
+      setSelectedProviderId(fallback.id);
+      setProvider(fallback.provider);
+      setBaseUrl(fallback.baseUrl);
+      setModel(fallback.models[0]);
+      setManualModel(false);
+    }
+  };
+
   const save = async () => {
-    setBusy(true);
     setErr('');
     setSaved(false);
+    setProviderNotice('');
+
+    const normalizedProvider = provider.trim();
+    const normalizedBaseUrl = baseUrl.trim().replace(/\/$/, '');
+    const normalizedModel = model.trim();
+    const normalizedTemperature = Number(temperature);
+    if (!normalizedProvider || !normalizedBaseUrl || !normalizedModel) {
+      setErr('请完整填写 Provider、Base URL 和模型名');
+      return;
+    }
+    if (!isValidProviderUrl(normalizedBaseUrl)) {
+      setErr('Base URL 必须是有效的 http:// 或 https:// 地址');
+      return;
+    }
+    if (!Number.isFinite(normalizedTemperature) || normalizedTemperature < 0 || normalizedTemperature > 1) {
+      setErr('Temperature 必须是 0 到 1 之间的数字');
+      return;
+    }
+
+    let nextCustomProviders = customProviders;
+    let nextSelectedProviderId = selectedProviderId;
+    let localPresetChanged = false;
+
+    if (isCreatingProvider) {
+      const duplicate = providerOptions.some((item) => (
+        item.provider.toLowerCase() === normalizedProvider.toLowerCase()
+        || item.label.toLowerCase() === normalizedProvider.toLowerCase()
+      ));
+      if (duplicate) {
+        setErr('这个 Provider 已经存在，请直接从下拉框中选择');
+        return;
+      }
+      const created = createCustomProviderPreset(normalizedProvider, normalizedBaseUrl, normalizedModel);
+      nextCustomProviders = [...customProviders, created];
+      nextSelectedProviderId = created.id;
+      localPresetChanged = true;
+    } else {
+      const activeCustom = customProviders.find((item) => item.id === selectedProviderId);
+      if (activeCustom && !activeCustom.models.includes(normalizedModel)) {
+        nextCustomProviders = customProviders.map((item) => item.id === activeCustom.id
+          ? { ...item, models: [...item.models, normalizedModel] }
+          : item);
+        localPresetChanged = true;
+      }
+    }
+
+    setBusy(true);
     try {
       const trimmed = apiKey.trim();
       if (isDesktop && trimmed) {
         // 桌面端：key 只存本机；模型设置同步到服务器（key 留空 = 服务器不存/不改 key）
         await window.electronAPI!.setLlmKey!(trimmed);
         await aiSettings.update({
-          provider: provider.trim(),
-          baseUrl: baseUrl.trim(),
-          model: model.trim(),
+          provider: normalizedProvider,
+          baseUrl: normalizedBaseUrl,
+          model: normalizedModel,
           apiKey: '',
-          temperature: Number(temperature) || 0.7,
+          temperature: normalizedTemperature,
         });
       } else {
         // Web 端 / 桌面端留空：key 存到当前账号（服务器按用户隔离）
         await aiSettings.update({
-          provider: provider.trim(),
-          baseUrl: baseUrl.trim(),
-          model: model.trim(),
+          provider: normalizedProvider,
+          baseUrl: normalizedBaseUrl,
+          model: normalizedModel,
           apiKey: trimmed,
-          temperature: Number(temperature) || 0.7,
+          temperature: normalizedTemperature,
         });
+      }
+      if (localPresetChanged) {
+        setCustomProviders(nextCustomProviders);
+        saveCustomProviderPresets(nextCustomProviders);
+        setSelectedProviderId(nextSelectedProviderId);
+        setManualModel(false);
+        setProviderNotice('自定义 Provider 已保存到本机；API Key 未写入该本地预设。');
       }
       setSaved(true);
       setApiKey('');
@@ -454,20 +675,77 @@ export function Settings() {
         ) : (
           <Card className="settings-card">
           <h2 className="settings-section-title">模型</h2>
-          <label className="field">
-            <span className="field-label">Provider 名称（仅用于显示）</span>
-            <input className="note-input" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="例如 deepseek / dashscope / kimi" />
-          </label>
+          <div className="field">
+            <span className="field-label">Provider</span>
+            <ProviderPicker
+              value={selectedProviderId}
+              options={providerOptions}
+              onChange={selectProvider}
+              onDelete={deleteCustomProvider}
+            />
+            {isCreatingProvider && (
+              <input
+                className="note-input provider-custom-input"
+                value={provider}
+                onChange={(e) => setProvider(e.target.value)}
+                placeholder="输入新的 Provider 名称"
+                autoComplete="off"
+              />
+            )}
+            {providerNotice && <span className="provider-local-notice">{providerNotice}</span>}
+          </div>
 
           <label className="field">
             <span className="field-label">Base URL（OpenAI 兼容端点）</span>
-            <input className="note-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.deepseek.com" />
+            <input
+              className={`note-input${isCreatingProvider ? '' : ' is-prefilled'}`}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.example.com/v1"
+              readOnly={!isCreatingProvider}
+            />
           </label>
 
-          <label className="field">
+          <div className="field">
             <span className="field-label">模型名</span>
-            <input className="note-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-v4-flash" />
-          </label>
+            {!isCreatingProvider && selectedPreset ? (
+              <>
+                <select
+                  className="note-input provider-model-select"
+                  value={manualModel ? MANUAL_MODEL_VALUE : model}
+                  onChange={(e) => {
+                    if (e.target.value === MANUAL_MODEL_VALUE) {
+                      setManualModel(true);
+                      setModel('');
+                    } else {
+                      setManualModel(false);
+                      setModel(e.target.value);
+                    }
+                  }}
+                >
+                  {selectedPreset.models.map((item) => <option key={item} value={item}>{item}</option>)}
+                  <option value={MANUAL_MODEL_VALUE}>手动输入其他模型…</option>
+                </select>
+                {manualModel && (
+                  <input
+                    className="note-input provider-custom-input"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="输入厂商支持的模型 ID"
+                    autoComplete="off"
+                  />
+                )}
+              </>
+            ) : (
+              <input
+                className="note-input"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="输入模型 ID"
+                autoComplete="off"
+              />
+            )}
+          </div>
 
           <label className="field">
             <span className="field-label">API Key</span>
@@ -496,6 +774,9 @@ export function Settings() {
               </span>
             )}
           </div>
+          <p className="settings-note provider-security-note">
+            自定义 Provider 的名称、URL 和模型列表只保存在本机；API Key 不会写入本地预设。
+          </p>
           </Card>
         )}
 
