@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui';
 import { ApiError } from '../api/client';
 import { register as apiRegister, sendRegisterCode as apiSendRegisterCode, getAuthConfig } from '../api/auth';
 import { PuzzleSlider } from '../components/PuzzleSlider';
+import logo from '../logo.png';
+import offerIllustration from '../assets/login-offer.png';
 import './Login.css';
 
 type Mode = 'login' | 'register';
@@ -21,10 +23,10 @@ export function Login() {
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   // —— 环境开关（config 未返回前按最严格处理，返回后更新）——
   const [captchaRequired, setCaptchaRequired] = useState(true);
-  const [emailVerifyRequired, setEmailVerifyRequired] = useState(true);
   const [configLoaded, setConfigLoaded] = useState(false);
 
   // —— 注册取码状态 ——
@@ -42,7 +44,6 @@ export function Login() {
     getAuthConfig()
       .then((c) => {
         setCaptchaRequired(c.captchaRequired);
-        setEmailVerifyRequired(c.emailVerifyRequired);
       })
       .catch(() => { /* 后端未启动时保持默认，提交时会自然报错 */ })
       .finally(() => setConfigLoaded(true));
@@ -131,12 +132,13 @@ export function Login() {
 
     // —— register ——
     if (!checkBaseInput()) return;
-    if (emailVerifyRequired) {
-      if (!codeSent) {
-        setErr('请先点击「获取验证码」，输入邮箱收到的验证码后再注册');
-        return;
-      }
-      if (!code.trim()) { setErr('请输入邮箱收到的验证码'); return; }
+    if (!codeSent) {
+      setErr('请先点击「获取验证码」，输入邮箱收到的验证码后再注册');
+      return;
+    }
+    if (!/^\d{6}$/.test(code.trim())) {
+      setErr('请输入 6 位邮箱验证码');
+      return;
     }
     setBusy(true);
     try {
@@ -150,127 +152,118 @@ export function Login() {
     }
   };
 
+  const switchMode = () => {
+    setErr('');
+    setSentNote('');
+    setEmailHint('');
+    setPwHint('');
+    setPasswordVisible(false);
+    setMode(mode === 'login' ? 'register' : 'login');
+  };
+
   return (
-    <div className="login">
-      <section className="login-hero">
-        <span className="eyebrow reveal">面试备考系统 · DRILL</span>
-        <h1 className="login-title reveal reveal-delay-1">
-          把 AI 当教具，
-          <br />
-          把判断留给自己。
-        </h1>
-        <p className="login-lede reveal reveal-delay-2">
-          面霸是一套反套路的备考系统：出题与判分交给模型，
-          但练什么、判多严、何时复习，全由服务端确定性算法决定。你只管动脑。
-        </p>
-        <div className="login-meta reveal reveal-delay-3">
-          {mode === 'register' ? '先取验证码，验证通过才创建账号' : '注册即用 · 进度存在云端'}
-        </div>
-      </section>
+    <main className="auth-page">
+      <div className="auth-shell">
+        <section className="auth-hero" aria-labelledby="auth-hero-title">
+          <img className="auth-illustration" src={offerIllustration}
+            alt="书本组成学习阶梯，顶端是一封象征新机会的 Offer 信封" />
+          <div className="auth-brand">
+            <img src={logo} alt="" width="36" height="36" />
+            <span>面霸<span className="auth-brand-en">MIANBA</span></span>
+          </div>
+          <div className="auth-hero-copy">
+            <p className="auth-eyebrow">每一份收获，都从准备开始</p>
+            <h1 id="auth-hero-title">把努力，<br />变成下一份 <span>Offer。</span></h1>
+            <p className="auth-hero-description">从学会一个知识点，到从容面对每一次面试。</p>
+            <div className="auth-hero-footer"><span>学习有方向，成长有回响</span><span aria-hidden="true">↗</span></div>
+          </div>
+        </section>
 
-      <section className="login-panel">
-        <div className="login-card reveal">
-          <h2>{mode === 'login' ? '欢迎回来' : '注册面霸'}</h2>
-          <p className="login-sub">
-            {mode === 'login'
-              ? '登录后继续你的备考进度。'
-              : '输入邮箱与密码，先获取邮箱验证码，通过后即可完成注册。'}
-          </p>
+        <section className="auth-panel" aria-labelledby="auth-form-title">
+          <div className="auth-switch">
+            <span>{mode === 'login' ? '还没有账号？' : '已经有账号？'}</span>
+            <button type="button" onClick={switchMode} disabled={busy || sendingCode}>
+              {mode === 'login' ? '创建账号' : '去登录'}<ArrowRight size={14} aria-hidden="true" />
+            </button>
+          </div>
 
-          <form onSubmit={submit}>
-            <label className="field">
-              <span className="field-label">邮箱</span>
-              <input
-                type="email"
-                autoFocus
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => onEmailChange(e.target.value)}
-              />
-              {emailHint && <span className="field-hint">{emailHint}</span>}
-            </label>
+          <div className="auth-form-wrap">
+            <div className="auth-form-intro">
+              <span className="auth-form-eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'YOUR NEXT CHAPTER'}</span>
+              <h2 id="auth-form-title">{mode === 'login' ? '欢迎回来' : '开启你的成长之旅'}</h2>
+              <p>{mode === 'login' ? '登录面霸，继续向理想的自己迈进一步。' : '创建面霸账号，让每一次准备都更有方向。'}</p>
+            </div>
 
-            <label className="field">
-              <span className="field-label">密码</span>
-              <input
-                type="password"
-                placeholder="至少 6 位"
-                value={password}
-                onChange={(e) => onPasswordChange(e.target.value)}
-              />
-              {pwHint && <span className="field-hint">{pwHint}</span>}
-            </label>
+            <form className="auth-form" onSubmit={submit} aria-busy={busy}>
+              <div className="auth-field">
+                <label htmlFor="auth-email">邮箱地址</label>
+                <div className="auth-input-wrap">
+                  <Mail size={17} strokeWidth={1.6} aria-hidden="true" />
+                  <input id="auth-email" name="email" type="email" autoComplete="username"
+                    autoCapitalize="none" spellCheck={false} placeholder="请输入你的邮箱"
+                    required value={email} disabled={busy || sendingCode}
+                    aria-invalid={!!emailHint} aria-describedby={emailHint ? 'auth-email-hint' : undefined}
+                    onChange={(e) => onEmailChange(e.target.value)} />
+                </div>
+                {emailHint && <span id="auth-email-hint" className="auth-hint">{emailHint}</span>}
+              </div>
 
-            {mode === 'register' && emailVerifyRequired && (
-              <div className="field">
-                <span className="field-label">邮箱验证码</span>
-                <div className="code-row">
-                  <input
-                    className="code-input"
-                    inputMode="numeric"
-                    placeholder="6 位数字"
-                    value={code}
-                    onChange={(e) => { setCode(e.target.value); setErr(''); }}
-                  />
-                  <button
-                    type="button"
-                    className="send-btn"
-                    disabled={busy || sendingCode || resendIn > 0 || !configLoaded}
-                    onClick={handleGetCode}
-                  >
-                    {sendingCode
-                      ? '发送中…'
-                      : resendIn > 0
-                        ? `${resendIn}s 后重发`
-                        : codeSent
-                          ? '重新获取'
-                          : '获取验证码'}
+              <div className="auth-field">
+                <label htmlFor="auth-password">密码</label>
+                <div className="auth-input-wrap">
+                  <LockKeyhole size={17} strokeWidth={1.6} aria-hidden="true" />
+                  <input id="auth-password" name="password" type={passwordVisible ? 'text' : 'password'}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    placeholder={mode === 'login' ? '请输入密码' : '设置密码，至少 6 位'}
+                    required minLength={6} maxLength={64} value={password} disabled={busy || sendingCode}
+                    aria-invalid={!!pwHint} aria-describedby={pwHint ? 'auth-password-hint' : undefined}
+                    onChange={(e) => onPasswordChange(e.target.value)} />
+                  <button type="button" className="auth-password-toggle" aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                    aria-pressed={passwordVisible} onClick={() => setPasswordVisible(!passwordVisible)}>
+                    {passwordVisible ? <EyeOff size={17} strokeWidth={1.6} /> : <Eye size={17} strokeWidth={1.6} />}
                   </button>
                 </div>
-                {sentNote && <span className="field-note">{sentNote}</span>}
+                {pwHint && <span id="auth-password-hint" className="auth-hint">{pwHint}</span>}
               </div>
-            )}
 
-            {mode === 'register' && !emailVerifyRequired && configLoaded && (
-              <p className="login-sub" style={{ marginTop: 0 }}>
-                当前环境未启用邮箱验证，点击注册即可直接创建账号。
-              </p>
-            )}
+              {mode === 'register' && (
+                <div className="auth-field">
+                  <label htmlFor="auth-code">邮箱验证码</label>
+                  <div className="auth-code-row">
+                    <div className="auth-input-wrap">
+                      <ShieldCheck size={17} strokeWidth={1.6} aria-hidden="true" />
+                      <input id="auth-code" name="code" inputMode="numeric" autoComplete="one-time-code"
+                        placeholder="6 位验证码" maxLength={6} required pattern="[0-9]{6}" value={code}
+                        disabled={busy} onChange={(e) => {
+                          setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                          setErr('');
+                        }} />
+                    </div>
+                    <button type="button" className="auth-send-code"
+                      disabled={busy || sendingCode || resendIn > 0 || !configLoaded} onClick={handleGetCode}>
+                      {sendingCode ? '发送中…' : resendIn > 0 ? `${resendIn}s 后重发` : codeSent ? '重新获取' : '获取验证码'}
+                    </button>
+                  </div>
+                  {sentNote && <span className="auth-note" role="status">{sentNote}</span>}
+                </div>
+              )}
 
-            {err && <div className="banner">{err}</div>}
-
-            <Button type="submit" disabled={busy} style={{ width: '100%' }}>
-              {busy
-                ? mode === 'login' ? '登录中…' : '注册中…'
-                : mode === 'login' ? '登录' : '注册'}
-              {!busy && <ArrowRight size={16} strokeWidth={2} />}
-            </Button>
-          </form>
-
-          <div className="login-switch">
-            {mode === 'login' && (
-              <button onClick={() => { setErr(''); setSentNote(''); setMode('register'); }}>
-                没有账号？去注册
-              </button>
-            )}
-            {mode === 'register' && (
-              <button onClick={() => { setErr(''); setSentNote(''); setMode('login'); }}>
-                已有账号？去登录
-              </button>
-            )}
+              {err && <div className="auth-error" role="alert">{err}</div>}
+              <Button type="submit" className="auth-submit" disabled={busy || (mode === 'register' && (!configLoaded || sendingCode))}>
+                {busy ? mode === 'login' ? '登录中…' : '创建中…' : mode === 'login' ? '登录' : '创建账号'}
+                {!busy && <ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />}
+              </Button>
+            </form>
+            <p className="auth-form-note"><ShieldCheck size={14} strokeWidth={1.6} aria-hidden="true" />你的每一步进步，都值得被认真记录</p>
           </div>
-        </div>
 
-        {showCaptcha && (
-          <PuzzleSlider
-            onPass={(token) => {
-              setShowCaptcha(false);
-              void doSendCode(token);
-            }}
-            onClose={() => setShowCaptcha(false)}
-          />
-        )}
-      </section>
-    </div>
+          <footer className="auth-panel-footer"><span>AI 陪练</span><span>系统学习</span><span>面试复盘</span></footer>
+        </section>
+      </div>
+      {showCaptcha && (
+        <PuzzleSlider onPass={(token) => { setShowCaptcha(false); void doSendCode(token); }}
+          onClose={() => setShowCaptcha(false)} />
+      )}
+    </main>
   );
 }
