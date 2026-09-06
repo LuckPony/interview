@@ -2,9 +2,9 @@ server:
   port: 23333  # 非主流端口：避开 8080 等常用端口被占（曾导致桌面端后端起不来）
   tomcat:
     # SSE 流式响应跑在 servlet 异步线程上，Tomcat 默认 async 超时很短（~30s），
-    # 思考模式下模型"想"得久，响应易超时被掐断 → 客户端收到 terminated → 前端报"回复失败"。
-    # 放宽到 10 分钟，与 DeepSeek 流式 300s 超时对齐。
-    async-timeout: 600000
+    # 思考模式下模型“想”得久，响应易超时被掐断 → 客户端收到 terminated → 前端报“回复失败”。
+    # 放宽到 1 小时，与 nginx proxy_read_timeout 及后端流式请求对齐。
+    async-timeout: 3600000
 
 spring:
   application:

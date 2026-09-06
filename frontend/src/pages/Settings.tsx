@@ -486,6 +486,7 @@ export function Settings() {
   const [manualModel, setManualModel] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [temperature, setTemperature] = useState('0.7');
+  const [reasoningEffort, setReasoningEffort] = useState('low');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState(false);
@@ -515,6 +516,7 @@ export function Settings() {
         setSelectedProviderId(matched?.id ?? CREATE_PROVIDER_VALUE);
         setManualModel(!matched?.models.includes(v.model));
         setTemperature(String(v.temperature));
+        setReasoningEffort(v.reasoningEffort || 'low');
       })
       .catch((e) => setErr(msg(e)));
   }, []);
@@ -617,6 +619,7 @@ export function Settings() {
           model: normalizedModel,
           apiKey: '',
           temperature: normalizedTemperature,
+          reasoningEffort,
         });
       } else {
         // Web 端 / 桌面端留空：key 存到当前账号（服务器按用户隔离）
@@ -626,6 +629,7 @@ export function Settings() {
           model: normalizedModel,
           apiKey: trimmed,
           temperature: normalizedTemperature,
+          reasoningEffort,
         });
       }
       if (localPresetChanged) {
@@ -762,6 +766,20 @@ export function Settings() {
           <label className="field">
             <span className="field-label">Temperature（0-1）</span>
             <input className="note-input" type="number" step="0.1" min="0" max="1" value={temperature} onChange={(e) => setTemperature(e.target.value)} />
+          </label>
+
+          <label className="field">
+            <span className="field-label">思考强度（仅对有思考强度的模型生效）</span>
+            <select className="note-input" value={reasoningEffort} onChange={(e) => setReasoningEffort(e.target.value)}>
+              <option value="low">低 · 思考最短、生成最快</option>
+              <option value="medium">中 · 思考与速度均衡</option>
+              <option value="high">高 · 深度思考、更慢</option>
+              <option value="auto">跟随模型默认（可能思考更久）</option>
+            </select>
+            <p className="settings-note">
+              控制讲解/答疑/对话的推理深度。DeepSeek V4、GLM、OpenAI 推理模型默认高，会让思考很长；
+              设为「低」能明显缩短等待。非推理模型或没有该参数的模型会忽略此项。
+            </p>
           </label>
 
           <div className="settings-actions">

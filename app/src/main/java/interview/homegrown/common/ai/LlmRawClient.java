@@ -180,8 +180,7 @@ public class LlmRawClient {
             String content = textOrNull(msg.path("content"));
             if (content != null) return content;
 
-            String reasoning = textOrNull(msg.path("reasoning_content"));
-            if (reasoning == null) reasoning = textOrNull(msg.path("reasoning"));
+            String reasoning = firstReasoningToken(msg);
             if (reasoning != null) {
                 log.debug("content 为空，回退 reasoning（长度={}）", reasoning.length());
                 return reasoning;
@@ -244,6 +243,10 @@ public class LlmRawClient {
             // 思考模式：保持开启（模型更聪明），但 max_tokens 和超时要给足，
             // 否则 reasoning_content 会吃掉额度截断回答 / 思考+回答超时。
             applyDefaultTokens(body);
+            // 长思考（reasoning）与正文共享输出预算：深挖性内容容易把 8192 吃光，
+            // 导致正文被截断甚至为空（表现为「讲解生成失败」）。这里给足到 16384；
+            // 若某 provider 不认该上限，由 400 去参重试兜底。非思考 provider 仅作上限，无副作用。
+            applyGenerousBudget(body);
             // 按 provider 适配思考开关（deepseek/glm/doubao→thinking，qwen→enable_thinking），
             // 其余 provider 不加该参数 —— 让非 DeepSeek 的思考模型也能流式返回 reasoning_content/reasoning。
             applyThinkingStream(body);
@@ -270,14 +273,16 @@ public class LlmRawClient {
                     if (payload.isEmpty() || "[DONE]".equals(payload)) continue;
                     try {
                         JsonNode node = objectMapper.readTree(payload);
-                        JsonNode delta = node.path("choices").path(0).path("delta");
+                        JsonNode choice = node.path("choices").path(0);
+                        JsonNode delta = choice.path("delta");
                         // 推理内容独立推送（onReasoning 非空时走它，正文走 onToken，互不混用）。
+                        // 思考字段可能出现在 delta（流式）、choice 或 message（部分网关/模型在收尾帧才给），都兼容。
                         // 注意：不能用 textOrNull 过滤"纯空白"的 delta —— 流式模型常把单独的换行
                         // （"\n"）作为独立 token 下发，isBlank() 会把它当空丢掉，导致代码/段落换行丢失、
                         // markdown 代码块缺行。这里只判缺失/空，纯空白 token 原样保留。
-                        // 兼容多 provider 的思考字段名：deepseek/qwen/glm→reasoning_content，
-                        // OpenRouter 等→reasoning / reasoning_text。
                         String reasoning = firstReasoningToken(delta);
+                        if (reasoning == null) reasoning = firstReasoningToken(choice);
+                        if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
                         if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
                             onReasoning.accept(reasoning);
                         }
@@ -349,8 +354,13 @@ public class LlmRawClient {
 
     /** 不同 provider 易报 400「Unrecognized argument / invalid parameter」的可选参数。 */
     private static final Set<String> OPTIONAL_KEYS = Set.of(
-            "thinking", "enable_thinking", "max_tokens", "max_completion_tokens",
+            "thinking", "enable_thinking", "reasoning_effort", "max_tokens", "max_completion_tokens",
             "temperature", "top_p", "n", "frequency_penalty", "presence_penalty", "stream_options");
+
+    /** 流式思考的推理力度（用户未显式设置时的默认值）：越低思考越短、生成越快。
+     *  DeepSeek V4/GLM 默认 high、OpenAI 默认中高；这个默认用 low，让讲解更快。
+     *  用户可在「设置 → 思考强度」改为 medium/high/auto。 */
+    private static final String STREAM_REASONING_EFFORT = "low";
 
     private String modelLower() {
         return cfg().model() == null ? "" : cfg().model().toLowerCase();
@@ -389,12 +399,23 @@ public class LlmRawClient {
         }
     }
 
-    /** 流式讲解 / 问答：开启思考，便于读取 reasoning 展示。其余 provider 不加参数。 */
+    /** 流式讲解 / 问答：开启思考，便于读取 reasoning 展示。其余 provider 不加参数。
+     *  思考强度（reasoning_effort）从用户设置读取：low / medium / high / auto（auto=跟随模型默认、不发该参数）。
+     *  未设置（旧数据）默认 low，保持已上线的「快速短思考」。
+     *  该参数只会加在识别出的「会思考」模型上（DeepSeek V4/GLM/Doubao、OpenAI o系列/gpt-5）；
+     *  不认识的 provider 不加，避免未知参数 400（即使加了也会被去参兜底剥离）。 */
     private void applyThinkingStream(Map<String, Object> body) {
+        String effort = cfg().reasoningEffort();
+        if (effort == null || effort.isBlank()) effort = STREAM_REASONING_EFFORT; // 未设置默认 low
+        boolean sendEffort = !"auto".equalsIgnoreCase(effort.trim());
         if (isThinkingParamProvider()) {
             body.put("thinking", Map.of("type", "enabled"));
+            if (sendEffort) body.put("reasoning_effort", effort);
         } else if (isQwenThinkingProvider()) {
             body.put("enable_thinking", true);
+        } else if (isOpenAiReasoning()) {
+            // OpenAI 推理模型无 thinking/{type} 参数，用 reasoning_effort 控制思考深度
+            if (sendEffort) body.put("reasoning_effort", effort);
         }
     }
 
@@ -402,6 +423,12 @@ public class LlmRawClient {
      * token 上限适配：OpenAI 推理模型（o1/o3/o4、gpt-5）用 {@code max_completion_tokens} 且不支持 temperature；
      * 其余一律 {@code max_tokens}。避免 "Unknown parameter: max_tokens" 这类 400。
      */
+    /** 是否 OpenAI 推理模型（o1/o3/o4 / gpt-5）：用 max_completion_tokens，且可用 reasoning_effort 控制思考深度。 */
+    private boolean isOpenAiReasoning() {
+        String m = modelLower();
+        return m.matches("^o[134](-|$).*") || m.matches("^gpt-5.*");
+    }
+
     private void applyDefaultTokens(Map<String, Object> body) {
         String m = modelLower();
         boolean openAiReasoning = m.matches("^o[134](-|$).*") || m.matches("^gpt-5.*");
@@ -410,6 +437,15 @@ public class LlmRawClient {
             body.remove("temperature");
         } else {
             body.put("max_tokens", 8192);
+        }
+    }
+
+    /** 流式思考模式：给足输出额度，避免 reasoning_content 抢占正文预算导致正文为空/被截断。 */
+    private void applyGenerousBudget(Map<String, Object> body) {
+        if (body.containsKey("max_completion_tokens")) {
+            body.put("max_completion_tokens", 16384);
+        } else {
+            body.put("max_tokens", 16384);
         }
     }
 
@@ -472,15 +508,21 @@ public class LlmRawClient {
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                .timeout(Duration.ofSeconds(300))   // 思考模式耗时可能较长，放宽到 5 分钟
+                .timeout(Duration.ofSeconds(3600))   // 首字节前的等待可因模型先思考而不流式泄露而很长；放宽到 1 小时，与 nginx/Tomcat 对齐
                 .build();
     }
 
-    /** 从一个 delta / message 节点取出思考片段：兼容 reasoning_content / reasoning / reasoning_text。 */
-    private static String firstReasoningToken(JsonNode delta) {
-        String[] fields = {"reasoning_content", "reasoning", "reasoning_text"};
+    /**
+     * 从一个 delta / message / choice 节点取出思考片段：兼容所有 OpenAI 兼容格式的常见字段名。
+     * 思考型模型可能用 reasoning_content / reasoning / reasoning_text / reasoning_details /
+     * reasoning_summary / chain_of_thought（字符串、数组、或 {text}/{content}/{value}/{summary} 对象）。
+     * 非思考型模型没有这些字段，原样返回 null，不影响 content 正文。
+     */
+    private static String firstReasoningToken(JsonNode node) {
+        String[] fields = {"reasoning_content", "reasoning", "reasoning_text",
+                "reasoning_details", "reasoning_summary", "chain_of_thought"};
         for (String f : fields) {
-            JsonNode n = delta.get(f);
+            JsonNode n = node.get(f);
             if (n == null) continue;
             String s = reasonText(n);
             if (s != null && !s.isEmpty()) return s;
@@ -488,20 +530,24 @@ public class LlmRawClient {
         return null;
     }
 
+    /** 递归抽取一个 reasoning 节点里的正文：字符串 / 数组逐项拼接 / 对象取 text/content/value/summary。 */
     private static String reasonText(JsonNode n) {
         if (n == null || n.isMissingNode() || n.isNull()) return null;
         if (n.isTextual()) return n.asText();
         if (n.isArray()) {
             StringBuilder sb = new StringBuilder();
             for (JsonNode item : n) {
-                String t = item.path("text").asText("");
-                if (!t.isEmpty()) sb.append(t);
+                String t = reasonText(item);
+                if (t != null && !t.isEmpty()) sb.append(t);
             }
             return sb.length() == 0 ? null : sb.toString();
         }
         if (n.isObject()) {
-            String t = n.path("text").asText("");
-            return t.isEmpty() ? null : t;
+            // OpenAI 兼容常见的嵌套形态：{text} / {content} / {value} / {summary}
+            for (String k : new String[]{"text", "content", "value", "summary"}) {
+                String t = reasonText(n.get(k));
+                if (t != null && !t.isEmpty()) return t;
+            }
         }
         return null;
     }

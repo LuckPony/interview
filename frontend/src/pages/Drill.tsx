@@ -22,6 +22,71 @@ function fmt(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// —— 思考过程打字机：即使模型一次吐一大段，也逐字揭示，视觉上像流式 ——
+function useTypewriter(target: string, active: boolean, charsPerSec = 320): string {
+  const [revealed, setRevealed] = useState(0);
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  // 完成 / 非生成态：直接显示全部，避免停在半句话上
+  useEffect(() => {
+    if (!active) setRevealed(targetRef.current.length);
+  }, [active]);
+
+  // 生成中：逐步揭示，并持续追上新到达的文本
+  useEffect(() => {
+    if (!active) return;
+    const tick = Math.max(1, Math.round(charsPerSec / 20)); // ~50ms 一帧，每帧揭示若干字符
+    const id = setInterval(() => {
+      setRevealed(prev => {
+        if (!activeRef.current) return targetRef.current.length;
+        return Math.min(targetRef.current.length, prev + tick);
+      });
+    }, 50);
+    return () => clearInterval(id);
+  }, [active, charsPerSec]);
+
+  // 目标变短（切换子点 / 重置）时收敛揭示进度
+  useEffect(() => {
+    setRevealed(prev => Math.min(prev, targetRef.current.length));
+  }, [targetRef.current.length]);
+
+  return target.slice(0, revealed);
+}
+
+/** 思考面板：可折叠 + 打字机逐字揭示；流式时默认自动滚动到底部展示最新输出，
+ *  用户手动向上滚动（离开底部约 28px）后暂停自动跟随，回到底部再恢复。 */
+function ReasoningPanel({ text, active, speed, title = 'AI 思考过程' }: { text: string; active?: boolean; speed?: number; title?: string }) {
+  const shown = useTypewriter(text, active ?? false, speed);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true); // 是否鹏在底部（自动跟随最新输出）
+
+  // 内容随打字机逐帧变高：只要仍鹏在底部，就滚到底展示最新字
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !pinnedRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [shown]);
+
+  // 用户滚动：离开底部（容差 28px）暂停跟随；回到底部恢复
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 28;
+  };
+
+  return (
+    <details className="reasoning-panel" open>
+      <summary>{title}</summary>
+      <div className="reasoning-text" ref={scrollRef} onScroll={handleScroll}>
+        <Markdown>{shown}</Markdown>
+      </div>
+    </details>
+  );
+}
+
 // —— 聊天消息：stem(题干) / chat(对话) 两型；reasoning 为 AI 思考过程（可折叠展示）——
 interface ChatMsg {
   id: string;
@@ -1521,7 +1586,9 @@ export function Drill() {
                 <h2 className="teach-title">{t.subPoints[t.curIdx]}</h2>
               </div>
               <div className="teach-lesson-body">
-                {lessonBusy && !lessonText ? (
+                {/* 备课中：只在尚无任何推理与正文时显示纯 spinner；一旦有思考流先展示思考过程，
+                    否则长思考阶段只会一直“正在备课…”看不到模型在干嘛。 */}
+                {lessonBusy && !lessonText && !lessonReasoning ? (
                   <div className="chat-row chat-row-ai chat-row-loading">
                     <div className="chat-bubble chat-bubble-ai is-loading">
                       <span className="spinner-sm" /> 正在备课…
@@ -1530,17 +1597,20 @@ export function Drill() {
                 ) : (
                   <>
                     {lessonReasoning && (
-                      <details className="reasoning-panel" open>
-                        <summary>AI 思考过程</summary>
-                        <div className="reasoning-text"><Markdown>{lessonReasoning}</Markdown></div>
-                      </details>
+                      <ReasoningPanel text={lessonReasoning} active={lessonBusy} />
                     )}
                     <div className="tutor-text" onMouseUp={() => {
                       const sel = window.getSelection();
                       const txt = sel && !sel.isCollapsed ? sel.toString().trim() : '';
                       if (txt && txt.length <= 500) setQaAnchor(txt);
                     }}>
-                      <Markdown>{lessonText || '（讲解内容为空）'}</Markdown>
+                      {lessonText ? (
+                        <Markdown>{lessonText}</Markdown>
+                      ) : lessonBusy ? (
+                        <span className="spinner-sm" />
+                      ) : (
+                        '（讲解内容为空）'
+                      )}
                       {lessonBusy && <span className="tutor-caret" aria-hidden />}
                     </div>
                   </>
@@ -1632,10 +1702,7 @@ export function Drill() {
                           ))
                         )}
                         {qaReasoning && qaBusy && (
-                          <details className="reasoning-panel" open>
-                            <summary>AI 思考过程</summary>
-                            <div className="reasoning-text"><Markdown>{qaReasoning}</Markdown></div>
-                          </details>
+                          <ReasoningPanel text={qaReasoning} active={qaBusy} />
                         )}
                       </div>
                     )}
@@ -2099,12 +2166,7 @@ function ChatBubble({
         ) : m.type === 'stem' ? (
           // 题干不走 tutor-text（避免"讲解 ·"前缀）；思考过程流式展示（默认展开，markdown）
           <>
-            {m.reasoning && (
-              <details className="reasoning-panel" open>
-                <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><Markdown>{m.reasoning}</Markdown></div>
-              </details>
-            )}
+            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </>
@@ -2118,12 +2180,7 @@ function ChatBubble({
               </div>
             )}
             <div className="tutor-text">
-            {m.reasoning && (
-              <details className="reasoning-panel" open>
-                <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><Markdown>{m.reasoning}</Markdown></div>
-              </details>
-            )}
+            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </div>
