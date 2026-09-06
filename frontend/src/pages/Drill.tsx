@@ -56,10 +56,35 @@ function useTypewriter(target: string, active: boolean, charsPerSec = 320): stri
   return target.slice(0, revealed);
 }
 
-/** 思考过程正文：打字机式逐字渲染（仍用 Markdown，部分字符也成文）。 */
-function ReasoningText({ text, active, speed }: { text: string; active?: boolean; speed?: number }) {
+/** 思考面板：可折叠 + 打字机逐字揭示；流式时默认自动滚动到底部展示最新输出，
+ *  用户手动向上滚动（离开底部约 28px）后暂停自动跟随，回到底部再恢复。 */
+function ReasoningPanel({ text, active, speed, title = 'AI 思考过程' }: { text: string; active?: boolean; speed?: number; title?: string }) {
   const shown = useTypewriter(text, active ?? false, speed);
-  return <Markdown>{shown}</Markdown>;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true); // 是否鹏在底部（自动跟随最新输出）
+
+  // 内容随打字机逐帧变高：只要仍鹏在底部，就滚到底展示最新字
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !pinnedRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [shown]);
+
+  // 用户滚动：离开底部（容差 28px）暂停跟随；回到底部恢复
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 28;
+  };
+
+  return (
+    <details className="reasoning-panel" open>
+      <summary>{title}</summary>
+      <div className="reasoning-text" ref={scrollRef} onScroll={handleScroll}>
+        <Markdown>{shown}</Markdown>
+      </div>
+    </details>
+  );
 }
 
 // —— 聊天消息：stem(题干) / chat(对话) 两型；reasoning 为 AI 思考过程（可折叠展示）——
@@ -1572,10 +1597,7 @@ export function Drill() {
                 ) : (
                   <>
                     {lessonReasoning && (
-                      <details className="reasoning-panel" open>
-                        <summary>AI 思考过程</summary>
-                        <div className="reasoning-text"><ReasoningText text={lessonReasoning} active={lessonBusy} /></div>
-                      </details>
+                      <ReasoningPanel text={lessonReasoning} active={lessonBusy} />
                     )}
                     <div className="tutor-text" onMouseUp={() => {
                       const sel = window.getSelection();
@@ -1680,10 +1702,7 @@ export function Drill() {
                           ))
                         )}
                         {qaReasoning && qaBusy && (
-                          <details className="reasoning-panel" open>
-                            <summary>AI 思考过程</summary>
-                            <div className="reasoning-text"><ReasoningText text={qaReasoning} active={qaBusy} /></div>
-                          </details>
+                          <ReasoningPanel text={qaReasoning} active={qaBusy} />
                         )}
                       </div>
                     )}
@@ -2147,12 +2166,7 @@ function ChatBubble({
         ) : m.type === 'stem' ? (
           // 题干不走 tutor-text（避免"讲解 ·"前缀）；思考过程流式展示（默认展开，markdown）
           <>
-            {m.reasoning && (
-              <details className="reasoning-panel" open>
-                <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><ReasoningText text={m.reasoning} active={m.streaming} /></div>
-              </details>
-            )}
+            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </>
@@ -2166,12 +2180,7 @@ function ChatBubble({
               </div>
             )}
             <div className="tutor-text">
-            {m.reasoning && (
-              <details className="reasoning-panel" open>
-                <summary>AI 思考过程</summary>
-                <div className="reasoning-text"><ReasoningText text={m.reasoning} active={m.streaming} /></div>
-              </details>
-            )}
+            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
             <Markdown>{m.text}</Markdown>
             {m.streaming && <span className="tutor-caret" aria-hidden />}
           </div>
