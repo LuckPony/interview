@@ -357,8 +357,9 @@ public class LlmRawClient {
             "thinking", "enable_thinking", "reasoning_effort", "max_tokens", "max_completion_tokens",
             "temperature", "top_p", "n", "frequency_penalty", "presence_penalty", "stream_options");
 
-    /** 流式思考的推理力度：越低思考越短、生成越快。DeepSeek V4/GLM 默认 high、OpenAI 默认中高；
-     *  讲解这类 200-2000 字的知识点不需要深度思考，用 low 即可；想更深入可改 "medium"/"high"。 */
+    /** 流式思考的推理力度（用户未显式设置时的默认值）：越低思考越短、生成越快。
+     *  DeepSeek V4/GLM 默认 high、OpenAI 默认中高；这个默认用 low，让讲解更快。
+     *  用户可在「设置 → 思考强度」改为 medium/high/auto。 */
     private static final String STREAM_REASONING_EFFORT = "low";
 
     private String modelLower() {
@@ -399,17 +400,22 @@ public class LlmRawClient {
     }
 
     /** 流式讲解 / 问答：开启思考，便于读取 reasoning 展示。其余 provider 不加参数。
-     *  同时把 reasoning_effort 压到 low，让思考更短、生成更快（DeepSeek 默认 high、OpenAI 默认中高）；
-     *  不认识的 provider 不加该参数，避免未知参数 400（即使加了也会被去参兜底剥离）。 */
+     *  思考强度（reasoning_effort）从用户设置读取：low / medium / high / auto（auto=跟随模型默认、不发该参数）。
+     *  未设置（旧数据）默认 low，保持已上线的「快速短思考」。
+     *  该参数只会加在识别出的「会思考」模型上（DeepSeek V4/GLM/Doubao、OpenAI o系列/gpt-5）；
+     *  不认识的 provider 不加，避免未知参数 400（即使加了也会被去参兜底剥离）。 */
     private void applyThinkingStream(Map<String, Object> body) {
+        String effort = cfg().reasoningEffort();
+        if (effort == null || effort.isBlank()) effort = STREAM_REASONING_EFFORT; // 未设置默认 low
+        boolean sendEffort = !"auto".equalsIgnoreCase(effort.trim());
         if (isThinkingParamProvider()) {
             body.put("thinking", Map.of("type", "enabled"));
-            body.put("reasoning_effort", STREAM_REASONING_EFFORT);
+            if (sendEffort) body.put("reasoning_effort", effort);
         } else if (isQwenThinkingProvider()) {
             body.put("enable_thinking", true);
         } else if (isOpenAiReasoning()) {
             // OpenAI 推理模型无 thinking/{type} 参数，用 reasoning_effort 控制思考深度
-            body.put("reasoning_effort", STREAM_REASONING_EFFORT);
+            if (sendEffort) body.put("reasoning_effort", effort);
         }
     }
 

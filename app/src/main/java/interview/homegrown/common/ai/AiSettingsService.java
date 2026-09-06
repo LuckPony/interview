@@ -50,7 +50,7 @@ public class AiSettingsService {
         // 1) 桌面端请求头 key 覆盖（只用不存）
         String headerKey = currentRequestLlmKey();
         if (headerKey != null && !headerKey.isBlank()) {
-            return new AiConfig(base.provider(), base.baseUrl(), headerKey, base.model(), base.temperature());
+            return new AiConfig(base.provider(), base.baseUrl(), headerKey, base.model(), base.temperature(), base.reasoningEffort());
         }
         return base;
     }
@@ -67,7 +67,7 @@ public class AiSettingsService {
         String finalKey = (cfg.apiKey() != null && !cfg.apiKey().isBlank())
                 ? cfg.apiKey()
                 : (existing != null ? existing.apiKey() : currentProvider().apiKey());
-        AiConfig merged = new AiConfig(cfg.provider(), cfg.baseUrl(), finalKey, cfg.model(), cfg.temperature());
+        AiConfig merged = new AiConfig(cfg.provider(), cfg.baseUrl(), finalKey, cfg.model(), cfg.temperature(), cfg.reasoningEffort());
         try {
             jdbc.update("""
                     INSERT INTO user_ai_setting (user_id, settings_json, updated_at)
@@ -132,8 +132,8 @@ public class AiSettingsService {
     private AiConfig startupConfig() {
         var cfg = startup.getProviders().get(startup.getDefaultProvider());
         return cfg == null
-                ? new AiConfig(startup.getDefaultProvider(), "", "", "", 0.7)
+                ? new AiConfig(startup.getDefaultProvider(), "", "", "", 0.7, null)
                 : new AiConfig(startup.getDefaultProvider(), cfg.getBaseUrl(), "",
-                        cfg.getModel(), cfg.getTemperature());
+                        cfg.getModel(), cfg.getTemperature(), cfg.getReasoningEffort());
     }
 }

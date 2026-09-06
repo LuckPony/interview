@@ -642,10 +642,18 @@ export interface AiSettingsView {
   hasApiKey: boolean;
   temperature: number;
   supportsVision: boolean; // 当前模型是否支持图片输入（决定聊天输入区是否显示上传）
+  reasoningEffort: string; // 思考强度：low / medium / high / auto（跟随模型默认）
 }
 export const aiSettings = {
   get: () => apiFetch<AiSettingsView>('/settings/ai'),
-  update: (cfg: { provider: string; baseUrl: string; apiKey: string; model: string; temperature: number }) =>
+  update: (cfg: {
+    provider: string;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    temperature: number;
+    reasoningEffort: string;
+  }) =>
     apiFetch<{ ok: boolean }>('/settings/ai', {
       method: 'POST',
       body: JSON.stringify(cfg),

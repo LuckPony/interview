@@ -75,6 +75,10 @@ public class AiConfigProperties {
 
         private double temperature = 0.7;
 
+        // 思考强度（reasoning_effort）：low / medium / high / auto（跟随模型默认，不发该参数）。
+        // 仅对支持它的推理模型（DeepSeek V4/GLM/OpenAI o系列等）生效；其余模型忽略。
+        private String reasoningEffort;
+
         //检测 Provider 是否已经配置完整（可连接）
         public boolean isAvailable(){
             return baseUrl != null && !baseUrl.isEmpty()
@@ -106,6 +110,12 @@ public class AiConfigProperties {
         }
         public void setTemperature(double temperature) {
             this.temperature = temperature;
+        }
+        public String getReasoningEffort() {
+            return reasoningEffort;
+        }
+        public void setReasoningEffort(String reasoningEffort) {
+            this.reasoningEffort = reasoningEffort;
         }
     }
 
