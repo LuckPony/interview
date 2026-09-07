@@ -2,6 +2,8 @@
 // 桌面端（Electron）下由 .env 注入 http://127.0.0.1:8080；网页态留空走 dev 代理（相对 /api）。
 // 桌面端用户可把 LLM key 存在本机（Electron userData），每次请求带 X-LLM-Key 头，后端「只用不存」——
 // 服务器不落库、也不共享任何默认 key。
+import { notifyDataChanged, SESSION_CHANGED } from './dataEvents';
+
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
 // Electron 的 file:// 页面在本地版、云端版之间共用 localStorage。若使用固定键，
@@ -42,6 +44,7 @@ export async function buildAuthHeaders(): Promise<Record<string, string>> {
 export function setSession(token: string, userId: string): void {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, userId);
+  window.dispatchEvent(new Event(SESSION_CHANGED));
 }
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
@@ -49,6 +52,7 @@ export function clearSession(): void {
   // 清理旧版本的无作用域登录态，避免它继续影响升级后的桌面端。
   localStorage.removeItem(LEGACY_TOKEN_KEY);
   localStorage.removeItem(LEGACY_USER_KEY);
+  window.dispatchEvent(new Event(SESSION_CHANGED));
 }
 export function getStoredUserId(): string | null {
   return localStorage.getItem(USER_KEY);
@@ -64,6 +68,7 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const requestToken = getToken();
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string> | undefined),
   };
@@ -76,9 +81,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const res = await fetch(`${API_BASE}/api${path}`, { ...init, headers });
 
   if (res.status === 401) {
-    clearSession();
-    // 广播：AuthContext 同步清 React 登录态，RequireAuth 立即跳转登录页
-    window.dispatchEvent(new Event('yan:logout'));
+    if (requestToken === getToken()) {
+      clearSession();
+      // 旧账号的迟到 401 不应清除新账号的登录态。
+      window.dispatchEvent(new Event('yan:logout'));
+    }
     throw new ApiError(401, '登录已失效，请重新登录');
   }
   if (!res.ok) {
@@ -99,9 +106,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     }
     throw new ApiError(res.status, msg);
   }
-  if (res.status === 204) return undefined as T;
-
   const ct = res.headers.get('content-type') ?? '';
-  if (!ct.includes('application/json')) return (await res.text()) as unknown as T;
-  return res.json() as Promise<T>;
+  const data: unknown = res.status === 204 ? undefined
+    : ct.includes('application/json') ? await res.json() : await res.text();
+  const method = (init?.method ?? 'GET').toUpperCase();
+  // 后端兼有原始 DTO 和 HTTP 200 + Result；业务失败不能触发“写入成功”刷新。
+  const successful = !(data && typeof data === 'object' && 'code' in data && data.code !== 200);
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && successful && requestToken === getToken()) {
+    notifyDataChanged(path);
+  }
+  return data as T;
 }

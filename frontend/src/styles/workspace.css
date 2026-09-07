@@ -1,0 +1,142 @@
+/* 首页与全部业务页共享的工作台主题；不覆盖侧栏、登录/注册页。 */
+.workspace-theme {
+  --paper: #f7faf8;
+  --paper-2: #ffffff;
+  --paper-3: #eef4f0;
+  --ink: #2d3e39;
+  --ink-soft: #50685e;
+  --ink-faint: #687b72;
+  --line: #e3ebe6;
+  --line-strong: #c4d3ca;
+  --cinnabar: #37796d;
+  --cinnabar-deep: #295d57;
+  --cinnabar-wash: #e5f2ec;
+  --on-accent: #ffffff;
+  --amber: #7c9163;
+  --amber-wash: #f1f5e5;
+  --r-lg: 18px;
+  --workspace-shadow: 0 2px 4px #284e3e03, 0 16px 40px -28px #375f4729;
+  --workspace-background: radial-gradient(ellipse at 96% 1%, #dceee682, transparent 36%),
+    radial-gradient(ellipse at 0 70%, #fbecdc66, transparent 42%),
+    linear-gradient(135deg, #fcfdfb, #f9fbfa 54%, #f1f7f5);
+
+  --dash-teal: #43877e;
+  --dash-teal-deep: var(--cinnabar-deep);
+  --dash-teal-soft: #deefea;
+  --dash-muted: #7b8786;
+  --dash-stroke: #e8eeeb;
+  --dash-mint: #e1f4ed;
+  --dash-lime: #f1f5d9;
+  --dash-peach: #faeadc;
+
+  /* 兼容学习计划/项目页的旧令牌命名，避免背景和边框引用空变量。 */
+  --bg: var(--paper);
+  --bg-0: var(--paper);
+  --bg-1: var(--paper-2);
+  --bg-2: var(--paper-3);
+  --bg-soft: var(--paper-3);
+  --bg-surface: var(--paper-2);
+  --border: var(--line);
+  --line-1: var(--line);
+  --ink-1: var(--ink);
+  --ink-2: var(--ink-soft);
+  --accent: var(--cinnabar);
+  --radius: var(--r-lg);
+}
+
+[data-theme='dark'] .workspace-theme {
+  --paper: #192622;
+  --paper-2: #22322c;
+  --paper-3: #293c33;
+  --ink: #e4eee8;
+  --ink-soft: #b4c8be;
+  --ink-faint: #93aa9e;
+  --line: #344b40;
+  --line-strong: #50695c;
+  --cinnabar: #8ac0b2;
+  --cinnabar-deep: #b4dace;
+  --cinnabar-wash: #284139;
+  --on-accent: #192c25;
+  --amber: #b6c18c;
+  --amber-wash: #343e29;
+  --workspace-shadow: 0 16px 40px -28px #00000070;
+  --workspace-background: radial-gradient(ellipse at 100% 0, #37564940, transparent 55%),
+    radial-gradient(ellipse at 0 70%, #66534012, transparent 42%), linear-gradient(130deg, #1d2b26, #192622);
+  --dash-teal: #8ac0b2;
+  --dash-teal-soft: #284139;
+  --dash-muted: #95a7a2;
+  --dash-stroke: #31403d;
+  --dash-mint: #2c4c42;
+  --dash-lime: #3e4730;
+  --dash-peach: #4b3c31;
+}
+
+.main.workspace-theme {
+  color: var(--ink);
+  /* 使用背景图层而非遮罩/额外滚动容器，不影响对话滚动、弹窗和点击。 */
+  background-color: var(--paper);
+  background-image: url('../assets/workspace-book.svg'), url('../assets/workspace-offer.svg'),
+    url('../assets/workspace-cap.svg'), var(--workspace-background);
+  background-repeat: no-repeat;
+  background-size:
+    220px 220px,
+    98px 132px,
+    210px 210px,
+    auto,
+    auto,
+    auto;
+  background-position:
+    88% -62px,
+    calc(100% + 20px) 112px,
+    -75px 88%,
+    center,
+    center,
+    center;
+}
+
+.workspace-theme .page {
+  min-height: 100%;
+}
+.workspace-theme .page-head h1,
+.workspace-theme .resume-head h1 {
+  font-size: clamp(26px, 2.1vw, 34px);
+  line-height: 1.25;
+  font-weight: 600;
+}
+.workspace-theme .page-head p,
+.workspace-theme .resume-head p {
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+.workspace-theme .card {
+  box-shadow: var(--workspace-shadow);
+}
+
+@media (max-width: 760px) {
+  .main.workspace-theme {
+    background-size:
+      150px 150px,
+      65px 90px,
+      140px 140px,
+      auto,
+      auto,
+      auto;
+    background-position:
+      95% -44px,
+      calc(100% + 25px) 88px,
+      -80px 90%,
+      center,
+      center,
+      center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-theme .page,
+  .workspace-theme .reveal,
+  .workspace-theme .capture .page-head,
+  .workspace-theme .capture .capture-composer,
+  .workspace-theme .capture .capture-cards {
+    animation: none;
+    opacity: 1;
+  }
+}

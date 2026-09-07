@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -10,7 +10,6 @@ import {
   ChevronRight,
   CircleCheck,
   Compass,
-  FileCheck2,
   GraduationCap,
   Layers3,
   LayoutDashboard,
@@ -23,31 +22,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { drill, studyPlan } from '../api/drill';
-import { knowledgeApi } from '../api/knowledge';
-import { interviewApi, type InterviewListItem } from '../api/interview';
 import { PlanSwitcher } from '../components/PlanSwitcher';
 import { useActivePlan } from '../lib/useActivePlan';
 import { fallbackUsername } from '../lib/userDisplay';
-import type { DebtView, PlanView, DailyTaskView, KnowledgeCard } from '../api/types';
+import type { PlanView } from '../api/types';
+import { DASHBOARD_LABELS, useDashboardData } from '../lib/useDashboardData';
 import './Dashboard.css';
 
-interface DashboardData {
-  plans: PlanView[] | null;
-  today: DailyTaskView[] | null;
-  cards: KnowledgeCard[] | null;
-  due: KnowledgeCard[] | null;
-  interviews: InterviewListItem[] | null;
-  debt: DebtView[] | null;
-}
-const INITIAL_DATA: DashboardData = {
-  plans: null,
-  today: null,
-  cards: null,
-  due: null,
-  interviews: null,
-  debt: null,
-};
 const EMPTY_PLANS: PlanView[] = [];
 const countFormat = new Intl.NumberFormat('zh-CN');
 const displayCount = (value: number | null) => (value === null ? '—' : countFormat.format(value));
@@ -68,9 +49,6 @@ function dailyCounts(dates: string[], days: number, now: Date) {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + index + 1);
     return { label: `${date.getMonth() + 1}/${date.getDate()}`, value: counts.get(dateKey(date)) ?? 0 };
   });
-}
-function valueOf<T>(result: PromiseSettledResult<T>): T | null {
-  return result.status === 'fulfilled' ? result.value : null;
 }
 
 function MiniChart({ values, bars = false }: { values: number[]; bars?: boolean }) {
@@ -311,42 +289,10 @@ export function Dashboard() {
     () => profile?.username?.trim() || fallbackUsername(userId),
     [profile?.username, userId],
   );
-  const [data, setData] = useState<DashboardData>(INITIAL_DATA);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState<string[]>([]);
-  const [revision, setRevision] = useState(0);
+  const { data, loading, failed: failedSections, updatedAt, refresh } = useDashboardData(userId);
+  const failed = failedSections.map((section) => DASHBOARD_LABELS[section]);
   const [days, setDays] = useState(14);
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const names = ['学习计划', '今日任务', '知识卡片', '卡片复习', '面试记录', '内化复盘'];
-    Promise.allSettled([
-      studyPlan.list(),
-      drill.today(),
-      knowledgeApi.list(),
-      knowledgeApi.due(),
-      interviewApi.list(),
-      drill.debt(),
-    ]).then((results) => {
-      if (!alive) return;
-      const [plans, today, cards, due, interviews, debt] = results;
-      setData({
-        plans: valueOf(plans),
-        today: valueOf(today),
-        cards: valueOf(cards),
-        due: valueOf(due),
-        interviews: valueOf(interviews),
-        debt: valueOf(debt),
-      });
-      setFailed(results.flatMap((result, i) => (result.status === 'rejected' ? [names[i]] : [])));
-      setNow(new Date());
-      setLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [userId, revision]);
+  const now = useMemo(() => new Date(updatedAt || Date.now()), [updatedAt]);
 
   const plans = data.plans ?? EMPTY_PLANS;
   const { activePlan, activeId, switchPlan } = useActivePlan(plans);
@@ -400,14 +346,6 @@ export function Dashboard() {
 
   return (
     <div className="dashboard-page">
-      <div className="dashboard-ambient" aria-hidden="true">
-        <BookOpen className="dashboard-ambient-book" strokeWidth={0.7} />
-        <GraduationCap className="dashboard-ambient-cap" strokeWidth={0.8} />
-        <span className="dashboard-ambient-offer">
-          <FileCheck2 size={26} strokeWidth={1} />
-          <span>OFFER</span>
-        </span>
-      </div>
       <div className="dashboard-content">
         <div className="dashboard-topbar">
           <span className="dashboard-breadcrumb">
@@ -424,7 +362,7 @@ export function Dashboard() {
               className={`dashboard-refresh${loading ? ' is-loading' : ''}`}
               type="button"
               disabled={loading}
-              onClick={() => setRevision((value) => value + 1)}
+              onClick={refresh}
               aria-label="刷新首页数据"
               title="刷新首页数据"
             >
@@ -456,8 +394,8 @@ export function Dashboard() {
         </header>
         {failed.length > 0 && (
           <div className="dashboard-notice" role="status">
-            {failed.join('、')}暂时加载失败，其他数据仍可查看。
-            <button type="button" disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+            {failed.join('、')}更新失败，已保留已有数据，可稍后重试。
+            <button type="button" disabled={loading} onClick={refresh}>
               重新加载
             </button>
           </div>

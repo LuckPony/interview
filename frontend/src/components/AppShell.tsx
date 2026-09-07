@@ -29,10 +29,11 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { drill } from '../api/drill';
+import { TODAY_ONLY, useDashboardData } from '../lib/useDashboardData';
 import { fallbackUsername } from '../lib/userDisplay';
 import { CasualNoteDialog } from './CasualNoteDialog';
 import './AppShell.css';
+import '../styles/workspace.css';
 
 interface NavItem {
   to: string;
@@ -317,7 +318,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { userId, profile, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [pendingReview, setPendingReview] = useState(0);
+  const { data: dashboardData, refresh: refreshToday } = useDashboardData(userId, TODAY_ONLY);
+  const pendingReview = (dashboardData.today ?? []).filter(
+    (task) => task.kind === 'REVIEW' && task.status !== 'DONE' && task.status !== 'SKIPPED',
+  ).length;
   const [showCasualNote, setShowCasualNote] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const guestUsername = useMemo(() => fallbackUsername(userId), [userId]);
@@ -343,28 +347,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // 主进程在窗口隐藏后仍负责定时通知；渲染层只需周期性同步今天还剩多少学习/复习任务。
   useEffect(() => {
-    let alive = true;
-    const sync = () =>
-      drill
-        .today()
-        .then((tasks) => {
-          if (!alive) return;
-          const active = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'SKIPPED');
-          const review = active.filter((t) => t.kind === 'REVIEW').length;
-          setPendingReview(review);
-          return window.electronAPI?.updateReminderTasks({
-            learn: active.filter((t) => t.kind === 'NEW').length,
-            review,
-          });
-        })
-        .catch(() => {});
-    sync();
-    const timer = window.setInterval(sync, 10 * 60 * 1000);
+    if (!window.electronAPI?.updateReminderTasks) return;
+    const timer = window.setInterval(refreshToday, 10 * 60 * 1000);
     return () => {
-      alive = false;
       window.clearInterval(timer);
     };
-  }, [userId]);
+  }, [refreshToday]);
+
+  useEffect(() => {
+    if (!dashboardData.today) return;
+    const active = dashboardData.today.filter((task) => task.status !== 'DONE' && task.status !== 'SKIPPED');
+    window.electronAPI
+      ?.updateReminderTasks({
+        learn: active.filter((task) => task.kind === 'NEW').length,
+        review: active.filter((task) => task.kind === 'REVIEW').length,
+      })
+      .catch((error: unknown) => console.warn('同步桌面学习提醒失败', error));
+  }, [dashboardData.today]);
 
   const toggleGroup = (id: NavGroup['id']) => {
     setExpandedGroups((current) => {
@@ -496,18 +495,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="main">{children}</main>
+      <main className="main workspace-theme">
+        {children}
+        {showCasualNote && <CasualNoteDialog onClose={() => setShowCasualNote(false)} />}
+      </main>
 
       <button
-        className="casual-note-fab"
+        className="casual-note-fab workspace-theme"
         onClick={() => setShowCasualNote(true)}
         title="随手记"
         aria-label="打开随手记"
       >
         <NotebookPen size={20} strokeWidth={1.8} />
       </button>
-
-      {showCasualNote && <CasualNoteDialog onClose={() => setShowCasualNote(false)} />}
     </div>
   );
 }

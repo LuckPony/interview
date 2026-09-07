@@ -31,7 +31,7 @@
   height: 76px;
   border-radius: 23px;
   color: var(--cinnabar-deep);
-  background: #eef2ff;
+  background: var(--cinnabar-wash);
   font-family: var(--font-display);
   font-size: 1.75rem;
   font-weight: 750;
@@ -119,7 +119,7 @@
 }
 .account-password-button:hover:not(:disabled) { border-color: var(--ink-soft); background: var(--paper-3); color: var(--ink); }
 .account-password-button:disabled { opacity: 0.55; cursor: wait; }
-.account-tip-card { display: flex; align-items: flex-start; gap: 11px; padding: 17px; color: var(--cinnabar); background: #f7f8ff; }
+.account-tip-card { display: flex; align-items: flex-start; gap: 11px; padding: 17px; color: var(--cinnabar); background: var(--paper-3); }
 .account-tip-card strong { display: block; color: var(--ink); font-size: var(--fs-sm); }
 .account-tip-card p { margin-top: 4px; color: var(--ink-soft); font-size: var(--fs-xs); line-height: 1.6; }
 .account-inline-error { margin-top: 12px; padding: 9px 11px; border: 1px solid color-mix(in oklch, var(--bad) 38%, var(--line)); border-radius: 8px; color: var(--bad); background: var(--bad-wash); font-size: var(--fs-xs); }
@@ -131,11 +131,9 @@
 .password-modal-close:hover { color: var(--ink); background: var(--paper-3); }
 .password-modal-head { display: flex; align-items: center; gap: 13px; padding-right: 30px; }
 .password-modal-head h2 { margin-top: 5px; font-size: var(--fs-lg); }
-.password-modal-icon { display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; color: var(--cinnabar-deep); background: #eef2ff; }
+.password-modal-icon { display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; color: var(--cinnabar-deep); background: var(--cinnabar-wash); }
 
 [data-theme='dark'] .account-avatar,
-[data-theme='dark'] .password-modal-icon { background: rgba(49, 46, 129, 0.45); }
-[data-theme='dark'] .account-tip-card { background: rgba(49, 46, 129, 0.2); }
 .password-mail-notice { display: flex; align-items: flex-start; gap: 10px; margin: 22px 0 18px; padding: 12px 13px; border: 1px solid color-mix(in oklch, var(--good) 25%, var(--line)); border-radius: 9px; color: var(--good); background: var(--good-wash); }
 .password-mail-notice svg { flex: 0 0 auto; margin-top: 2px; }
 .password-mail-notice strong { display: block; font-size: var(--fs-sm); }

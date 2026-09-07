@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ConfigProvider, Segmented, Switch, TimePicker } from 'antd';
+import { ConfigProvider, Segmented, Switch, TimePicker, theme as antdTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import dayjs, { type Dayjs } from 'dayjs';
 import { Bell, CalendarDays, Check, ChevronDown, Plus, X } from 'lucide-react';
@@ -370,11 +370,20 @@ const WEEKDAYS = [
 
 function ReminderCard() {
   const api = window.electronAPI;
+  const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   const [enabled, setEnabled] = useState(true);
   const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY'>('DAILY');
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [time, setTime] = useState('20:00');
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!api?.getReminder) return;
+    // 时间选择器的弹层挂载到 body，也要跟随工作台主题，不能留在旧蓝色/浅色主题。
+    const observer = new MutationObserver(() => setDark(document.documentElement.dataset.theme === 'dark'));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, [api]);
 
   useEffect(() => {
     api?.getReminder?.().then((v) => {
@@ -401,8 +410,11 @@ function ReminderCard() {
     <ConfigProvider
       locale={zhCN}
       theme={{
+        algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
-          colorPrimary: '#3567d6',
+          colorPrimary: dark ? '#8ac0b2' : '#37796d',
+          colorBgContainer: dark ? '#22322c' : '#ffffff',
+          colorBgElevated: dark ? '#22322c' : '#ffffff',
           borderRadius: 10,
           controlHeight: 40,
           fontFamily: 'var(--font-sans)',

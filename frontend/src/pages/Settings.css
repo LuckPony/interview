@@ -189,8 +189,8 @@
   height: 42px;
   flex: 0 0 auto;
   border-radius: 12px;
-  color: #3567d6;
-  background: color-mix(in oklch, #3567d6 10%, var(--paper));
+  color: var(--cinnabar);
+  background: color-mix(in oklch, var(--cinnabar) 10%, var(--paper));
 }
 .reminder-heading-copy { min-width: 0; flex: 1; }
 .reminder-heading-copy .settings-section-title { margin: 0; }
@@ -223,12 +223,12 @@
 }
 .reminder-card .ant-segmented-item { color: var(--ink-soft); }
 .reminder-card .ant-segmented-item-selected {
-  color: #3567d6;
+  color: var(--cinnabar);
   font-weight: 650;
   box-shadow: 0 1px 5px rgb(35 43 54 / 10%);
 }
 .reminder-card .ant-switch { flex: 0 0 auto; background: var(--line-strong); }
-.reminder-card .ant-switch.ant-switch-checked { background: #3567d6; }
+.reminder-card .ant-switch.ant-switch-checked { background: var(--cinnabar); }
 .reminder-time {
   width: 100%;
   height: 44px;
@@ -237,8 +237,8 @@
 }
 .reminder-time:hover,
 .reminder-time.ant-picker-focused {
-  border-color: #3567d6 !important;
-  box-shadow: 0 0 0 3px color-mix(in oklch, #3567d6 10%, transparent) !important;
+  border-color: var(--cinnabar) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinnabar) 10%, transparent) !important;
 }
 .reminder-time input {
   color: var(--ink) !important;
@@ -260,8 +260,8 @@
   cursor: pointer;
   transition: border-color .15s, color .15s, background .15s;
 }
-.weekday-picker button:hover:not(:disabled) { border-color: #3567d6; color: #3567d6; }
-.weekday-picker button.is-on { border-color: #3567d6; background: #3567d6; color: #fff; font-weight: 650; }
+.weekday-picker button:hover:not(:disabled) { border-color: var(--cinnabar); color: var(--cinnabar); }
+.weekday-picker button.is-on { border-color: var(--cinnabar); background: var(--cinnabar); color: var(--on-accent); font-weight: 650; }
 .weekday-picker button:disabled { opacity: .45; cursor: not-allowed; }
 .reminder-footer {
   padding-top: var(--s-4);

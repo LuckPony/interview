@@ -1,4 +1,5 @@
 import { apiFetch, ApiError, getToken, getLlmKeyHeader } from './client';
+import { notifyDataChanged } from './dataEvents';
 import type {
   QuestionView,
   QuestionMeta,
@@ -67,6 +68,7 @@ const API_BASE_SSE: string = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/
  * - 非 2xx / 流式中止 → onError（带 status+message，前端据此区分 409 闸门等）
  */
 function openSse(url: string, init: RequestInit, handlers: SseHandlers): TutorStream {
+  const requestToken = getToken();
   const controller = new AbortController();
   let cancelled = false;
   (async () => {
@@ -131,6 +133,9 @@ function openSse(url: string, init: RequestInit, handlers: SseHandlers): TutorSt
           }
         } else if (currentEvent === 'done') {
           finished = true;
+          if (init.method?.toUpperCase() === 'POST' && requestToken === getToken()) {
+            notifyDataChanged(url.slice(`${API_BASE_SSE}/api`.length));
+          }
           let fullText: string | undefined;
           if (payload && payload !== '[DONE]') {
             try {

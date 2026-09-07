@@ -1,20 +1,8 @@
-/* 首页独立配色：沿用全局字体与深色模式令牌，不改变侧栏设计。 */
+/* 配色与背景由工作台公共主题提供。 */
 .dashboard-page {
-  --dash-teal: #43877e;
-  --dash-teal-deep: #295d57;
-  --dash-teal-soft: #deefea;
-  --dash-muted: #7b8786;
-  --dash-stroke: #e8eeeb;
-  --dash-mint: #e1f4ed;
-  --dash-lime: #f1f5d9;
-  --dash-peach: #faeadc;
   position: relative;
-  isolation: isolate;
   min-height: 100%;
   padding: 0 clamp(22px, 3.2vw, 56px);
-  background: radial-gradient(ellipse at 96% 1%, #dceee682 0, transparent 36%),
-    radial-gradient(ellipse at 0 70%, #fbecdc66 0, transparent 42%),
-    linear-gradient(135deg, #fcfdfb, #f9fbfa 54%, #f1f7f5);
 }
 .dashboard-content {
   position: relative;
@@ -29,56 +17,6 @@
 .dashboard-page a:focus-visible,
 .dashboard-page button:focus-visible {
   outline-color: var(--dash-teal);
-}
-.dashboard-ambient {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.dashboard-ambient-book {
-  position: absolute;
-  width: 205px;
-  height: 205px;
-  right: 9%;
-  top: -52px;
-  color: #7baaa0;
-  opacity: 0.08;
-  transform: rotate(-19deg);
-}
-.dashboard-ambient-cap {
-  position: absolute;
-  width: 200px;
-  height: 200px;
-  left: -70px;
-  bottom: 9%;
-  color: #d5ad84;
-  opacity: 0.09;
-  transform: rotate(17deg);
-}
-.dashboard-ambient-offer {
-  position: absolute;
-  right: -22px;
-  top: 110px;
-  width: 84px;
-  height: 106px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 9px;
-  border: 1px solid #8fb5a83b;
-  border-radius: 12px;
-  transform: rotate(18deg);
-  color: #86ab9d;
-  background: #e2eee51a;
-  opacity: 0.22;
-}
-.dashboard-ambient-offer span {
-  font-family: var(--font-display);
-  font-size: 13px;
-  letter-spacing: 3px;
 }
 .dashboard-topbar,
 .dashboard-topbar-actions,
@@ -899,18 +837,6 @@
   opacity: 0.75;
 }
 
-[data-theme='dark'] .dashboard-page {
-  --dash-teal: #8ac0b2;
-  --dash-teal-deep: #b4dace;
-  --dash-teal-soft: #284139;
-  --dash-muted: #95a7a2;
-  --dash-stroke: #31403d;
-  --dash-mint: #2c4c42;
-  --dash-lime: #3e4730;
-  --dash-peach: #4b3c31;
-  background: radial-gradient(ellipse at 100% 0, #253e364f, transparent 55%),
-    linear-gradient(130deg, var(--paper), #192622);
-}
 [data-theme='dark'] .tone-mint {
   background: linear-gradient(145deg, #294e43, #243e38);
   color: #86bba7;
@@ -1165,12 +1091,6 @@
   }
   .dashboard-bottom-grid {
     gap: 16px;
-  }
-  .dashboard-ambient-book {
-    width: 150px;
-    height: 150px;
-    right: -30px;
-    top: 55px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

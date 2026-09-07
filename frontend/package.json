@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "build:web": "tsc --noEmit && vite build --mode web",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:cache": "node --experimental-strip-types --test tests/resourceCache.test.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
