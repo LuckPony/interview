@@ -134,8 +134,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
-            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
-            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
+            // 答对达标：聚焦子点只通过该子点；综合题通过题涉概念的全部子点
+            subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -259,8 +259,8 @@ public class GradingService {
         } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
             run.setFinalGrade(g1.name());
             run.setSocraticState(DrillPhase.DONE);
-            // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
-            subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
+            // 答对达标：聚焦子点只通过该子点；综合题通过题涉概念的全部子点
+            subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
         } else {
             run.setSocraticState(DrillPhase.GUIDED);
         }
@@ -333,8 +333,8 @@ public class GradingService {
         run.setStatus(DrillRunStatus.GRADED);
         runRepo.save(run);
 
-        // 答对达标：该题涉及的所有概念的子知识点自动标记为通过
-        subPointPassService.markAllSubPointsPassed(userId, runId, q.getId());
+        // 答对达标：聚焦子点只通过该子点；综合题通过题涉概念的全部子点
+        subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
 
         // 掌握度：G2 引导后达标 → 按 primary 概念升到 GOOD（guided 会缩短复习间隔）
         Long primaryId = (q.getConceptIds() == null || q.getConceptIds().length == 0)
