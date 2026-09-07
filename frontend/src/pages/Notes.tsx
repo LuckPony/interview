@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check, MessageCircle } from 'lucide-react';
 import { drill, studyPlan } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
@@ -46,7 +46,16 @@ export function Notes() {
   const [err, setErr] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const [tab, setTab] = useState<'debt' | 'card' | 'note'>('debt');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const tab = requestedTab === 'card' || requestedTab === 'note' ? requestedTab : 'debt';
+  const setTab = (next: 'debt' | 'card' | 'note') => {
+    setSearchParams(previous => {
+      const params = new URLSearchParams(previous);
+      if (next === 'debt') params.delete('tab'); else params.set('tab', next);
+      return params;
+    });
+  };
   const [notes, setNotes] = useState<CasualNote[] | null>(null);
   const [noteSearch, setNoteSearch] = useState('');
   const [noteConceptId, setNoteConceptId] = useState<number | null>(null);
