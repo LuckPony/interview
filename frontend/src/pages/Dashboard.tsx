@@ -434,6 +434,23 @@ export function Dashboard() {
             to="/plan"
           />
         </section>
+        <div className="dashboard-plan-bar">
+          <div>
+            <span className="dashboard-plan-label">
+              <Compass size={15} />
+              当前学习方向
+            </span>
+            {plans.length > 1 ? (
+              <PlanSwitcher plans={plans} activeId={activeId} onSwitch={switchPlan} />
+            ) : (
+              <strong>{activePlan?.title || (data.plans === null ? '暂未读取' : '尚未创建学习方向')}</strong>
+            )}
+          </div>
+          <Link to="/intake">
+            <Plus size={14} />
+            新建方向
+          </Link>
+        </div>
         <div className="dashboard-section-heading dashboard-overview-heading">
           <div>
             <h2>成长概览</h2>
@@ -661,23 +678,10 @@ export function Dashboard() {
             <ActivityChart key={days} points={activity} available={data.cards !== null} loading={loading} />
           </div>
         </section>
-        <div className="dashboard-plan-bar">
-          <div>
-            <span className="dashboard-plan-label">
-              <Compass size={15} />
-              当前学习方向
-            </span>
-            {plans.length > 1 ? (
-              <PlanSwitcher plans={plans} activeId={activeId} onSwitch={switchPlan} />
-            ) : (
-              <strong>{activePlan?.title || (data.plans === null ? '暂未读取' : '尚未创建学习方向')}</strong>
-            )}
-          </div>
-          <Link to="/intake">
-            <Plus size={14} />
-            新建方向
-          </Link>
-        </div>
+        <p className="dashboard-direction-summary" aria-live="polite">
+          <Compass size={14} aria-hidden="true" />
+          当前的学习方向为 <span key={activeId ?? 'none'}>{activePlan?.title || (data.plans === null ? '正在读取…' : '尚未创建学习方向')}</span>
+        </p>
         <section className="dashboard-bottom-grid">
           <div className="dashboard-panel">
             <div className="dashboard-section-heading">

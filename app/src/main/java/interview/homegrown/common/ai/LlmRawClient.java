@@ -1,15 +1,20 @@
 package interview.homegrown.common.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.config.AiConfigProperties;
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
+import java.io.EOFException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -252,28 +257,31 @@ public class LlmRawClient {
             applyThinkingStream(body);
             body.put("stream", true);
 
-            // 关键：用 ofInputStream() 而不是 ofLines() —— JDK 的 ofLines() 是"全缓冲"的
-            // （等整个响应体到达后才产生行流），根本做不到真流式；ofInputStream + BufferedReader
-            // readLine() 才是逐行阻塞读，deepseek 每推一个 chunk 就能立刻回调 onToken。
+            // 显式管理响应流生命周期：逐行读取，回调失败或客户端断开时及时关闭上游。
             HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
             if (response == null) return;
             if (response.statusCode() / 100 != 2) {
-                notifyError(onError, new RuntimeException("LLM stream HTTP " + response.statusCode()));
+                response.body().close();
+                notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                        "LLM stream HTTP " + response.statusCode()));
                 return;
             }
 
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                 String line;
+                boolean completed = false;
                 while ((line = reader.readLine()) != null) {
                     // SSE 一条 event 可能跨多行："data: ..." 一行；空行表示事件边界
                     if (line.isEmpty()) continue;
                     if (!line.startsWith("data:")) continue;
                     String payload = line.substring(5).trim();
-                    if (payload.isEmpty() || "[DONE]".equals(payload)) continue;
+                    if ("[DONE]".equals(payload)) { completed = true; break; }
+                    if (payload.isEmpty()) continue;
                     try {
                         JsonNode node = objectMapper.readTree(payload);
                         JsonNode choice = node.path("choices").path(0);
+                        if (textOrNull(choice.path("finish_reason")) != null) completed = true;
                         JsonNode delta = choice.path("delta");
                         // 推理内容独立推送（onReasoning 非空时走它，正文走 onToken，互不混用）。
                         // 思考字段可能出现在 delta（流式）、choice 或 message（部分网关/模型在收尾帧才给），都兼容。
@@ -291,12 +299,14 @@ public class LlmRawClient {
                             text = reasoning;
                         }
                         if (text != null && !text.isEmpty() && onToken != null) onToken.accept(text);
-                    } catch (Exception e) {
+                    } catch (JsonProcessingException e) {
                         log.debug("解析 SSE chunk 失败，跳过: {}", e.getMessage());
                     }
                 }
+                if (!completed) throw new EOFException("模型连接在回答完成前断开");
             }
-        } catch (Throwable t) {
+        } catch (Exception t) {
+            if (t instanceof InterruptedException) Thread.currentThread().interrupt();
             notifyError(onError, t);
         }
     }
@@ -483,12 +493,21 @@ public class LlmRawClient {
                 HttpResponse<InputStream> response =
                         httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
                 if (response.statusCode() == 400 && attempt == 0 && hasOptionalParams(reqBody)) {
+                    response.body().close();
                     log.info("stream HTTP 400（可能不认识可选参数），去掉可选参数后重试");
                     reqBody = stripOptionalParams(reqBody);
                     continue;
                 }
                 return response;
-            } catch (Throwable t) {
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                notifyError(onError, interrupted);
+                return null; // 超时/用户中断不能重新请求并继续消耗模型额度。
+            } catch (Exception t) {
+                if (Thread.currentThread().isInterrupted() || t instanceof InterruptedIOException) {
+                    notifyError(onError, t);
+                    return null;
+                }
                 if (attempt == 0 && hasOptionalParams(reqBody)) {
                     log.info("stream IO 异常（{}），去掉可选参数后重试", t.getMessage());
                     reqBody = stripOptionalParams(reqBody);

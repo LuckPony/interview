@@ -1,17 +1,24 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BookmarkPlus, Check, ChevronDown, ChevronUp, EyeOff, FileText, PencilLine, RotateCcw, Search, Send, Sparkles, Square, X } from 'lucide-react';
+import { BookmarkPlus, Check, ChevronDown, ChevronUp, EyeOff, FileText, PencilLine, Plus, Loader2, Upload, RotateCcw, Search, Send, Sparkles, Square, X } from 'lucide-react';
 import { knowledgeApi, askStream, type ChatMsg } from '../api/knowledge';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
 import { CardMeta } from '../components/CardMeta';
 import type { KnowledgeCard } from '../api/types';
 import { ApiError } from '../api/client';
+import { useFileDrop } from '../lib/useFileDrop';
+import { CHAT_FILE_ACCEPT, CHAT_MAX_CHARS, withAttachments, type ChatAttachment } from '../lib/chatAttachments';
 import './CapturePage.css';
 
 function msg(e: unknown): string {
     if (e instanceof ApiError) return e.message;
     if (e instanceof Error && e.message) return e.message;
     return '操作失败，请重试';
+}
+
+function persistSession(key: string, value: unknown) {
+    try { sessionStorage.setItem(key, JSON.stringify(value)); }
+    catch { /* 长对话可能超过浏览器配额；保留当前内存内容，不中断问答。 */ }
 }
 
 /** 卡片每页条数 */
@@ -106,6 +113,12 @@ export function CapturePage() {
     const [msgs, setMsgs] = useState<ChatMsg[]>(initialMsgs);
     const [cards, setCards] = useState<KnowledgeCard[]>(() => loadSession<KnowledgeCard[]>(SESSION_CARDS) ?? []);
     const [input, setInput] = useState('');
+    const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+    const [parsing, setParsing] = useState(false);
+    const [streamStatus, setStreamStatus] = useState('正在准备回答…');
+    const fileRef = useRef<HTMLInputElement>(null);
+    const uploadRef = useRef<AbortController | null>(null);
+    const uploadBusy = useRef(false);
     const [streaming, setStreaming] = useState(false);
     const [auto, setAuto] = useState(false);
     const [err, setErr] = useState('');
@@ -137,14 +150,14 @@ export function CapturePage() {
         } else {
             knowledgeApi.list().then(setCards).catch(() => {});
         }
-        return () => streamRef.current?.cancel();
+        return () => { streamRef.current?.cancel(); uploadRef.current?.abort(); };
     }, []);
 
     // 变更即写回会话存储（msgs 为空等常态也写，保证与真实状态一致）
-    useEffect(() => { sessionStorage.setItem(SESSION_MSGS, JSON.stringify(msgs)); }, [msgs]);
-    useEffect(() => { sessionStorage.setItem(SESSION_CARDS, JSON.stringify(cards)); }, [cards]);
+    useEffect(() => { persistSession(SESSION_MSGS, msgs); }, [msgs]);
+    useEffect(() => { persistSession(SESSION_CARDS, cards); }, [cards]);
     useEffect(() => {
-        sessionStorage.setItem(SESSION_SAVED_TURNS, JSON.stringify([...savedTurns]));
+        persistSession(SESSION_SAVED_TURNS, [...savedTurns]);
     }, [savedTurns]);
 
     // 流式输出会持续改变最后一条消息的高度；每个 token 更新后跟随到底部。
@@ -213,26 +226,68 @@ export function CapturePage() {
         setPage(p => Math.min(p, Math.max(1, Math.ceil((filtered.length - 1) / PAGE_SIZE))));
     };
 
-    const ask = (q: string) => {
-        if (!q.trim() || streaming) return;
-        setInput('');
+    const addFiles = async (files: File[]) => {
+        if (streaming || uploadBusy.current || !files.length) return;
         setErr('');
-        setStreaming(true);
-        setMsgs(m => [...m, { role: 'user', content: q }, { role: 'ai', content: '' }]);
+        if (attachments.length + files.length > 3) { setErr('每轮最多添加 3 个附件，请先移除不需要的文件'); return; }
+        for (const file of files) {
+            const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+            if (!CHAT_FILE_ACCEPT.split(',').includes(extension)) { setErr('暂不支持该格式，请上传 PDF、Word、文本或常用代码文件'); return; }
+            if (!file.size || file.size > 10 * 1024 * 1024) { setErr('附件不能为空，且每个文件不能超过 10 MB'); return; }
+        }
+        uploadBusy.current = true;
+        setParsing(true);
+        const controller = new AbortController();
+        uploadRef.current = controller;
+        try {
+            const parsed: ChatAttachment[] = [];
+            for (const file of files) parsed.push(await knowledgeApi.parseAttachment(file, controller.signal));
+            if (!controller.signal.aborted) setAttachments(current => [...current, ...parsed]);
+        } catch (error) {
+            if (!controller.signal.aborted) setErr(msg(error));
+        } finally {
+            uploadBusy.current = false;
+            if (!controller.signal.aborted) setParsing(false);
+            uploadRef.current = null;
+        }
+    };
+    const { dragging, dropProps } = useFileDrop(files => { void addFiles(files); }, streaming || parsing);
 
-        const stream = askStream(
-            q.trim(),
-            msgs,
+    const ask = (q: string, files = attachments, history = msgs) => {
+        if ((!q.trim() && !files.length) || streaming || uploadBusy.current) return;
+        const question = q.trim() || '请结合这些附件进行分析，解释关键内容并给出建议。';
+        const fullQuestion = withAttachments(question, files);
+        if (fullQuestion.length > CHAT_MAX_CHARS) {
+            setErr('问题与附件文字合计不能超过 60000 字符，请拆分为几轮提问。当前输入与附件已保留。');
+            return;
+        }
+        setInput('');
+        setAttachments([]);
+        setErr('');
+        setStreamStatus('正在准备回答…');
+        setStreaming(true);
+        setMsgs([...history, { role: 'user', content: question, attachments: files }, { role: 'ai', content: '' }]);
+        streamRef.current = askStream(
+            fullQuestion,
+            history,
             (token) => setMsgs(m => m.map((x, i) => i === m.length - 1 ? { ...x, content: x.content + token } : x)),
             () => { setStreaming(false); streamRef.current = null; },
-            (e) => {
-                setErr(e ?? '回答失败，请检查 AI 设置或稍后重试');
-                setMsgs(m => m.map((x, i) => i === m.length - 1 ? { ...x, content: '（回答失败）' } : x));
+            (error) => {
+                setErr(error ?? '回答失败，请检查 AI 设置或稍后重试');
+                setMsgs(m => m.map((x, i) => i === m.length - 1 ? { ...x, failed: true,
+                    content: x.content || '本轮未完成，问题已保留，可以重试。' } : x));
                 setStreaming(false); streamRef.current = null;
             },
+            setStreamStatus,
         );
-        streamRef.current = stream;
     };
+    const retryLastAnswer = () => {
+        const question = msgs[msgs.length - 2];
+        if (question?.role === 'user') ask(question.content, question.attachments ?? [], msgs.slice(0, -2));
+    };
+    const completedMessages = msgs.flatMap((answer, index) =>
+        answer.role === 'ai' && answer.content.trim() && !answer.failed && !answer.stopped
+            && msgs[index - 1]?.role === 'user' ? [msgs[index - 1], answer] : []);
 
     const stopAnswer = () => {
         if (!streaming) return;
@@ -255,7 +310,7 @@ export function CapturePage() {
         const question = msgs[answerIndex - 1];
         const answer = msgs[answerIndex];
         if (!question || question.role !== 'user' || !answer || answer.role !== 'ai'
-            || !answer.content.trim() || answer.stopped || savingTurns.has(answerIndex)) return;
+            || !answer.content.trim() || answer.stopped || answer.failed || savingTurns.has(answerIndex)) return;
 
         setErr('');
         setSavingTurns(current => new Set(current).add(answerIndex));
@@ -276,10 +331,10 @@ export function CapturePage() {
     };
 
     const settle = async () => {
-        if (msgs.length === 0 || streaming) return;
+        if (completedMessages.length === 0 || streaming) return;
         setErr('');
         try {
-            const card = await knowledgeApi.capture(msgs);
+            const card = await knowledgeApi.capture(completedMessages);
             setCards(c => [card, ...c]);
             setMsgs([]);
             setSavedTurns(new Set());
@@ -292,19 +347,21 @@ export function CapturePage() {
 
     /** 不存卡、直接开新对话：清空当前对话（持久化随之写回空） */
     const newChat = () => {
-        if (msgs.length === 0 || streaming) return;
+        if (streaming || parsing) return;
         if (!window.confirm('当前对话还没有保存成卡片，确定开始新对话吗？')) return;
         streamRef.current?.cancel();
         setMsgs([]);
         setSavedTurns(new Set());
+        setAttachments([]);
+        setInput('');
         setErr('');
     };
 
     useEffect(() => {
-        if (!auto || msgs.length === 0 || streaming || msgs[msgs.length - 1]?.stopped) return;
+        if (!auto || msgs.length === 0 || streaming || parsing || input.trim() || attachments.length || msgs[msgs.length - 1]?.stopped || msgs[msgs.length - 1]?.failed) return;
         timer.current = window.setTimeout(settle, 10000);
         return () => window.clearTimeout(timer.current);
-    }, [msgs, auto, streaming]);
+    }, [msgs, auto, streaming, parsing, input, attachments]);
 
     // ===== 卡片查看：默认显示摘要，点「查看详细答案」展开 AI 完整回复 =====
     const toggleDetail = (id: number) => {
@@ -345,7 +402,8 @@ export function CapturePage() {
     };
 
     return (
-        <div className="page capture">
+        <div className={`page capture${dragging ? ' is-file-dragging' : ''}`} {...dropProps}>
+            {dragging && <div className="capture-drop-overlay"><Upload size={28} />松开鼠标，将文件添加到本轮提问</div>}
             <header className="page-head">
                 <span className="eyebrow">对话沉淀 · CAPTURE</span>
                 <h1>随手记</h1>
@@ -375,11 +433,22 @@ export function CapturePage() {
                     msgs.map((m, i) => (
                         <div key={i} className={'msg ' + m.role}>
                             {m.role === 'user' ? (
-                                m.content
+                                <>
+                                    <span>{m.content}</span>
+                                    {m.attachments?.map((file, index) => (
+                                        <details className="capture-message-file" key={index}>
+                                            <summary><FileText size={14} />{file.name}<small>{file.characters} 字符</small></summary>
+                                            <pre>{file.text}</pre>
+                                        </details>
+                                    ))}
+                                </>
                             ) : m.content ? (
                                 <>
                                     <Markdown>{m.content}</Markdown>
-                                    {i > 0 && msgs[i - 1].role === 'user' && !m.stopped
+                                    {m.failed && <div className="capture-answer-failed">本轮未完成，内容已保留。
+                                        {i === msgs.length - 1 && <button type="button" onClick={retryLastAnswer} disabled={streaming || parsing}><RotateCcw size={13} />重新生成</button>}
+                                    </div>}
+                                    {i > 0 && msgs[i - 1].role === 'user' && !m.stopped && !m.failed
                                         && !(streaming && i === msgs.length - 1) && (
                                         <div className="capture-turn-actions">
                                             <button
@@ -403,7 +472,7 @@ export function CapturePage() {
                                 </>
                             ) : (
                                 <span className="thinking">
-                                    思考中<span className="thinking-dots">…</span>
+                                    {streamStatus}<span className="thinking-dots">…</span>
                                     <span className="cursor-blink">▍</span>
                                 </span>
                             )}
@@ -413,6 +482,15 @@ export function CapturePage() {
             </Card>
 
             <Card className="capture-composer">
+                {attachments.length > 0 && <div className="capture-attachments" aria-label="本轮附件">
+                    {attachments.map((file, index) => (
+                        <div className="capture-attachment" key={index}>
+                            <FileText size={16} /><span><strong>{file.name}</strong><small>{file.characters.toLocaleString()} 字符</small></span>
+                            <button type="button" aria-label={`移除附件 ${file.name}`} onClick={() => setAttachments(current => current.filter((_, i) => i !== index))} disabled={streaming || parsing}><X size={14} /></button>
+                        </div>
+                    ))}
+                </div>}
+                {parsing && <div className="capture-upload-status" role="status"><Loader2 size={15} className="spin" />正在解析附件，完成后即可发送…</div>}
                 <textarea
                     className="capture-composer-textarea"
                     value={input}
@@ -430,17 +508,22 @@ export function CapturePage() {
                     placeholder="随便问点什么…（Enter 发送，Shift+Enter 换行）"
                     rows={2}
                     disabled={streaming}
+                    aria-label="输入问题或代码"
                 />
                 <div className="capture-composer-foot">
+                    <div className="capture-composer-left">
+                        <button type="button" className="capture-add-file" onClick={() => fileRef.current?.click()} disabled={streaming || parsing || attachments.length >= 3} aria-label="添加附件" title="添加文件（支持拖拽，每轮最多 3 个，每个不超过 10 MB）"><Plus size={21} /></button>
+                        <input ref={fileRef} type="file" multiple accept={CHAT_FILE_ACCEPT} hidden onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void addFiles(files); }} />
                     <span className="capture-composer-hint">
                         {streaming
-                            ? '回答生成中…'
+                            ? streamStatus
                             : auto
                                 ? '已开启自动成卡：停顿 10 秒自动保存'
-                                : '有价值的对话可一键存成知识卡片'}
+                                : 'PDF / Word / 文本 / 代码，可拖拽添加'}
                     </span>
+                    </div>
                     <div className="capture-composer-actions">
-                        <Button variant="ghost" onClick={newChat} disabled={msgs.length === 0 || streaming}>
+                        <Button variant="ghost" onClick={newChat} disabled={(msgs.length === 0 && !attachments.length && !input.trim()) || streaming || parsing}>
                             <RotateCcw size={15} strokeWidth={1.6} /> 新对话
                         </Button>
                         {streaming ? (
@@ -448,13 +531,14 @@ export function CapturePage() {
                                 <Square size={14} fill="currentColor" /> 停止
                             </Button>
                         ) : (
-                            <Button onClick={() => ask(input)} disabled={!input.trim()}>
+                            <Button onClick={() => ask(input)} disabled={(!input.trim() && !attachments.length) || parsing}>
                                 <Send size={16} strokeWidth={1.6} /> 提问
                             </Button>
                         )}
-                        <Button onClick={settle} disabled={msgs.length === 0 || streaming} variant="primary">存成卡片</Button>
+                        <Button onClick={settle} disabled={completedMessages.length === 0 || streaming || parsing} variant="primary">存成卡片</Button>
                     </div>
                 </div>
+                {attachments.length > 0 && <p className="capture-attachment-note">仅临时解析附件，不保存原文件；点击提问后，附件文字将发送给你配置的模型。每个文件最多 30000 字符。</p>}
             </Card>
 
             <section className="capture-cards">

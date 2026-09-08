@@ -10,7 +10,8 @@
     "build:web": "tsc --noEmit && vite build --mode web",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:cache": "node --experimental-strip-types --test tests/resourceCache.test.mjs"
+    "test:cache": "node --experimental-strip-types --test tests/resourceCache.test.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

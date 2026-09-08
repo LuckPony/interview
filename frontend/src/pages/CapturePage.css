@@ -217,6 +217,39 @@
   padding: var(--s-4) var(--s-5);
   background: var(--paper);
 }
+.capture-composer-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.capture-add-file {
+  display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px;
+  color: var(--cinnabar-deep); border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--paper-2); transition: background 180ms;
+}
+.capture-add-file:hover:not(:disabled) { background: var(--cinnabar-wash); }
+.capture-add-file:disabled { opacity: .45; cursor: not-allowed; }
+.capture-attachments { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
+.capture-attachment {
+  display: flex; align-items: center; gap: 9px; max-width: 100%; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--paper-2); color: var(--cinnabar-deep);
+}
+.capture-attachment > span { display: grid; min-width: 0; }
+.capture-attachment strong { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.capture-attachment small, .capture-attachment-note { font-size: 11px; color: var(--ink-faint); }
+.capture-attachment button { display: grid; place-items: center; padding: 5px; border-radius: 6px; }
+.capture-attachment button:hover { background: var(--paper-3); }
+.capture-attachment-note { margin-top: 10px; }
+.capture-upload-status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); padding: 0 0 10px; }
+.capture-answer-failed { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
+.capture-answer-failed button { display: inline-flex; align-items: center; gap: 5px; color: var(--cinnabar-deep); }
+.capture-message-file { margin-top: 12px; padding: 9px 12px; border: 1px solid currentColor; border-radius: 9px; background: #ffffff0b; }
+.capture-message-file summary { cursor: pointer; overflow-wrap: anywhere; font-size: 12px; }
+.capture-message-file summary svg { vertical-align: middle; margin-right: 6px; }
+.capture-message-file small { margin-left: 8px; opacity: .75; }
+.capture-message-file pre { overflow: auto; max-height: 240px; margin-top: 10px; font: 12px/1.6 var(--font-mono); white-space: pre; }
+.capture-drop-overlay {
+  position: fixed; inset: 20px; z-index: 200; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 15px; padding: 20px; border: 2px dashed var(--cinnabar); border-radius: 22px;
+  background: color-mix(in srgb, var(--paper-2) 93%, transparent); color: var(--cinnabar-deep);
+  pointer-events: none; text-align: center;
+}
 .capture-composer-textarea {
   width: 100%;
   border: 1px solid var(--line-strong);

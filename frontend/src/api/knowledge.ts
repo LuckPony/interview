@@ -1,7 +1,9 @@
-import { apiFetch, ApiError, getToken, getLlmKeyHeader } from './client';
+import { apiFetch, ApiError, getToken, getLlmKeyHeader, clearSession } from './client';
 import type { KnowledgeCard, CasualNote } from './types';
+import { createSseParser } from '../lib/sseParser';
+import { withAttachments, type ChatAttachment } from '../lib/chatAttachments';
 
-export interface ChatMsg { role: 'user' | 'ai'; content: string; stopped?: boolean }
+export interface ChatMsg { role: 'user' | 'ai'; content: string; stopped?: boolean; failed?: boolean; attachments?: ChatAttachment[] }
 export interface AskStream { cancel: () => void }
 
 /** 桌面端构建时 VITE_API_BASE 烘焙为后端地址；网页态为空走 dev 代理（相对 /api）。 */
@@ -44,88 +46,94 @@ export function askStream(
     onToken: (text: string) => void,
     onDone: () => void,
     onError: (msg?: string) => void,
+    onStatus?: (text: string) => void,
 ): AskStream {
     const controller = new AbortController();
     let cancelled = false;
-
+    let finished = false;
+    const fail = (message: string) => {
+        if (cancelled || finished) return;
+        finished = true;
+        onError(message);
+    };
     (async () => {
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         try {
-            // 桌面端本机 LLM key：随 SSE 请求临时带给后端（与 drill.ts 的 openSse 一致），
-            // 后端按 请求头 X-LLM-Key > 用户设置 > 启动配置 解析，只用不存。
             const token = getToken();
             const llmKey = await getLlmKeyHeader();
-            const headers: Record<string, string> = {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                ...(llmKey ? { 'X-LLM-Key': llmKey } : {}),
-            };
+            if (cancelled) return;
             const res = await fetch(`${API_BASE_SSE}/api/knowledge/ask`, {
                 method: 'POST',
-                headers,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    ...(llmKey ? { 'X-LLM-Key': llmKey } : {}),
+                },
                 body: JSON.stringify({
                     question,
                     conversation: conversation
-                        .filter(message => !message.stopped)
-                        .map(({ role, content }) => ({ role, content })),
+                        .filter((message, index) => !message.stopped && !message.failed
+                            && !(message.role === 'user' && (conversation[index + 1]?.failed || conversation[index + 1]?.stopped)))
+                        .slice(-12)
+                        .map(({ role, content, attachments }) => ({ role, content: withAttachments(content, attachments) })),
                 }),
                 signal: controller.signal,
             });
-            if (!res.ok || !res.body) { onError(`请求失败（${res.status}）`); return; }
-
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buf = '';
-            let currentEvent: string | null = null;
-            const currentData: string[] = [];
-
-            const dispatch = () => {
-                const payload = currentData.join('\n');
-                if (currentEvent === 'error') {
-                    try { const p = JSON.parse(payload); onError(p.message); } catch { onError(payload); }
-                } else if (currentEvent === 'done') {
-                    onDone();
-                } else {
-                    try {
-                        const p = JSON.parse(payload);
-                        if (typeof p.text === 'string') onToken(p.text);
-                    } catch { if (payload && !payload.startsWith('{')) onToken(payload); }
-                }
-                currentEvent = null;
-                currentData.length = 0;
-            };
-
-            const handleLine = (line: string) => {
-                if (line === '') dispatch();
-                else if (line.startsWith('event:')) currentEvent = line.slice(6).trim();
-                else if (line.startsWith('data:')) currentData.push(line.slice(5).trim());
-            };
-
-            for (;;) {
-                const { done, value } = await reader.read();
-                if (done || cancelled) break;
-                buf += decoder.decode(value, { stream: true });
-                let idx;
-                while ((idx = buf.indexOf('\n')) >= 0) {
-                    const line = buf.slice(0, idx).trim();
-                    buf = buf.slice(idx + 1);
-                    handleLine(line);
-                    await new Promise((r) => setTimeout(r, 0));
-                }
+            if (res.status === 401) {
+                if (token === getToken()) { clearSession(); window.dispatchEvent(new Event('yan:logout')); }
+                fail('登录已失效，请重新登录');
+                return;
             }
+            if (!res.ok || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+                let message = `请求失败（${res.status}），请检查模型设置后重试`;
+                try {
+                    const error = await res.json();
+                    if (typeof error.message === 'string') message = error.message;
+                } catch { /* 非 JSON 的代理错误使用安全提示。 */ }
+                fail(message);
+                return;
+            }
+            reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            const parser = createSseParser(({ event, data }) => {
+                if (finished || cancelled) return;
+                let payload: { text?: string; message?: string } = {};
+                try { payload = JSON.parse(data); } catch { /* 兼容纯文本 SSE。 */ }
+                if (event === 'error') fail(payload.message || '模型生成失败，请重试');
+                else if (event === 'done' || data === '[DONE]') { finished = true; onDone(); }
+                else if (event === 'status') onStatus?.(payload.text || '正在处理…');
+                else if (event === 'message') {
+                    if (typeof payload.text === 'string') onToken(payload.text);
+                    else if (data && !data.startsWith('{')) onToken(data);
+                }
+            });
+            while (!finished && !cancelled) {
+                const chunk = await reader.read();
+                if (chunk.done) { parser.push(decoder.decode()); parser.finish(); break; }
+                parser.push(decoder.decode(chunk.value, { stream: true }));
+            }
+            if (!finished && !cancelled) fail('连接意外断开，已保留问题和已生成内容，请重试。');
         } catch {
-            if (!cancelled) onError();
+            fail('连接中断或网络异常，已保留问题和已生成内容，请检查网络后重试。');
+        } finally {
+            await reader?.cancel().catch(() => {});
+            reader?.releaseLock();
         }
     })();
-
     return { cancel: () => { cancelled = true; controller.abort(); } };
 }
 
 export const knowledgeApi = {
+    parseAttachment(file: File, signal?: AbortSignal): Promise<ChatAttachment> {
+        const body = new FormData();
+        body.append('file', file);
+        return unwrap(apiFetch<Envelope<ChatAttachment>>('/knowledge/attachments/parse', { method: 'POST', body, signal }));
+    },
     capture(conversation: ChatMsg[]): Promise<KnowledgeCard> {
         return unwrap(apiFetch<Envelope<KnowledgeCard>>('/knowledge/capture', {
             method: 'POST',
             body: JSON.stringify({
-                conversation: conversation.map(({ role, content }) => ({ role, content })),
+                conversation: conversation.map(({ role, content, attachments }) => ({ role, content: withAttachments(content, attachments) })),
             }),
         })).then(normalizeCard);
     },

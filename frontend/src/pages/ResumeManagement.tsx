@@ -13,6 +13,7 @@ import {
 import { ApiError } from '../api/client';
 import { resumeApi, type ResumeDetail, type ResumeListItem } from '../api/interview';
 import { Badge, Button, Card, Loading } from '../components/ui';
+import { useFileDrop } from '../lib/useFileDrop';
 import './ResumeManagement.css';
 
 function errorMessage(error: unknown): string {
@@ -62,6 +63,7 @@ export function ResumeManagement() {
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const uploadBusy = useRef(false);
 
   const loadList = () => resumeApi.list().then(setList).catch(e => setError(errorMessage(e)));
 
@@ -70,6 +72,10 @@ export function ResumeManagement() {
   }, []);
 
   const upload = async (file: File) => {
+    if (uploadBusy.current) return;
+    if (!/\.(pdf|doc|docx|txt)$/i.test(file.name)) { setError('请上传 PDF、Word 或 TXT 格式的简历'); return; }
+    if (!file.size || file.size > 50 * 1024 * 1024) { setError('简历不能为空，且大小不能超过 50 MB'); return; }
+    uploadBusy.current = true;
     setUploading(true);
     setError('');
     try {
@@ -79,9 +85,14 @@ export function ResumeManagement() {
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      uploadBusy.current = false;
       setUploading(false);
     }
   };
+  const { dragging, dropProps } = useFileDrop(files => {
+    if (files.length !== 1) { setError('每次请拖入一份简历'); return; }
+    void upload(files[0]);
+  }, uploading);
 
   const openDetail = async (id: number) => {
     setLoadingDetailId(id);
@@ -111,7 +122,8 @@ export function ResumeManagement() {
   };
 
   return (
-    <div className="page resume-page">
+    <div className={`page resume-page${dragging ? ' is-file-dragging' : ''}`} {...dropProps}>
+      {dragging && <div className="resume-drop-overlay"><Upload size={30} />松开鼠标，上传并分析这份简历</div>}
       <header className="resume-head">
         <div>
           <span className="eyebrow">面试准备 · RESUME</span>
@@ -131,7 +143,7 @@ export function ResumeManagement() {
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.docx,.txt"
+            accept=".pdf,.doc,.docx,.txt"
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -141,6 +153,11 @@ export function ResumeManagement() {
           />
         </div>
       </header>
+
+      <button className="resume-drop-hint" type="button" disabled={uploading} onClick={() => fileRef.current?.click()}>
+        <Upload size={16} />{uploading ? '上传并分析中，请稍候…' : '可将简历拖拽到此页面，或点击选择文件'}
+        <small>PDF / Word / TXT · 最大 50 MB</small>
+      </button>
 
       {error && <div className="banner">{error}</div>}
 

@@ -724,6 +724,23 @@
   margin: 27px 0 16px;
   min-height: 38px;
 }
+.dashboard-direction-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 38px;
+  margin: 27px 0 16px;
+  color: var(--dash-muted);
+  font-size: 12px;
+}
+.dashboard-direction-summary span {
+  color: var(--dash-teal-deep);
+  animation: fade 220ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-direction-summary span { animation: none; }
+}
 .dashboard-plan-bar > div {
   display: flex;
   align-items: center;

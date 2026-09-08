@@ -10,6 +10,7 @@ import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.Parser;
 import org.apache.tika.sax.BodyContentHandler;
+import org.apache.tika.exception.WriteLimitReachedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,11 +43,20 @@ public class DocumentParseService {
      * @return 清洗后的纯文本
      */
     public String parseText(byte[] bytes, String fileName){
+        return parseText(bytes, fileName, -1, true);
+    }
+
+    /** 对话附件保留换行和缩进，并限制解析输出，避免大文档拖垮上下文。 */
+    public String parseTextPreservingLayout(byte[] bytes, String fileName, int maxChars) {
+        return parseText(bytes, fileName, maxChars, false);
+    }
+
+    private String parseText(byte[] bytes, String fileName, int maxChars, boolean clean) {
         //Tika经典的四步解析法
         //1.将传入的文件的二进制数据包装成一个字节输入流
         try(ByteArrayInputStream in = new ByteArrayInputStream(bytes)){
             //2.配置内容处理器，从Tika解析出的XHTML结构中只提取<body>标签内的纯文本,-1表示表示不限制文本长度
-            BodyContentHandler handler = new BodyContentHandler(-1);
+            BodyContentHandler handler = new BodyContentHandler(maxChars);
 
             //3.创建元数据对象，参考文件名解析判断使用什么解析器,只记录属性信息
             Metadata metadata = new Metadata();
@@ -58,9 +68,12 @@ public class DocumentParseService {
             //创建自动解析器进行解析
             Parser parser = new AutoDetectParser();
             parser.parse(in, handler, metadata,context);//执行解析
-            return textCleaningService.clean(handler.toString());
+            return clean ? textCleaningService.clean(handler.toString()) : handler.toString().strip();
 
         }catch (IOException | TikaException | SAXException e){
+            if (WriteLimitReachedException.isWriteLimitReached(e)) {
+                throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "文件文字超过 " + maxChars + " 字符，请拆分后上传");
+            }
             log.error("文档解析失败：fileName={}",fileName,e);
             throw new BusinessException(ErrorCode.FILE_PARSE_FAILED,fileName);
         }

@@ -45,7 +45,7 @@ class LlmRawClientIntegrationTest {
             public AiConfig currentProviderForRequest() {
                 return new AiConfig("deepseek", "https://api.deepseek.com",
                         env.getOrDefault("API_KEY", ""),
-                        env.getOrDefault("MODEL_NAME", "deepseek-v4-flash"), 0.7);
+                        env.getOrDefault("MODEL_NAME", "deepseek-v4-flash"), 0.7, "low");
             }
         };
         client = new LlmRawClient(settings);

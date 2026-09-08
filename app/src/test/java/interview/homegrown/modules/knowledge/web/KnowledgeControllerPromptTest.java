@@ -8,6 +8,17 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class KnowledgeControllerPromptTest {
+    @Test
+    @DisplayName("长代码本轮完整保留，历史限制总预算，避免多轮无限膨胀")
+    void boundsHistoryWithoutTruncatingCurrentCode() {
+        String question = "分析代码：\n" + "    call();\n".repeat(1000);
+        List<KnowledgeController.Msg> history = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(i -> new KnowledgeController.Msg(i % 2 == 0 ? "user" : "ai", "旧上下文".repeat(3000)))
+                .toList();
+        String prompt = KnowledgeController.buildUserPrompt(new KnowledgeController.AskRequest(question, null, history));
+        assertThat(prompt).endsWith(question.trim());
+        assertThat(prompt.length()).isLessThan(question.length() + 18500);
+    }
 
     @Test
     @DisplayName("追问请求会携带最近的用户与 AI 对话并把当前问题放在末尾")

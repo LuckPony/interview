@@ -3,6 +3,10 @@ package interview.homegrown.modules.knowledge.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.ai.LlmRawClient;
 import interview.homegrown.common.result.Result;
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
+import interview.homegrown.common.web.SseWriter;
+import interview.homegrown.modules.knowledge.service.ChatAttachmentService;
 import interview.homegrown.modules.knowledge.domain.KnowledgeCard;
 import interview.homegrown.modules.knowledge.service.CardService;
 import interview.homegrown.modules.knowledge.service.ChatCaptureService;
@@ -15,7 +19,13 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.web.multipart.MultipartFile;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,13 +38,15 @@ public class KnowledgeController {
     private final CardService cardService;
     private final ChatCaptureService chatCaptureService;
     private final LlmRawClient rawClient;
+    private final ChatAttachmentService attachments;
 
     public KnowledgeController(CardService cardService,
                                ChatCaptureService chatCaptureService,
-                               LlmRawClient rawClient) {
+                               LlmRawClient rawClient, ChatAttachmentService attachments) {
         this.cardService = cardService;
         this.chatCaptureService = chatCaptureService;
         this.rawClient = rawClient;
+        this.attachments = attachments;
     }
 
     private Long uid() {
@@ -91,6 +103,11 @@ public class KnowledgeController {
         cardService.delete(uid(), id);
         return Result.success();
     }
+    @PostMapping(value = "/attachments/parse", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<ChatAttachmentService.Attachment> parseAttachment(@RequestParam("file") MultipartFile file) throws IOException {
+        return Result.success(attachments.parse(file));
+    }
+
     // ==================== 自由问答（SSE 流式） ====================
     @PostMapping(value = "/ask", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> ask(@RequestBody AskRequest req){
@@ -106,43 +123,34 @@ public class KnowledgeController {
                 6. 任何多行代码、配置或命令都必须使用带语言标识的 Markdown 三反引号代码块。
                 如果是闲聊或无需长期保存的话题，正常简短回应即可，同样不要输出字段标签。""";
 
+        String prompt = buildUserPrompt(req); // 进入异步线程前校验，错误可作为普通 JSON 返回。
         StreamingResponseBody body = out -> {
-            // 注意：这里不能走 LlmProviderRegistry 的静态 ChatClient —— 它由启动配置（application.yml）
-            // 构建，而项目已明确「不配服务器级/共享 key」（providers 的 api-key 全空），注册中心为空会直接
-            // 抛“没有可用的 AI Provider”，导致自由问答永远失败。必须走 LlmRawClient 原生直连：
-            // 按请求解析 key（请求头 X-LLM-Key > 当前用户设置 > 启动配置），与讲解/出题/判分等其它流式端点一致。
-            final String[] streamError = {null};
-            try {
-                rawClient.stream(systemPrompt, buildUserPrompt(req),
+            try (SseWriter writer = new SseWriter(out)) {
+                writer.write("event: status\ndata: {\"text\":\"已接收问题，正在准备回答…\"}\n\n");
+                AtomicReference<Throwable> failure = new AtomicReference<>();
+                AtomicBoolean hasAnswer = new AtomicBoolean();
+                AtomicBoolean thinkingNotified = new AtomicBoolean();
+                rawClient.stream(systemPrompt, prompt,
                         token -> {
-                            try {
-                                String frame = "data: {\"text\":" + jsonEscape(token) + "}\n\n";
-                                out.write(frame.getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                log.debug("ask token 推送异常（已吞）: {}", e.getMessage());
-                            }
+                            if (!token.isBlank()) hasAnswer.set(true);
+                            writeFrame(writer, "data: {\"text\":" + jsonEscape(token) + "}\n\n");
                         },
-                        err -> streamError[0] = err == null ? "LLM 调用失败" : err.getMessage(),
-                        /* fallbackToReasoning */ true,
-                        /* onReasoning */ null);
-
-                if (streamError[0] == null) {
-                    out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                    out.flush();
+                        failure::set, false,
+                        reasoning -> {
+                            if (thinkingNotified.compareAndSet(false, true)) {
+                                writeFrame(writer, "event: status\ndata: {\"text\":\"正在分析问题与代码，可随时停止…\"}\n\n");
+                            }
+                        });
+                if (failure.get() != null) {
+                    log.warn("知识问答生成失败", failure.get());
+                    writer.write("event: error\ndata: {\"message\":" + jsonEscape(friendlyError(failure.get())) + "}\n\n");
+                } else if (!hasAnswer.get()) {
+                    writer.write("event: error\ndata: {\"message\":\"模型未返回正文，请重试或在设置中降低思考强度。\"}\n\n");
                 } else {
-                    out.write(("event: error\ndata: {\"message\":" + jsonEscape(streamError[0]) + "}\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
+                    writer.write("event: done\ndata: {}\n\n");
                 }
-            } catch (Exception e) {
-                log.warn("ask SSE 异常", e);
-                try {
-                    out.write(("event: error\ndata: {\"message\":" + jsonEscape(e.getMessage()) + "}\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
+            } catch (IOException | UncheckedIOException disconnected) {
+                log.debug("知识问答连接已关闭: {}", disconnected.getMessage());
             }
         };
 
@@ -159,17 +167,26 @@ public class KnowledgeController {
      */
     static String buildUserPrompt(AskRequest req) {
         String question = req.question() == null ? "" : req.question().trim();
+        if (question.isBlank()) throw new BusinessException(ErrorCode.BAD_REQUEST, "请输入问题或添加文件");
+        if (question.length() > 60000) throw new BusinessException(ErrorCode.BAD_REQUEST, "问题与附件文字合计不能超过 60000 字符，请拆分为几轮提问");
         List<Msg> history = req.conversation() == null ? List.of() : req.conversation();
         if (history.isEmpty()) return question;
 
         int fromIndex = Math.max(0, history.size() - 12);
         List<String> lines = new ArrayList<>();
-        for (Msg message : history.subList(fromIndex, history.size())) {
+        int remaining = 18000;
+        for (int index = history.size() - 1; index >= fromIndex && remaining > 0; index--) {
+            Msg message = history.get(index);
             if (message == null || message.content() == null || message.content().isBlank()) continue;
             String role = "ai".equalsIgnoreCase(message.role()) ? "AI" : "用户";
             String content = message.content().trim();
-            if (content.length() > 3000) content = content.substring(0, 3000) + "…";
-            lines.add(role + "：" + content);
+            int limit = Math.min(6000, remaining);
+            if (content.length() > limit) {
+                String suffix = "…（较早上下文已节选）";
+                content = content.substring(0, Math.max(0, limit - suffix.length())) + suffix;
+            }
+            remaining -= content.length();
+            lines.add(0, role + "：" + content);
         }
         if (lines.isEmpty()) return question;
 
@@ -183,7 +200,29 @@ public class KnowledgeController {
                 当前问题：%s
                 """.formatted(String.join("\n\n", lines), question).trim();
     }
+    private static void writeFrame(SseWriter writer, String frame) {
+        try {
+            writer.write(frame);
+        } catch (IOException disconnected) {
+            throw new UncheckedIOException(disconnected);
+        }
     }
+
+    static String friendlyError(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof InterruptedException || cause instanceof InterruptedIOException
+                    || cause instanceof TimeoutException) {
+                return "本轮连接超时或已中断，已保留问题与已生成内容，请重试；较长代码可拆分提问。";
+            }
+        }
+        String message = error.getMessage() == null ? "" : error.getMessage();
+        if (message.contains("尚未配置 API Key")) return "尚未配置 API Key，请先到设置页配置模型。";
+        if (message.contains("401") || message.contains("403")) return "模型服务拒绝访问，请检查 API Key 和模型使用权限。";
+        if (message.contains("429")) return "模型服务暂时繁忙或额度不足，请检查账户额度后重试。";
+        if (message.contains("400") || message.contains("413")) return "模型拒绝了本次请求，请检查模型配置，或缩短问题与附件内容后重试。";
+        return "模型服务连接失败，已保留当前内容，请稍后重试或检查模型服务地址。";
+    }
+}
 
 
 
