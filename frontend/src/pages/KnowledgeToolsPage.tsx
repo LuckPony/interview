@@ -90,7 +90,7 @@ export function KnowledgeToolsPage() {
         <option value="">资料全文 / 前 12000 字符</option>{document.sections.map(s => <option key={s.id} value={s.id}>{s.sequence + 1}. {s.topic || s.title}</option>)}</select></label>}
       <p className="kt-scope">{scope}</p>
       <textarea className="kt-input" aria-label="待处理资料内容" placeholder="粘贴需要翻译或整理的内容…" value={text} onChange={e => setText(e.target.value)} disabled={busy || loading} />
-      <div className="kt-input-footer"><small>{text.length.toLocaleString()} / 12,000 字符</small>{corpusId && <button className="kb-text-link" onClick={() => libraryApi.openOriginal(corpusId).catch(e => setError(libraryError(e)))}>浏览器查看原文<ArrowRight size={12} /></button>}</div>
+      <div className="kt-input-footer"><small>{text.length.toLocaleString()} / 12,000 字符</small>{corpusId && document && <button className="kb-text-link" onClick={() => libraryApi.openOriginal(corpusId, !document.document.hasOriginal).catch(e => setError(libraryError(e)))}>{document.document.hasOriginal ? '打开原文件' : '查看解析文本（无原件）'}<ArrowRight size={12} /></button>}</div>
       <div className="kt-run-options">{tool === 'translate' && <select className="kb-select" aria-label="翻译目标语言" value={language} disabled={busy} onChange={e => setLanguage(e.target.value)}><option>简体中文</option><option>English</option></select>}
         {busy ? <Button variant="danger" onClick={stop}><Square size={14} />停止处理</Button>
           : <Button onClick={run} disabled={!text.trim() || loading || text.length > 12000}><Sparkles size={15} />{loading ? '读取中…' : `开始${current.title}`}</Button>}</div>

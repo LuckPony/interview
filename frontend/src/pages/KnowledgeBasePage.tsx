@@ -83,9 +83,9 @@ export function KnowledgeBasePage() {
     }
   };
   const { dragging, dropProps } = useFileDrop(files => { void upload(files); }, !!uploading);
-  const openOriginal = async (document: CorpusView) => {
+  const openOriginal = async (document: CorpusView, parsedText = false) => {
     setAction('original'); setError('');
-    try { await libraryApi.openOriginal(document.id); } catch (e) { setError(libraryError(e)); }
+    try { await libraryApi.openOriginal(document.id, parsedText); } catch (e) { setError(libraryError(e)); }
     finally { setAction(''); }
   };
   const remove = async (document: CorpusView) => {
@@ -123,9 +123,10 @@ export function KnowledgeBasePage() {
         <span className="kb-document-icon"><FileText size={30} strokeWidth={1.5} /></span>
         <div><span className={`kb-status ${detail.document.indexState?.toLowerCase()}`}>{INDEX_LABELS[detail.document.indexState ?? 'PENDING']}</span>
           <p>{chars(detail.document.charCount)} · {detail.sections.length} 个内容片段 · {date(detail.document.createdAt)}</p></div>
-        <Button variant="ghost" disabled={!!action} onClick={() => void openOriginal(detail.document)}><ExternalLink size={16} />查看原文</Button>
+        <Button variant="ghost" disabled={!!action} onClick={() => void openOriginal(detail.document, true)}>查看解析文本</Button>
+        <Button variant="ghost" disabled={!!action || !detail.document.hasOriginal} onClick={() => void openOriginal(detail.document)}><ExternalLink size={16} />打开原文件</Button>
       </div>
-      {!detail.document.hasOriginal && <p className="kb-muted">历史资料只保存了解析文本；“查看原文”会在浏览器打开完整文本。</p>}
+      <p className="kb-muted">{detail.document.hasOriginal ? 'PDF 在浏览器显示原始文档；Word 等格式将下载原件，用本机阅读器打开。' : '历史资料没有保存原文件，无法恢复原排版与图片。请重新导入原件；当前仍可查看用于索引的解析文本。'}</p>
       <div className="kb-detail-grid"><div className="kb-detail-main">
         <section className="kb-panel"><span className="kb-section-label">01 / OVERVIEW</span><h2>内容简介</h2><p className="kb-overview">{detail.document.overview}</p>
           <div className="kb-tags">{detail.document.topics?.map(t => <span key={t}>{t}</span>)}</div></section>

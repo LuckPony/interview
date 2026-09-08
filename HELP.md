@@ -228,10 +228,33 @@ ssh -i "/c/Users/26680/.ssh/id_ed25519" -p 37777 root@103.236.92.40 \
 - 点击资料可查看简介、索引和实际关联的学习计划 / 模拟面试。可直接从详情页创建计划或面试，也可在新建页面的「从知识库选择资料」中选择现有资料，不必重复上传。
 - 原「资料导入」菜单改为「知识库工具库」，支持文献翻译、重点提炼、术语解释。可以选择整份资料或章节，也可粘贴内容；每轮最多处理 12000 字符，超过时明确提示分段处理，不会声称已翻译整本书。点击处理会将当前内容发送给用户配置的模型服务，结果支持停止、复制和下载 Markdown，不自动入库。
 - 索引生成复用现有 AI 配置和结构化输出。没有可用模型时仍保留章节基础索引；配置模型后可在详情页点击「重新整理」。生成计划 / 面试使用各章节的有界原文节选，不是全文向量检索。
-- 新版单文件导入会保留上传原文件。PDF 在浏览器预览，其他类型提供文本预览与原文件下载。历史导入只保存了解析文本，不能凭空恢复 PDF / Word 原件；需要原格式时请重新导入。原文链接仅对指定资料有效，五分钟后过期，请从详情重新打开。
+- 新版单文件导入会保留上传文件的原始字节。「打开原文件」在浏览器展示原始 PDF / TXT / Markdown；Word 则下载原始 Word 文件，不发送到第三方预览服务。「查看解析文本」是另一个入口，会明确提示不是原件。历史导入只保存了解析文本，不能凭空恢复 PDF / Word 原件；需要原格式时请重新导入。链接仅对指定资料有效，五分钟后过期，请从详情重新打开。
 
 本次更新同时涉及前后端，需一起更新；后端启动时由 Flyway 执行 `V46__corpus_library.sql`。桌面端的「浏览器查看原文」增加了系统浏览器桥接，需要重新打包新版桌面端才能使用；只替换服务器后端不会自动更新已安装的 exe 页面。
 
-**原文件持久化：**本地默认保存在后端工作目录的 `data/files`，可通过 `APP_STORAGE_LOCAL_DIR` 指定。仓库生产 Compose 已增加 `backend_files:/app/data/files` 持久卷。备份时需要同时保留数据库和该目录 / 卷。
+**原文件持久化：**本地默认 `APP_STORAGE_MODE=local`，保存在后端工作目录的 `data/files`，可通过 `APP_STORAGE_LOCAL_DIR` 指定。云端建议 `APP_STORAGE_MODE=minio`，原件写入私有桶，数据库仅记录对象标识；资料解析文本仍留在数据库，用于索引和生成。切换到 MinIO 不会自动搬迁旧磁盘文件，旧文件仍从原本目录读取。备份需要同时保留数据库、MinIO 数据卷以及历史本地文件目录 / 卷。
 
-如果使用 `deploy-local.sh` 上传 jar 的产物式部署，服务器的 `/opt/mianba/docker-compose.yml` 不会被自动覆盖。需在当前服务器 Compose 中确认 `backend.environment.APP_STORAGE_LOCAL_DIR` 指向 `/app/data/files`，且该目录挂载了持久卷或宿主机目录。不要直接用仓库 Compose 替换它；首次新增挂载前先备份并迁移现有容器里的文件，避免新挂载遮住已有资料。本次代码修改没有执行服务器部署或迁移现有文件。
+如果使用 `deploy-local.sh` 上传 jar 的产物式部署，服务器的 `/opt/mianba/docker-compose.yml` 不会被自动覆盖。只需在现有 `services.backend.environment` 中补充模式映射，并保留现有正确的 MinIO 凭据映射：
+
+```yaml
+APP_STORAGE_MODE: ${APP_STORAGE_MODE:-minio}
+APP_STORAGE_ENDPOINT: http://minio:9000
+APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER}
+APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
+APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
+```
+
+确认这些凭据有该私有桶的读写权限、桶已由 `minio-init` 创建，再运行部署脚本重新创建容器。不要公开桶、不需要向浏览器下发 MinIO 密钥或内网地址。保留本地模式时，需确认 `APP_STORAGE_LOCAL_DIR=/app/data/files` 且挂载持久卷；首次新增挂载前先备份并迁移容器里的文件，避免新挂载遮住已有文件。不要直接用仓库 Compose 替换服务器的产物式 Compose。
+
+### Windows 部署后知识库详情报错：旧 JAR 排查
+
+如果网页已经更新但点击资料显示内部服务错误，而本地正常，先看后端日志是否出现 `Request method 'GET' is not supported`。这说明该 URL 没有 GET 接口，不能仅凭提示判断数据库故障。2026-09-08 的实际原因是：Git Bash 将 `cmd.exe /c` 的 `/c` 当成路径转换，Gradle 未运行，部署脚本却因旧 JAR 存在而继续上传。服务器 JAR 缺少 `CorpusLibraryController`，最高迁移文件为 V45，无法处理新版页面的 `GET /api/corpus/{id}`。
+
+现在部署脚本禁用了该次 CMD 调用的路径转换，并在上传前校验当前 Java 类和全部迁移文件都在 JAR 内。可以先单独验证（不连接服务器）：
+
+```bash
+bash deploy/build-backend.sh
+```
+
+看到 `BUILD SUCCESSFUL` 和 `DEPLOY_JAR_VERIFIED` 才算完成。随后在 Git Bash 中执行 `bash deploy/deploy-local.sh` 同步发布前后端。不要只重启旧容器或只构建前端。云端 EXE 包含前端和 Electron 修改时，仍需按上文重新打包安装。

@@ -74,7 +74,7 @@ class CorpusLibraryServiceTest {
 
   @Test @DisplayName("原文链接只签发五分钟资料凭证，过期后不可读取")
   void tickets() {
-    document(); String path = service.originalTicket(1L, 7L);
+    document().setOriginalKey("saved.pdf"); String path = service.originalTicket(1L, 7L);
     assertThat(path).matches("/api/corpus/original/[a-f0-9]{32}");
     String token = path.substring(path.lastIndexOf('/') + 1);
     verify(redis).set("corpus:preview:" + token, "7:1", Duration.ofMinutes(5));
@@ -83,6 +83,14 @@ class CorpusLibraryServiceTest {
     when(redis.get("corpus:preview:" + token)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.fromTicket(token)).isInstanceOf(BusinessException.class);
     assertThatThrownBy(() -> service.fromTicket("../other")).isInstanceOf(BusinessException.class);
+  }
+
+  @Test @DisplayName("没有原件的历史资料不能签发原件链接，但可单独查看解析文本")
+  void legacyTextIsNotOriginal() {
+    document();
+    assertThatThrownBy(() -> service.originalTicket(1L, 7L)).isInstanceOf(BusinessException.class).hasMessageContaining("未保存原文件");
+    assertThat(service.textTicket(1L, 7L)).matches("/api/corpus/parsed/[a-f0-9]{32}");
+    assertThatThrownBy(() -> service.textTicket(1L, 8L)).isInstanceOf(BusinessException.class);
   }
 
   @Test @DisplayName("资料使用关系同时包含直接引用面试与经学习计划引用的面试")

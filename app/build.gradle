@@ -56,6 +56,11 @@ dependencies {
     implementation libs.tika.core
     implementation libs.tika.parsers
 
+    // 复用版本目录中的 AWS SDK 版本，以 S3 协议访问私有 MinIO。
+    implementation platform("software.amazon.awssdk:bom:${libs.versions.aws.sdk.get()}")
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:url-connection-client'
+
     // ===== Drill 模块：安全与 JWT 鉴权 =====
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
@@ -84,6 +89,28 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test'){
     useJUnitPlatform()
+}
+
+// 发布前验证当前源码和迁移均在产物内；禁止“前端已更新、后端仍是旧包”。
+tasks.register('verifyDeploymentJar') {
+    dependsOn tasks.named('bootJar')
+    doLast {
+        def artifact = tasks.named('bootJar').get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(artifact).withCloseable { archive ->
+            def expected = []
+            fileTree('src/main/java').matching { include '**/*.java' }.files.each { source ->
+                def relative = file('src/main/java').toPath().relativize(source.toPath()).toString().replace('\\', '/')
+                expected.add('BOOT-INF/classes/' + relative.replaceAll(/\.java$/, '.class'))
+            }
+            fileTree('src/main/resources/db/migration').matching { include '**/*.sql' }.files.each { source ->
+                def relative = file('src/main/resources').toPath().relativize(source.toPath()).toString().replace('\\', '/')
+                expected.add('BOOT-INF/classes/' + relative)
+            }
+            def missing = expected.findAll { archive.getEntry(it) == null }
+            if (!missing.isEmpty()) throw new GradleException('部署 JAR 缺少当前代码或迁移：' + missing.join(', '))
+        }
+        println 'DEPLOY_JAR_VERIFIED'
+    }
 }
 
 bootRun {

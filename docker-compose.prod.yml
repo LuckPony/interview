@@ -87,6 +87,7 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
       APP_STORAGE_ENDPOINT: http://minio:9000
+      APP_STORAGE_MODE: ${APP_STORAGE_MODE:-minio}
       APP_STORAGE_LOCAL_DIR: /app/data/files
       APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}

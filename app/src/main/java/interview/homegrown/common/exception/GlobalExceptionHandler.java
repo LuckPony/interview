@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -52,6 +53,14 @@ public class GlobalExceptionHandler {
             log.warn("HTTP 状态异常：status={}, reason={}", code, reason);
         }
         return ResponseEntity.status(status).body(Result.error(code, reason));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Result<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.warn("接口不支持请求方法：method={}, supported={}", e.getMethod(), e.getSupportedHttpMethods());
+        var response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (e.getSupportedHttpMethods() != null) response.headers(headers -> headers.setAllow(e.getSupportedHttpMethods()));
+        return response.body(Result.error(405, "当前接口不支持此请求方式，请确认前后端已同步更新"));
     }
 
     @ExceptionHandler(Exception.class)

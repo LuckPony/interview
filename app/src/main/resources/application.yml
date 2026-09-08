@@ -93,6 +93,7 @@ springdoc:
 
 app:
   storage:
+    mode: ${APP_STORAGE_MODE:local}
     local-dir: ${APP_STORAGE_LOCAL_DIR:./data/files}
     endpoint: ${APP_STORAGE_ENDPOINT:https://103.236.92.40:9000}
     access-key: ${APP_STORAGE_ACCESS_KEY:minioadmin}

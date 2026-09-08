@@ -59,7 +59,7 @@ public class CorpusLibraryService {
     if (overview == null || overview.isBlank()) overview = "内容摘录：" + excerpt(c.getText(), 180);
     return new CorpusView(c.getId(), c.getName(), c.getCharCount(), c.getSourceType(), c.getCreatedAt(),
         overview, count > 0 && "PENDING".equals(c.getIndexState()) ? "BASIC" : c.getIndexState(), topics, count,
-        c.getOriginalKey() != null);
+        c.getOriginalKey() != null && !c.getOriginalKey().isBlank());
   }
 
   public CorpusDetail detail(Long id, Long userId) {
@@ -118,10 +118,22 @@ public class CorpusLibraryService {
 
   /** 预览用一次生成、五分钟有效的资料专用凭证，不能用它访问用户其他接口。 */
   public String originalTicket(Long id, Long userId) {
+    Corpus c = requireOwned(id, userId);
+    if (c.getOriginalKey() == null || c.getOriginalKey().isBlank()) {
+      throw new BusinessException(ErrorCode.NOT_FOUND, "这份历史资料未保存原文件，请重新上传原件；可另行查看解析文本");
+    }
+    return previewTicket(id, userId, false);
+  }
+
+  public String textTicket(Long id, Long userId) {
     requireOwned(id, userId);
+    return previewTicket(id, userId, true);
+  }
+
+  private String previewTicket(Long id, Long userId, boolean parsedText) {
     String ticket = UUID.randomUUID().toString().replace("-", "");
     redis.set("corpus:preview:" + ticket, userId + ":" + id, Duration.ofMinutes(5));
-    return "/api/corpus/original/" + ticket;
+    return "/api/corpus/" + (parsedText ? "parsed/" : "original/") + ticket;
   }
 
   public Corpus fromTicket(String ticket) {

@@ -10,14 +10,14 @@ export const libraryApi = {
   detail: (id: number) => unwrap(apiFetch<{ code: number; message: string; data: CorpusDetail }>(`/corpus/${id}`)),
   text: (id: number, sectionId?: number) => unwrap(apiFetch<{ code: number; message: string; data: { text: string; totalChars: number; truncated: boolean } }>(`/corpus/${id}/text${sectionId ? `?sectionId=${sectionId}` : ''}`)),
   reindex: (id: number) => unwrap(apiFetch<{ code: number; message: string; data: null }>(`/corpus/${id}/reindex`, { method: 'POST' })),
-  async openOriginal(id: number) {
+  async openOriginal(id: number, parsedText = false) {
     // 先在点击事件里开窗，避免异步鉴权完成后被浏览器拦截弹窗。
     const desktop = window.electronAPI?.openKnowledgeOriginal;
     const tab = desktop ? null : window.open('about:blank', '_blank');
     if (!desktop && !tab) throw new Error('浏览器阻止了新窗口，请允许弹窗后重试');
     if (tab) tab.opener = null;
     try {
-      const data = await unwrap(apiFetch<{ code: number; message: string; data: { path: string } }>(`/corpus/${id}/original-link`, { method: 'POST' }));
+      const data = await unwrap(apiFetch<{ code: number; message: string; data: { path: string } }>(`/corpus/${id}/${parsedText ? 'parsed-link' : 'original-link'}`, { method: 'POST' }));
       const base = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
       const url = new URL(base + data.path, window.location.href).href;
       if (desktop) await desktop(url);

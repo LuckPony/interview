@@ -46,7 +46,7 @@ const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被�
 ipcMain.handle('app:openKnowledgeOriginal', async (_event, value) => {
   const url = new URL(String(value));
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password
-      || !/^\/api\/corpus\/original\/[a-f0-9]{32}$/.test(url.pathname) || url.search || url.hash) {
+      || !/^\/api\/corpus\/(?:original|parsed)\/[a-f0-9]{32}$/.test(url.pathname) || url.search || url.hash) {
     throw new Error('无效的知识库预览链接');
   }
   await shell.openExternal(url.href);
