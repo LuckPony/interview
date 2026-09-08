@@ -220,6 +220,7 @@ public class StudyPlanService {
         if (draft == null) {
             throw new IllegalArgumentException("规划不能为空");
         }
+        corpusService.requireOwned(draft.corpusId(), userId);
         String title = normalizeTitle(draft);
         StudyPlan plan = planRepo.findByUserIdAndTitle(userId, title)
                 .orElseGet(() -> {

@@ -13,7 +13,14 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
+import jakarta.annotation.PreDestroy;
+import interview.homegrown.common.ai.AiSettingsService;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.util.regex.Pattern;
 
 /**
@@ -22,8 +29,8 @@ import java.util.regex.Pattern;
  * <p>切块策略（服务端启发式，保证<b>原文零改动、零丢失</b>）：
  * <ul>
  *   <li>以 Markdown 标题 / 数字章节行 / 「第X章」等标题行为块边界；无标题文本按段落聚合；</li>
- *   <li>块大小<b>不硬切</b>：软上限 6000 字（尽量在段落边界收尾），硬上限 12000 字
- *       （长段落防失控），块总数上限 30（超出合并进最后一块）；</li>
+ *   <li>软上限 6000 字（尽量在段落边界收尾），长段落每 12000 字继续切块，
+ *       不丢弃后文；块总数上限 30（超出合并进最后一块）；</li>
  *   <li>LLM 只负责标注（每块 title / topic 对应知识点名 / summary + 资料总览 overview），
  *       不重写原文——避免大资料被模型截断/篡改。</li>
  * </ul>
@@ -39,7 +46,7 @@ public class CorpusIndexer {
 
     /** 块软上限（字符）：到段落边界收尾；无边界时放宽到硬上限 */
     static final int SOFT_MAX_CHARS = 6000;
-    /** 块硬上限（字符）：单块超过直接截断（长段落防失控） */
+    /** 长段落切分阈值；不丢弃剩余文本。 */
     static final int HARD_MAX_CHARS = 12000;
     /** 块总数上限：超出合并进最后一块 */
     static final int MAX_CHUNKS = 30;
@@ -52,61 +59,105 @@ public class CorpusIndexer {
     private final CorpusChunkRepository chunkRepo;
     private final StructuredOutputInvoker invoker;
     private final ObjectMapper objectMapper;
-    private final ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
+    private final AiSettingsService settings;
+    private final TransactionTemplate transactions;
+    private final Set<Long> running = ConcurrentHashMap.newKeySet();
+    private final ExecutorService pool = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(64), r -> {
         Thread t = new Thread(r, "corpus-indexer");
         t.setDaemon(true);
         return t;
-    });
+    }, new ThreadPoolExecutor.AbortPolicy());
 
     public CorpusIndexer(CorpusRepository corpusRepo, CorpusChunkRepository chunkRepo,
-                         StructuredOutputInvoker invoker, ObjectMapper objectMapper) {
+                         StructuredOutputInvoker invoker, ObjectMapper objectMapper,
+                         AiSettingsService settings, TransactionTemplate transactions) {
         this.corpusRepo = corpusRepo;
         this.chunkRepo = chunkRepo;
         this.invoker = invoker;
         this.objectMapper = objectMapper;
+        this.settings = settings;
+        this.transactions = transactions;
     }
 
     /** 异步触发索引（摄取后调用，不阻塞请求）。幂等：已有块跳过。 */
     public void indexAsync(Long corpusId) {
-        if (corpusId == null) return;
-        pool.submit(() -> {
+        indexAsync(corpusId, false);
+    }
+
+    public void indexAsync(Long corpusId, boolean refresh) {
+        if (corpusId == null || !running.add(corpusId)) return;
+        var snapshot = settings.currentProviderForRequest();
+        try {
+          pool.submit(() -> settings.withTaskConfig(snapshot, () -> {
             try {
-                index(corpusId);
+                index(corpusId, refresh);
             } catch (Exception e) {
-                log.warn("资料索引失败 (corpusId={}): {}", corpusId, e.getMessage());
+                log.warn("资料索引失败 (corpusId={})", corpusId, e);
+                updateState(corpusId, "FAILED");
+            } finally {
+                running.remove(corpusId);
             }
-        });
+          }));
+        } catch (java.util.concurrent.RejectedExecutionException busy) {
+            running.remove(corpusId);
+            updateState(corpusId, "FAILED");
+            log.warn("资料索引队列繁忙，用户可稍后重试: corpusId={}", corpusId);
+        }
+    }
+
+    @PreDestroy
+    void shutdown() { pool.shutdownNow(); }
+
+    private void updateState(Long id, String state) {
+        transactions.executeWithoutResult(status -> corpusRepo.findLockedById(id).ifPresent(c -> {
+            c.setIndexState(state); corpusRepo.save(c);
+        }));
     }
 
     /** 同步索引：切块 + LLM 标注 + 存库。幂等：已有块跳过。 */
     public synchronized void index(Long corpusId) {
+        index(corpusId, false);
+    }
+
+    private void index(Long corpusId, boolean refresh) {
         if (corpusId == null) return;
-        if (chunkRepo.countByCorpusId(corpusId) > 0) return;
+        if (!refresh && chunkRepo.countByCorpusId(corpusId) > 0) return;
         Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
         if (corpus == null || corpus.getText() == null || corpus.getText().isBlank()) return;
 
-        List<Chunk> chunks = split(corpus.getText());
+        updateState(corpusId, "RUNNING");
+        List<CorpusChunk> existing = chunkRepo.findByCorpusIdOrderBySeqAsc(corpusId);
+        List<Chunk> chunks = existing.isEmpty() ? split(corpus.getText())
+                : existing.stream().map(c -> new Chunk(c.getTitle(), c.getText())).toList();
         if (chunks.isEmpty()) return;
 
         IndexOutput out = annotate(corpus, chunks);
         String overview = out != null && out.overview() != null && !out.overview().isBlank()
-                ? out.overview() : "（该资料未生成总览）";
-        chunkRepo.deleteByCorpusId(corpusId);
+                ? out.overview() : corpus.getOverview() != null && !corpus.getOverview().isBlank() ? corpus.getOverview()
+                : "内容摘录：" + corpus.getText().substring(0, Math.min(180, corpus.getText().length()));
+        transactions.executeWithoutResult(status -> {
+        Corpus current = corpusRepo.findLockedById(corpusId).orElse(null);
+        if (current == null) return; // 用户在模型标注期间删除了资料，不写回孤儿数据。
+        var entities = new ArrayList<CorpusChunk>();
         int seq = 0;
         for (Chunk c : chunks) {
             IndexOutput.ChunkMeta meta = findMeta(out, seq);
-            CorpusChunk e = new CorpusChunk();
+            CorpusChunk e = existing.isEmpty() ? new CorpusChunk() : existing.get(seq);
             e.setCorpusId(corpusId);
             e.setSeq(seq);
             e.setTitle(meta != null && meta.title() != null && !meta.title().isBlank()
-                    ? meta.title() : c.heading());
-            e.setTopic(meta == null ? null : meta.topic());
-            e.setSummary(meta == null ? null : meta.summary());
+                    ? meta.title() : (c.heading().isBlank() ? "片段 " + (seq + 1) : c.heading()));
+            if (meta != null) { e.setTopic(meta.topic()); e.setSummary(meta.summary()); }
             e.setText(c.text());
             e.setCharCount(c.text().length());
-            chunkRepo.save(e);
+            entities.add(e);
             seq++;
         }
+        chunkRepo.saveAll(entities);
+        current.setOverview(overview);
+        current.setIndexState(out == null ? "BASIC" : "READY");
+        corpusRepo.save(current);
+        });
         log.info("资料索引完成: corpusId={}, chunks={}, overview={}字", corpusId, chunks.size(),
                 overview == null ? 0 : overview.length());
     }
@@ -158,14 +209,15 @@ public class CorpusIndexer {
             out.add(new Chunk(curHeading, cur.toString().trim()));
         }
 
-        // 硬上限截断（长段落防失控，但只在单块确实超限时）
+        // 超长块拆分而不是丢弃尾部；知识库索引不能漏掉后半篇资料。
+        List<Chunk> bounded = new ArrayList<>();
         for (int i = 0; i < out.size(); i++) {
             Chunk c = out.get(i);
-            if (c.text().length() > HARD_MAX_CHARS) {
-                String t = c.text().substring(0, HARD_MAX_CHARS) + "\n…（该块过长，已截断）";
-                out.set(i, new Chunk(c.heading(), t));
+            for (int start = 0; start < c.text().length(); start += HARD_MAX_CHARS) {
+                bounded.add(new Chunk(c.heading(), c.text().substring(start, Math.min(start + HARD_MAX_CHARS, c.text().length()))));
             }
         }
+        out = bounded;
 
         // 块数超限：尾部块全部合并进第 MAX_CHUNKS 块（内容不丢，只是粒度变粗）
         if (out.size() > MAX_CHUNKS) {
@@ -187,7 +239,7 @@ public class CorpusIndexer {
             你是资料整理助手。下面给出用户资料按顺序切好的若干块（每块只含开头预览），
             请你：
             1. overview：用 150 字内概括这份资料讲什么、适合什么人学什么；
-            2. chunks：为每一块给出 title（块标题）、topic（这块内容对应的"知识点名"，要像
+            2. chunks：为每一块给出 seq（与输入块编号一致，从 0 开始）、title（块标题）、topic（这块内容对应的"知识点名"，要像
                学习计划里的知识点那样简短、可独立命名，如「线程池」「volatile 语义」；
                一块可以没有知识点则 topic 填 null）、summary（这块内容 60 字内的摘要）。
             只依据给定的预览内容标注，不要臆造块里没有的内容。严格遵循格式说明的 JSON。

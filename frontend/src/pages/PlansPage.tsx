@@ -56,7 +56,8 @@ export function PlansPage() {
     const i = plans.findIndex((p) => p.id === id);
     return i >= 0 ? i : 0;
   })();
-  const activeIdx = Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? storedIdx) || 0));
+  const linkedPlanIdx = plans.findIndex(p => p.id === Number(searchParams.get('planId')));
+  const activeIdx = linkedPlanIdx >= 0 ? linkedPlanIdx : Math.min(plans.length - 1, Math.max(0, Number(searchParams.get('plan') ?? storedIdx) || 0));
   const editing = searchParams.get('edit') === '1';
 
   /** 切换方向 tab：写 URL + 同步全局「当前学习方向」 */

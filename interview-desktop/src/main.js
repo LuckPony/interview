@@ -41,6 +41,16 @@ Menu.setApplicationMenu(
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..'); // interview-desktop/src -> interview/
 const BACKEND_PORT = 23333; // 非主流端口，避开 8080 等常用端口被占导致的冲突
+
+// 只允许打开 HTTP(S) 知识库短时预览链接，不能借桥执行 file/javascript 等协议。
+ipcMain.handle('app:openKnowledgeOriginal', async (_event, value) => {
+  const url = new URL(String(value));
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password
+      || !/^\/api\/corpus\/original\/[a-f0-9]{32}$/.test(url.pathname) || url.search || url.hash) {
+    throw new Error('无效的知识库预览链接');
+  }
+  await shell.openExternal(url.href);
+});
 const HEALTH_TIMEOUT_MS = 90_000;
 
 // 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）

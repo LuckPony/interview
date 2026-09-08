@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { CorpusPicker } from '../components/CorpusPicker';
+import { libraryApi } from '../api/library';
 import { Send, Check, Upload, X } from 'lucide-react';
 import { Button, Card, Tag } from '../components/ui';
 import { studyPlan, corpus, type TutorStream } from '../api/drill';
@@ -9,6 +11,8 @@ import type { PlanChatMessage, StudyPlanDraft, ConceptValidationResponse } from 
 /** 新建学习方向：无状态多轮对话，LLM 收敛出 draft 后确认落库。 */
 export function IntakeChat() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialCorpus = Number(searchParams.get('corpus'));
   const [messages, setMessages] = useState<PlanChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,7 +26,7 @@ export function IntakeChat() {
   useEffect(() => () => streamRef.current?.cancel(), []);
 
   // 可选：先上传自己的书 / 项目资料，AI 基于它规划
-  const [corpusId, setCorpusId] = useState<number | null>(null);
+  const [corpusId, setCorpusId] = useState<number | null>(Number.isSafeInteger(initialCorpus) && initialCorpus > 0 ? initialCorpus : null);
   const [corpusName, setCorpusName] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -32,26 +36,37 @@ export function IntakeChat() {
   const [kpChecking, setKpChecking] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // 上传成功后轮询候选知识点（索引是异步的，最多等 ~30s）
-  const pollKnowledgePoints = async (id: number) => {
+  // 按当前资料轮询；切换资料或离开页面后，旧响应不能覆盖新选择。
+  useEffect(() => {
+    setKp(null);
+    setKpIndexed(false);
+    setSelected(new Set());
+    if (!corpusId) { setKpChecking(false); return; }
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
     setKpChecking(true);
-    try {
-      for (let i = 0; i < 10; i++) {
-        const res = await corpus.knowledgePoints(id);
+    libraryApi.detail(corpusId).then(res => { if (alive) setCorpusName(res.document.name); }).catch(e => { if (alive) setErr(e instanceof Error ? e.message : '资料读取失败'); });
+    const poll = async () => {
+      try {
+        const res = await corpus.knowledgePoints(corpusId);
+        if (!alive) return;
         if (res.indexed) {
           setKp(res.points);
           setKpIndexed(true);
           setSelected(new Set(res.points.map((p) => p.name)));
+          setKpChecking(false);
           return;
         }
-        await new Promise((r) => setTimeout(r, 3000));
+        if (++attempts < 20) { timer = setTimeout(() => void poll(), 3000); return; }
+      } catch {
+        // 索引尚不可用时仍允许依据解析原文进行规划。
       }
-    } catch {
-      // 轮询失败不致命：用户仍可继续对话规划
-    } finally {
-      setKpChecking(false);
-    }
-  };
+      if (alive) setKpChecking(false);
+    };
+    void poll();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [corpusId]);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,7 +80,6 @@ export function IntakeChat() {
       setCorpusName(res.name);
       setKp(null);
       setKpIndexed(false);
-      void pollKnowledgePoints(res.id);
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : '上传失败');
     } finally {
@@ -112,7 +126,6 @@ export function IntakeChat() {
         setCorpusName(res.name);
         setKp(null);
         setKpIndexed(false);
-        void pollKnowledgePoints(res.id);
       } else {
         // 本地模式：后端直接读盘，免上传
         const res = await corpus.fromPath(path);
@@ -120,7 +133,6 @@ export function IntakeChat() {
         setCorpusName(res.name);
         setKp(null);
         setKpIndexed(false);
-        void pollKnowledgePoints(res.id);
       }
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : e2 instanceof Error ? e2.message : '读取本地文件失败');
@@ -154,7 +166,7 @@ export function IntakeChat() {
   };
   const send = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || uploading) return;
     const next: PlanChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages([...next, { role: 'assistant', content: '' }]); // 流式占位气泡
     setInput('');
@@ -244,21 +256,23 @@ export function IntakeChat() {
       <Card className="upload-card">
         <span className="eyebrow">基于自己的资料学习（可选）</span>
         <p className="upload-hint">
-          先上传你的书 / 项目文档（PDF、txt、md、docx，带文字层），AI 会基于它的真实内容帮你规划。
+          选择已导入的资料，或上传新的书 / 项目文档。AI 会参考章节索引与原文片段，生成更有针对性的学习规划。
         </p>
+        <CorpusPicker value={corpusId} disabled={busy || uploading || messages.length > 0} onChange={item => { setCorpusId(item?.id ?? null); setCorpusName(item?.name ?? ''); }} />
+        {messages.length > 0 && <p className="upload-hint">本次对话的资料已锁定，避免规划与来源不一致。更换资料请重新进入新建方向。</p>}
         {corpusId == null ? (
           <>
             <label className="upload-btn">
               <Upload size={15} strokeWidth={1.8} />
               {uploading ? '解析中…' : '上传资料'}
-              <input type="file" accept=".pdf,.txt,.md,.docx" hidden onChange={onFile} />
+              <input type="file" accept=".pdf,.txt,.md,.docx" hidden onChange={onFile} disabled={busy || uploading || messages.length > 0} />
             </label>
             {hasElectron && (
               <div className="path-actions">
-                <button type="button" className="upload-btn" onClick={pickFile} disabled={uploading || isCloud === null}>
+                <button type="button" className="upload-btn" onClick={pickFile} disabled={busy || messages.length > 0 || uploading || isCloud === null}>
                   选择本地文件
                 </button>
-                <button type="button" className="upload-btn" onClick={pickFolder} disabled={uploading || isCloud === null}>
+                <button type="button" className="upload-btn" onClick={pickFolder} disabled={busy || messages.length > 0 || uploading || isCloud === null}>
                   选择本地文件夹
                 </button>
               </div>
@@ -275,7 +289,7 @@ export function IntakeChat() {
           <div className="attached-file">
             <span className="file-name">{corpusName}</span>
             <span className="eyebrow">已附加，规划将基于它</span>
-            <button className="file-remove" onClick={detachCorpus} title="移除">
+            <button className="file-remove" onClick={detachCorpus} title="移除" disabled={busy || messages.length > 0}>
               <X size={14} strokeWidth={1.8} />
             </button>
           </div>

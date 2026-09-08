@@ -1,264 +1,171 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  BookOpenCheck,
-  ChevronDown,
-  Database,
-  FileText,
-  FolderUp,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Sparkles,
-  Trash2,
-} from 'lucide-react';
-import { ApiError } from '../api/client';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, ArrowUpRight, BookOpen, Check, Database, ExternalLink, FileText, FolderUp, Layers, Loader2, MessagesSquare, RefreshCw, Search, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { corpus } from '../api/drill';
-import type { CorpusView, KnowledgePointsView } from '../api/types';
-import { Button, Card, Loading } from '../components/ui';
+import { libraryApi, libraryError, LIBRARY_ACCEPT, INDEX_LABELS } from '../api/library';
+import type { CorpusView, CorpusDetail } from '../api/types';
+import { Button, Loading } from '../components/ui';
+import { useFileDrop } from '../lib/useFileDrop';
 import './KnowledgeBasePage.css';
 
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError || error instanceof Error) return error.message;
-  return '操作失败，请稍后重试';
-}
-
-function formatChars(value: number): string {
-  if (value < 1000) return `${value} 字`;
-  return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k 字`;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return '刚刚导入';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '日期未知';
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
+const chars = (n: number) => n < 1000 ? `${n} 字符` : `${(n / 1000).toFixed(1)}k 字符`;
+const date = (value?: string | null) => value ? new Date(value).toLocaleDateString('zh-CN') : '刚刚导入';
+const pending = (item: CorpusView) => ['PENDING', 'RUNNING'].includes(item.indexState ?? 'PENDING');
 
 export function KnowledgeBasePage() {
-  const location = useLocation();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const importMode = location.pathname.endsWith('/import');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<CorpusView[]>([]);
+  const [detail, setDetail] = useState<CorpusDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [pointState, setPointState] = useState<Record<number, KnowledgePointsView>>({});
-  const [pointLoading, setPointLoading] = useState<number | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
+  const [notice, setNotice] = useState('');
+  const [uploading, setUploading] = useState('');
+  const [action, setAction] = useState('');
+  const [query, setQuery] = useState('');
+  const [tag, setTag] = useState('全部');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const routeVersion = useRef(0);
+  useEffect(() => { routeVersion.current++; return () => { routeVersion.current++; }; }, [id]);
+  useLayoutEffect(() => { pageRef.current?.closest('.main')?.scrollTo(0, 0); }, [id]);
+  const uploadBusy = useRef(false);
+  const epoch = useRef(0);
+  const load = useCallback(async (quiet = false) => {
+    const version = ++epoch.current;
+    if (!quiet) setLoading(true);
     setError('');
     try {
-      setItems(await corpus.list());
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
+      if (id) {
+        const value = await libraryApi.detail(Number(id));
+        if (version === epoch.current) setDetail(value);
+      } else {
+        const value = await corpus.list();
+        if (version === epoch.current) setItems(value);
+      }
+    } catch (e) { if (version === epoch.current) setError(libraryError(e)); }
+    finally { if (version === epoch.current) setLoading(false); }
+  }, [id]);
+  useEffect(() => { setDetail(null); setNotice(''); void load(); return () => { epoch.current++; }; }, [load]);
+  const processing = id ? !!detail && pending(detail.document) : items.some(pending);
   useEffect(() => {
-    if (importMode) {
-      window.setTimeout(() => fileInputRef.current?.focus(), 80);
-    }
-  }, [importMode]);
+    if (!processing) return;
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true); }, 6000);
+    return () => window.clearInterval(timer);
+  }, [processing, load]);
+  const tags = useMemo(() => [...new Set(items.flatMap(item => item.topics ?? []))].slice(0, 14), [items]);
+  const filtered = items.filter(item => (tag === '全部' || item.topics?.includes(tag))
+    && `${item.name} ${item.overview ?? ''} ${(item.topics ?? []).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
 
-  const upload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setUploading(true);
-    setError('');
+  const upload = async (files: File[]) => {
+    if (uploadBusy.current || !files.length) return;
+    if (files.length > 10) { setError('每次最多导入 10 份资料'); return; }
+    for (const file of files) {
+      if (!LIBRARY_ACCEPT.split(',').includes('.' + file.name.split('.').pop()?.toLowerCase())) { setError('支持 PDF、Word（DOCX）、TXT、Markdown 格式'); return; }
+      if (!file.size || file.size > 20 * 1024 * 1024) { setError('资料不能为空，每份文件最大 20 MB'); return; }
+    }
+    uploadBusy.current = true; setError(''); setNotice('');
+    const originVersion = routeVersion.current;
+    let count = 0;
     try {
-      const created = await corpus.upload(file);
-      setItems(current => [created, ...current.filter(item => item.id !== created.id)]);
-      setExpandedId(created.id);
-      navigate('/knowledge-base', { replace: true });
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setUploading(false);
+      for (const file of files) {
+        setUploading(`正在导入 ${count + 1}/${files.length} · ${file.name}`);
+        await corpus.upload(file); count++;
+      }
+      if (originVersion === routeVersion.current) setNotice(`已导入 ${count} 份资料，知识点索引将在后台整理。`);
+    } catch (e) { if (originVersion === routeVersion.current) setError(`${count ? `已成功导入 ${count} 份。` : ''}${libraryError(e)}`); }
+    finally {
+      uploadBusy.current = false; setUploading('');
+      if (originVersion === routeVersion.current) {
+        if (!id) corpus.list().then(data => { if (originVersion === routeVersion.current) setItems(data); }).catch(e => setError(libraryError(e)));
+        else navigate('/knowledge-base');
+      }
     }
   };
-
-  const togglePoints = async (id: number) => {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(id);
-    if (pointState[id]) return;
-    setPointLoading(id);
-    setError('');
+  const { dragging, dropProps } = useFileDrop(files => { void upload(files); }, !!uploading);
+  const openOriginal = async (document: CorpusView) => {
+    setAction('original'); setError('');
+    try { await libraryApi.openOriginal(document.id); } catch (e) { setError(libraryError(e)); }
+    finally { setAction(''); }
+  };
+  const remove = async (document: CorpusView) => {
+    if (!window.confirm(`删除「${document.name}」？被学习计划或面试记录引用的资料会受到保护。`)) return;
+    setAction('delete'); setError('');
+    try { await corpus.remove(document.id); navigate('/knowledge-base'); if (!id) setItems(v => v.filter(x => x.id !== document.id)); }
+    catch (e) { setError(libraryError(e)); } finally { setAction(''); }
+  };
+  const reindex = async () => {
+    if (!detail) return;
+    setAction('index'); setError('');
     try {
-      const result = await corpus.knowledgePoints(id);
-      setPointState(current => ({ ...current, [id]: result }));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setPointLoading(null);
-    }
+      await libraryApi.reindex(detail.document.id);
+      setDetail(value => value && ({ ...value, document: { ...value.document, indexState: 'RUNNING' } }));
+      setNotice('已提交重新整理；若未配置模型，将保留基础索引。');
+    } catch (e) { setError(libraryError(e)); } finally { setAction(''); }
   };
 
-  const refreshPoints = async (id: number) => {
-    setPointLoading(id);
-    setError('');
-    try {
-      const result = await corpus.knowledgePoints(id);
-      setPointState(current => ({ ...current, [id]: result }));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setPointLoading(null);
-    }
-  };
-
-  const remove = async (item: CorpusView) => {
-    if (!window.confirm(`确定删除知识资料「${item.name}」？已用于学习计划的资料会被保护，不允许误删。`)) return;
-    setError('');
-    try {
-      await corpus.remove(item.id);
-      setItems(current => current.filter(entry => entry.id !== item.id));
-      if (expandedId === item.id) setExpandedId(null);
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  };
-
-  return (
-    <div className="page knowledge-page">
-      <header className="page-head knowledge-head">
-        <div>
-          <span className="eyebrow">知识管理 · KNOWLEDGE</span>
-          <h1>{importMode ? '导入学习资料' : '知识库管理'}</h1>
-          <p>集中管理用于学习规划和 AI 出题的资料，并查看系统从资料中提取出的知识点。</p>
-        </div>
-        {!importMode && (
-          <Button onClick={() => navigate('/knowledge-base/import')}>
-            <Plus size={16} /> 导入资料
-          </Button>
-        )}
-      </header>
-
-      {error && <div className="banner">{error}</div>}
-
-      <Card className={`knowledge-import-card${importMode ? ' is-emphasized' : ''}`}>
-        <span className="knowledge-import-icon"><FolderUp size={25} /></span>
-        <div className="knowledge-import-copy">
-          <h2>{uploading ? '正在解析资料…' : '把资料加入你的知识库'}</h2>
-          <p>支持 PDF、TXT、Markdown 和 Word。导入后会自动拆分内容并提取候选知识点。</p>
-        </div>
-        <label className={`knowledge-upload-button${uploading ? ' disabled' : ''}`}>
-          {uploading ? <Loader2 className="spin" size={16} /> : <FolderUp size={16} />}
-          {uploading ? '解析中…' : '选择文件'}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.txt,.md,.markdown,.mdx,.docx"
-            onChange={upload}
-            disabled={uploading}
-          />
-        </label>
-      </Card>
-
-      <div className="knowledge-summary">
-        <div><Database size={18} /><strong>{items.length}</strong><span>份资料</span></div>
-        <div><FileText size={18} /><strong>{formatChars(items.reduce((sum, item) => sum + item.charCount, 0))}</strong><span>已解析内容</span></div>
-        <div><Sparkles size={18} /><strong>自动提取</strong><span>知识点索引</span></div>
+  return <div ref={pageRef} className="page knowledge-page" {...dropProps}>
+    {dragging && <div className="kb-drop-overlay"><FolderUp size={36} /><h2>让新知识，有处安放</h2><p>松开鼠标导入资料 · 每份最大 20 MB</p></div>}
+    <input ref={fileRef} type="file" accept={LIBRARY_ACCEPT} multiple hidden onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; void upload(files); }} />
+    <header className="kb-header">
+      <div><span className="eyebrow">KNOWLEDGE LIBRARY · {id ? '资料详情' : '知识库管理'}</span>
+        <h1>{id ? detail?.document.name ?? '资料详情' : '让积累，成为你的底气。'}</h1>
+        <p>{id ? '读懂资料的结构，看见它如何参与学习与面试。' : '整理自己的资料，让每一次规划与练习，都有据可循。'}</p></div>
+      {id ? <Link className="kb-text-link" to="/knowledge-base"><ArrowLeft size={15} />返回知识库</Link>
+        : <div className="kb-header-actions"><Link className="kb-secondary-link" to="/knowledge-base/tools"><Wrench size={16} />工具库</Link>
+          <Button disabled={!!uploading} onClick={() => fileRef.current?.click()}><FolderUp size={16} />导入资料</Button></div>}
+    </header>
+    {error && <div className="banner warn" role="alert">{error}<button className="kb-text-link" onClick={() => void load()}>重新读取</button></div>}
+    {notice && <p className="kb-notice" role="status"><Check size={15} />{notice}</p>}
+    {uploading && <p className="kb-notice" role="status"><Loader2 size={15} className="spin" />{uploading}</p>}
+    {loading ? <Loading label="读取资料与索引…" /> : id ? detail && <>
+      <div className="kb-detail-hero">
+        <span className="kb-document-icon"><FileText size={30} strokeWidth={1.5} /></span>
+        <div><span className={`kb-status ${detail.document.indexState?.toLowerCase()}`}>{INDEX_LABELS[detail.document.indexState ?? 'PENDING']}</span>
+          <p>{chars(detail.document.charCount)} · {detail.sections.length} 个内容片段 · {date(detail.document.createdAt)}</p></div>
+        <Button variant="ghost" disabled={!!action} onClick={() => void openOriginal(detail.document)}><ExternalLink size={16} />查看原文</Button>
       </div>
-
-      <section className="knowledge-list-section">
-        <div className="knowledge-section-head">
-          <div>
-            <span className="eyebrow">LIBRARY</span>
-            <h2>已导入资料</h2>
-          </div>
-          <button type="button" className="knowledge-refresh" onClick={() => void load()} disabled={loading}>
-            <RefreshCw size={15} className={loading ? 'spin' : ''} /> 刷新
-          </button>
-        </div>
-
-        {loading ? (
-          <Loading label="读取知识库…" />
-        ) : items.length === 0 ? (
-          <div className="empty knowledge-empty">
-            <BookOpenCheck size={34} strokeWidth={1.4} />
-            <h3>知识库还是空的</h3>
-            <p>先导入一份学习资料，它可以在新建学习方向时直接复用。</p>
-          </div>
-        ) : (
-          <div className="knowledge-list">
-            {items.map(item => {
-              const expanded = expandedId === item.id;
-              const points = pointState[item.id];
-              return (
-                <Card className={`knowledge-item${expanded ? ' expanded' : ''}`} key={item.id}>
-                  <div className="knowledge-item-main">
-                    <span className="knowledge-file-icon"><FileText size={21} /></span>
-                    <div className="knowledge-file-copy">
-                      <h3 title={item.name}>{item.name}</h3>
-                      <div className="knowledge-meta">
-                        <span>{formatChars(item.charCount)}</span>
-                        <span>{item.sourceType === 'UPLOAD' ? '文件上传' : '本地导入'}</span>
-                        <span>{formatDate(item.createdAt)}</span>
-                      </div>
-                    </div>
-                    <div className="knowledge-item-actions">
-                      <button type="button" className="knowledge-detail-button" onClick={() => void togglePoints(item.id)}>
-                        {pointLoading === item.id ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
-                        知识点
-                        <ChevronDown className={expanded ? 'up' : ''} size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="knowledge-delete-button"
-                        onClick={() => void remove(item)}
-                        title="删除资料"
-                        aria-label={`删除 ${item.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {expanded && (
-                    <div className="knowledge-points-panel">
-                      {pointLoading === item.id && !points ? (
-                        <Loading label="读取提取结果…" />
-                      ) : points?.indexed ? (
-                        points.points.length > 0 ? (
-                          <div className="knowledge-points-grid">
-                            {points.points.map(point => (
-                              <div className="knowledge-point" key={point.name}>
-                                <div><strong>{point.name}</strong><span>{point.chunkCount} 个内容片段</span></div>
-                                {point.snippets[0] && <p>{point.snippets[0]}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        ) : <p className="knowledge-processing">资料已完成索引，暂未提取出明确知识点。</p>
-                      ) : (
-                        <div className="knowledge-processing">
-                          <span>资料仍在分析中，稍后即可查看知识点。</span>
-                          <button type="button" onClick={() => void refreshPoints(item.id)}>重新检查</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        )}
+      {!detail.document.hasOriginal && <p className="kb-muted">历史资料只保存了解析文本；“查看原文”会在浏览器打开完整文本。</p>}
+      <div className="kb-detail-grid"><div className="kb-detail-main">
+        <section className="kb-panel"><span className="kb-section-label">01 / OVERVIEW</span><h2>内容简介</h2><p className="kb-overview">{detail.document.overview}</p>
+          <div className="kb-tags">{detail.document.topics?.map(t => <span key={t}>{t}</span>)}</div></section>
+        <section className="kb-panel"><div className="kb-section-top"><div><span className="kb-section-label">02 / INDEX</span><h2>知识点与内容索引</h2></div>
+          <button className="kb-text-link" disabled={!!action} onClick={() => void reindex()}><RefreshCw size={14} />重新整理</button></div>
+          {detail.document.indexState === 'BASIC' && <p className="kb-muted">当前为章节基础索引。配置模型后可重新整理，补充 AI 标签与摘要。</p>}
+          {!detail.sections.length && <p className="kb-muted">{pending(detail.document) ? '正在整理索引，请稍候。' : '尚无索引，可点击重新整理。'}原文仍可查看。</p>}
+          <div className="kb-index-list">{detail.sections.map(section => <Link key={section.id} to={`/knowledge-base/tools?corpus=${id}&section=${section.id}`} className="kb-index-row">
+            <span className="kb-index-number">{String(section.sequence + 1).padStart(2, '0')}</span><div><h3>{section.topic || section.title}</h3><p>{section.summary || section.title}</p><small>{chars(section.charCount)} · 前往工具库阅读 / 翻译</small></div><ArrowUpRight size={16} /></Link>)}</div>
+        </section>
+      </div><aside className="kb-detail-aside">
+        <section className="kb-panel kb-use-panel"><Sparkles size={24} /><h2>把资料用起来</h2><p>从这份资料出发，让学习更聚焦。</p>
+          <Link to={`/intake?corpus=${id}`}><BookOpen size={17} />生成学习计划<ArrowUpRight size={15} /></Link>
+          <Link to={`/rehearsal?corpus=${id}`}><MessagesSquare size={17} />生成模拟面试<ArrowUpRight size={15} /></Link>
+          <Link to={`/knowledge-base/tools?corpus=${id}`}><Wrench size={17} />打开知识库工具<ArrowUpRight size={15} /></Link></section>
+        <section className="kb-panel"><span className="kb-section-label">03 / CONNECTIONS</span><h2>资料使用记录 <small>{detail.usages.length}</small></h2>
+          {!detail.usages.length && <p className="kb-muted">还没有关联的计划或面试。完成创建后会自动记录在这里。</p>}
+          <div className="kb-usage-list">{detail.usages.map(u => <Link key={u.kind + u.id} to={u.kind === 'PLAN' ? `/plan?planId=${u.id}` : `/rehearsal/history/${u.id}`}>
+            {u.kind === 'PLAN' ? <BookOpen size={16} /> : <MessagesSquare size={16} />}<span>{u.title}<small>{u.kind === 'PLAN' ? '学习计划' : u.kind === 'INTERVIEW_PLAN' ? '通过关联计划使用知识点' : '直接基于资料出题'}</small></span><ArrowUpRight size={13} /></Link>)}</div>
+        </section><button className="kb-delete" disabled={!!action} onClick={() => void remove(detail.document)}><Trash2 size={14} />删除这份资料</button>
+      </aside></div>
+    </> : <>
+      <section className="kb-stats" aria-label="知识库统计">
+        <div><Database size={19} /><span><strong>{items.length}</strong><small>份学习资料</small></span></div>
+        <div><Layers size={19} /><span><strong>{items.reduce((n, item) => n + (item.chunkCount ?? 0), 0)}</strong><small>个内容索引</small></span></div>
+        <div><BookOpen size={19} /><span><strong>{chars(items.reduce((n, item) => n + item.charCount, 0))}</strong><small>可复用知识内容</small></span></div>
       </section>
-    </div>
-  );
+      <div className="kb-library-toolbar"><div><h2>我的资料</h2><p>按主题整理，按目标使用</p></div>
+        <label className="kb-search"><Search size={16} /><input aria-label="搜索知识库" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索资料、标签或知识点" /></label>
+        <button className="kb-icon-button" aria-label="刷新知识库" onClick={() => void load(true)}><RefreshCw size={16} /></button></div>
+      <div className="kb-filters" aria-label="知识主题筛选">{['全部', ...tags].map(t => <button key={t} className={tag === t ? 'active' : ''} onClick={() => setTag(t)}>{t}</button>)}</div>
+      {!filtered.length ? <div className="kb-empty"><BookOpen size={35} /><h2>{items.length ? '没有匹配的资料' : '你的下一份知识，从这里开始'}</h2>
+        <p>{items.length ? '试试其他关键词或主题。' : '点击右上角“导入资料”，或把文件拖到此页面。支持 PDF、DOCX、TXT、Markdown。'}</p>
+        {items.length > 0 && <button className="kb-text-link" onClick={() => { setQuery(''); setTag('全部'); }}>重置筛选</button>}</div>
+        : <div className="kb-document-grid">{filtered.map((item, i) => <article className={`kb-document tone-${i % 3}`} key={item.id}>
+          <Link className="kb-document-main" to={`/knowledge-base/${item.id}`}><div className="kb-document-top"><span className="kb-document-icon"><FileText size={24} strokeWidth={1.5} /></span><span className={`kb-status ${item.indexState?.toLowerCase()}`}>{INDEX_LABELS[item.indexState ?? 'PENDING']}</span></div>
+            <h3>{item.name}</h3><p>{item.overview || '正在整理内容简介，原文已保存。'}</p><div className="kb-tags">{(item.topics ?? []).slice(0, 4).map(t => <span key={t}>{t}</span>)}{!item.topics?.length && <span>待整理知识点</span>}</div>
+            <footer><span>{date(item.createdAt)} · {chars(item.charCount)}</span><ArrowUpRight size={17} /></footer></Link>
+        </article>)}</div>}
+      <p className="kb-bottom-note">单份最大 20 MB / 20 万字符 · 资料仅对当前账号可见 · AI 标签与摘要请结合原文核对</p>
+    </>}
+  </div>;
 }

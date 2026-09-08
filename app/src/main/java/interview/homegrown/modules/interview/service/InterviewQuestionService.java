@@ -54,7 +54,7 @@ public class InterviewQuestionService {
                                                          String resumeText,
                                                          List<String> planConcepts,
                                                          boolean mixed,
-                                                         String provider) {
+                                                         String provider, String corpusReference) {
 
         int total = DifficultyConfig.BASE_QUESTION_COUNT;
         int toGenerate = total - 1; // 第 1 题自我介绍由代码固定
@@ -62,7 +62,7 @@ public class InterviewQuestionService {
 
         String direction = (skillName != null && !skillName.isBlank())
                 ? skillName
-                : (planConcepts != null && !planConcepts.isEmpty() ? "学习方向知识点" : "候选人简历相关技术栈");
+                : (corpusReference != null ? "所选知识库资料" : planConcepts != null && !planConcepts.isEmpty() ? "学习方向知识点" : "候选人简历相关技术栈");
 
         String difficultyText = switch (difficulty) {
             case JUNIOR -> "初级：考察基础概念掌握与简单应用；题目较浅，整场约 18-24 分钟";
@@ -84,20 +84,24 @@ public class InterviewQuestionService {
 
         if (hasResume) {
             userPrompt.append("\n候选人简历内容");
-            userPrompt.append(mixed ? "（出题权重 70%，应重点围绕简历中的项目与技术栈）" : "（出题依据）");
+            userPrompt.append(mixed && corpusReference == null ? "（出题权重 70%，应重点围绕简历中的项目与技术栈）" : "（出题依据）");
             userPrompt.append("：\n------------------------------------------\n");
             userPrompt.append(resumeText).append("\n");
             userPrompt.append("------------------------------------------\n");
         }
         if (hasPlan) {
             userPrompt.append("\n候选人学习方向知识点");
-            userPrompt.append(mixed ? "（出题权重 30%，作为补充考察范围）" : "（出题依据）");
+            userPrompt.append(mixed && corpusReference == null ? "（出题权重 30%，作为补充考察范围）" : "（出题依据）");
             userPrompt.append("：\n");
             for (String c : planConcepts) {
                 userPrompt.append("- ").append(c).append("\n");
             }
         }
 
+        if (corpusReference != null && !corpusReference.isBlank()) {
+            userPrompt.append("\n【知识库出题范围】\n").append(corpusReference)
+                .append("\n本场必须以这份资料的知识点为技术题的主要范围；结合简历/学习方向的交集，不套用无关通用题。每道技术题末尾标注依据的 [来源 S序号]（无章节索引时注明原文抽样）。资料不足时明确说明，不编造原文。\n");
+        }
         InterviewQuestionResult result = invoker.invoke(
                 SYSTEM_PROMPT,
                 userPrompt.toString(),

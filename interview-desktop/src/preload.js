@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  openKnowledgeOriginal: (url) => ipcRenderer.invoke('app:openKnowledgeOriginal', url),
   pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   // 云模式（后端在服务器）：在本机读文件夹字节交给服务器解析（服务器读不到本机路径）

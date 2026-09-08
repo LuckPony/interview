@@ -17,6 +17,20 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
 class KnowledgeStreamTest {
+  @Test @DisplayName("文献翻译使用阅读专用提示，不被普通问答格式强制改成总结")
+  void libraryPrompt() throws Exception {
+    LlmRawClient client = mock(LlmRawClient.class);
+    doAnswer(call -> {
+      assertThat(call.<String>getArgument(0)).contains("文献阅读助手", "不得用摘要代替").doesNotContain("补一个具体例子");
+      call.<Consumer<String>>getArgument(2).accept("译文");
+      return null;
+    }).when(client).stream(anyString(), anyString(), any(), any(), eq(false), any());
+    var controller = new KnowledgeController(null, null, client, null);
+    var out = new ByteArrayOutputStream();
+    controller.ask(new KnowledgeController.AskRequest("翻译这一段", null, List.of(), "library")).getBody().writeTo(out);
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("译文", "event: done");
+  }
+
   @Test
   @DisplayName("SSE 推送处理状态和完整代码正文，推理不混入答案")
   void emitsStatusAndCode() throws Exception {

@@ -5,6 +5,7 @@ import interview.homegrown.modules.drill.domain.CorpusChunk;
 import interview.homegrown.modules.drill.repository.CorpusChunkRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.service.CorpusService;
+import interview.homegrown.modules.drill.service.CorpusLibraryService;
 import interview.homegrown.modules.drill.web.dto.CorpusView;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,12 +36,14 @@ public class CorpusController {
     private final CorpusService service;
     private final CorpusRepository corpusRepo;
     private final CorpusChunkRepository chunkRepo;
+    private final CorpusLibraryService library;
 
     public CorpusController(CorpusService service, CorpusRepository corpusRepo,
-                            CorpusChunkRepository chunkRepo) {
+                            CorpusChunkRepository chunkRepo, CorpusLibraryService library) {
         this.service = service;
         this.corpusRepo = corpusRepo;
         this.chunkRepo = chunkRepo;
+        this.library = library;
     }
 
     @PostMapping("/upload")
@@ -66,7 +69,7 @@ public class CorpusController {
 
     @GetMapping
     public List<CorpusView> list() {
-        return service.list(currentUserId()).stream().map(this::toView).toList();
+        return library.list(currentUserId());
     }
 
     @DeleteMapping("/{corpusId}")
@@ -89,10 +92,12 @@ public class CorpusController {
         if (chunks.isEmpty()) {
             return new KnowledgePointsView(false, List.of());
         }
-        // 按 topic 分组（topic 为 null 的归入「未标注」），每知识点取前 3 条块摘要
+        // 无 AI 标注时保留章节标题，避免不同知识章节被合并成一个「未标注」。
         Map<String, List<CorpusChunk>> byTopic = new LinkedHashMap<>();
         for (CorpusChunk c : chunks) {
-            String key = (c.getTopic() == null || c.getTopic().isBlank()) ? "（未标注）" : c.getTopic().trim();
+            String key = (c.getTopic() == null || c.getTopic().isBlank()) ? c.getTitle() : c.getTopic().trim();
+            if (key == null || key.isBlank()) key = "片段 " + (c.getSeq() + 1);
+            key = key.replaceFirst("^#+\\s*", "");
             byTopic.computeIfAbsent(key, k -> new ArrayList<>()).add(c);
         }
         List<KnowledgePointsView.PointItem> points = byTopic.entrySet().stream()
@@ -112,13 +117,7 @@ public class CorpusController {
     }
 
     private CorpusView toView(Corpus corpus) {
-        return new CorpusView(
-                corpus.getId(),
-                corpus.getName(),
-                corpus.getCharCount(),
-                corpus.getSourceType(),
-                corpus.getCreatedAt()
-        );
+        return library.view(corpus, List.of(), 0);
     }
 
     private Long currentUserId() {

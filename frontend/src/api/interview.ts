@@ -99,6 +99,7 @@ export const interviewApi = {
     difficulty?: InterviewDifficulty;
     resumeId?: number | null;
     planIds?: number[];
+    corpusId?: number | null;
     mode?: InterviewMode;
   }): Promise<InterviewSession> {
     return unwrap(apiFetch<Envelope<InterviewSession>>('/interviews/sessions', {

@@ -33,6 +33,14 @@ public class AiSettingsService {
     private final JdbcTemplate jdbc;
     private final AiConfigProperties startup;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ThreadLocal<AiConfig> taskConfig = new ThreadLocal<>();
+
+    /** 异步任务的临时配置快照：不持久化 key，结束后清理，不能借用其他用户配置。 */
+    public void withTaskConfig(AiConfig snapshot, Runnable work) {
+        AiConfig previous = taskConfig.get();
+        try { taskConfig.set(snapshot); work.run(); }
+        finally { if (previous == null) taskConfig.remove(); else taskConfig.set(previous); }
+    }
 
     public AiSettingsService(JdbcTemplate jdbc, AiConfigProperties startup) {
         this.jdbc = jdbc;
@@ -41,6 +49,7 @@ public class AiSettingsService {
 
     /** 当前请求生效的配置（LLM 客户端每次调用走这里）。 */
     public AiConfig currentProviderForRequest() {
+        if (taskConfig.get() != null) return taskConfig.get();
         // 2) 当前登录用户的个人配置
         Long userId = currentUserId();
         AiConfig base = userId != null ? loadFromDb(userId) : null;

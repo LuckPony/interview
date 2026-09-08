@@ -122,7 +122,7 @@ const LANG_LABEL: Record<string, string> = {
   r: 'R',
 };
 
-async function copyText(text: string): Promise<void> {
+export async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);

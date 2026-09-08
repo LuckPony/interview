@@ -15,6 +15,8 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
     //当前用户的所有会话（按创建时间倒序）
     List<InterviewSessionEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
 
+    boolean existsByUserIdAndCorpusId(Long userId, Long corpusId);
+
     //按照简历id查找对应会话
     Optional<InterviewSessionEntity> findByResumeIdOrderByCreatedAtDesc(Long resumeId);
 }

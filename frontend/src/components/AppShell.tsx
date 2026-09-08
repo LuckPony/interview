@@ -12,7 +12,7 @@ import {
   Compass,
   Database,
   FileStack,
-  FolderUp,
+  Wrench,
   GraduationCap,
   History,
   Home,
@@ -100,10 +100,10 @@ const KNOWLEDGE_GROUP: NavGroup = {
       exact: true,
     },
     {
-      to: '/knowledge-base/import',
-      label: '资料导入',
-      description: '上传新的学习资料',
-      icon: FolderUp,
+      to: '/knowledge-base/tools',
+      label: '知识库工具库',
+      description: '阅读翻译与知识整理',
+      icon: Wrench,
       exact: true,
     },
   ],
@@ -117,6 +117,7 @@ const ACCOUNT_NAV: NavItem[] = [
 ];
 
 function pathMatches(pathname: string, item: NavItem): boolean {
+  if (item.to === '/knowledge-base' && /^\/knowledge-base\/\d+$/.test(pathname)) return true;
   if (item.exact || item.to === '/') return pathname === item.to;
   return pathname === item.to || pathname.startsWith(`${item.to}/`);
 }

@@ -11,6 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.FileSystemResource;
 
 /**
  * 本地文件系统存储（替代原 S3/MinIO 对象存储）。
@@ -62,6 +66,27 @@ public class FileStorageService {
             return root.resolve(key).toUri().toURL();
         } catch (Exception e) {
             throw new IllegalStateException("无法构造文件 URL: " + e.getMessage(), e);
+        }
+    }
+
+    /** 仅按后端保存的相对 key 读取，不接受用户传入任意磁盘路径。 */
+    public Resource read(String key) {
+        Path target = root.resolve(key).normalize();
+        if (!target.startsWith(root) || !Files.isRegularFile(target) || Files.isSymbolicLink(target)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "原文件不存在，请检查存储目录或重新导入");
+        }
+        return new FileSystemResource(target);
+    }
+
+    /** 删除服务端生成的单个存储 key；不接受目录或任意路径。清理失败保留文件并记录。 */
+    public void delete(String key) {
+        if (key == null || !key.matches("[a-f0-9-]{36}(\\.[A-Za-z0-9]+)?")) return;
+        Path target = root.resolve(key).normalize();
+        if (!target.startsWith(root) || Files.isSymbolicLink(target)) return;
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            log.warn("存储文件清理失败: key={}", key, e);
         }
     }
 }

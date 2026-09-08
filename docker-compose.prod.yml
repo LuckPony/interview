@@ -73,6 +73,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    volumes:
+      - backend_files:/app/data/files
     ports:
       - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_HOST_PORT:-23333}:23333"
     environment:
@@ -85,6 +87,7 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
       APP_STORAGE_ENDPOINT: http://minio:9000
+      APP_STORAGE_LOCAL_DIR: /app/data/files
       APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
@@ -119,6 +122,7 @@ services:
       - backend
 
 volumes:
+  backend_files:
   pg_data:
   redis_data:
   minio_data:

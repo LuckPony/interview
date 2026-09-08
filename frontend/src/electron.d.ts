@@ -17,6 +17,7 @@ declare global {
   }
 
   interface ElectronAPI {
+    openKnowledgeOriginal?: (url: string) => Promise<void>;
     /** 弹系统文件选择器，返回绝对路径或 null（用户取消）。 */
     pickFile: () => Promise<string | null>;
     /** 弹系统文件夹选择器，返回绝对路径或 null（用户取消）。 */

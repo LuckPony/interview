@@ -13,6 +13,8 @@ import interview.homegrown.modules.interview.repository.InterviewSessionReposito
 import interview.homegrown.modules.resume.model.ResumeEntity;
 import interview.homegrown.modules.resume.repository.ResumeRepository;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.repository.StudyPlanRepository;
+import interview.homegrown.modules.drill.service.CorpusLibraryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -56,6 +58,8 @@ public class InterviewSessionService {
     private final InterviewQuestionRepository questionRepo;
     private final RedisService redisService;
     private final ObjectMapper objectMapper;
+    private final CorpusLibraryService library;
+    private final StudyPlanRepository plans;
 
     public InterviewSessionService(ResumeRepository resumeRepository,
                                    InterviewSkillService skillService,
@@ -68,7 +72,7 @@ public class InterviewSessionService {
                                    ConceptRepository conceptRepo,
                                    InterviewQuestionRepository questionRepo,
                                    RedisService redisService,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper, CorpusLibraryService library, StudyPlanRepository plans) {
         this.resumeRepository = resumeRepository;
         this.persistenceService = persistenceService;
         this.questionService = questionService;
@@ -81,6 +85,7 @@ public class InterviewSessionService {
         this.questionRepo = questionRepo;
         this.redisService = redisService;
         this.objectMapper = objectMapper;
+        this.library = library; this.plans = plans;
     }
 
     //===================== 创建会话 ===================
@@ -88,8 +93,16 @@ public class InterviewSessionService {
     public InterviewSessionDTO createSession(CreateSessionRequest request, Long userId) {
         boolean hasResume = request.resumeId() != null;
         boolean hasPlans = request.planIds() != null && !request.planIds().isEmpty();
-        if (!hasResume && !hasPlans) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "请上传简历或选择至少一个学习方向，才能开始面试");
+        if (!hasResume && !hasPlans && request.corpusId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择简历、学习方向或知识库资料，才能开始面试");
+        }
+        String reference = library.reference(request.corpusId(), userId);
+        if (hasPlans) {
+            var selectedPlans = plans.findAllById(request.planIds());
+            if (selectedPlans.size() != request.planIds().stream().distinct().count()
+                    || selectedPlans.stream().anyMatch(p -> !userId.equals(p.getUserId()))) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "学习方向不存在或无权使用");
+            }
         }
 
         InterviewDifficulty difficulty = request.difficulty() != null ? request.difficulty() : InterviewDifficulty.MIDDLE;
@@ -110,9 +123,7 @@ public class InterviewSessionService {
         // 学习方向知识点（可选，多选合并）
         List<String> planConcepts = (request.planIds() == null || request.planIds().isEmpty())
                 ? List.of()
-                : request.planIds().stream()
-                        .distinct()
-                        .flatMap(pid -> conceptRepo.findByStudyPlanId(pid).stream())
+                : conceptRepo.findByStudyPlanIdIn(request.planIds()).stream()
                         .map(c -> c.getTopic() + "/" + c.getName())
                         .distinct()
                         .limit(200)
@@ -124,13 +135,14 @@ public class InterviewSessionService {
 
         // 出 6 道基础题（第 1 题自我介绍固定，追问动态生成）
         InterviewQuestionResult baseQuestions = questionService.generateBaseQuestions(
-                skillName, difficulty, resumeText, planConcepts, hasResume && hasPlans, request.llmProvider());
+                skillName, difficulty, resumeText, planConcepts, hasResume && hasPlans, request.llmProvider(), reference);
 
         // 创建会话实体并落库
         InterviewSessionEntity session = new InterviewSessionEntity();
         session.setId(UUID.randomUUID().toString());
         session.setUserId(userId);
         session.setResumeId(resumeId);
+        session.setCorpusId(request.corpusId());
         session.setSkillId(request.skillId());
         session.setDifficulty(difficulty);
         session.setStatus(InterviewStatus.IN_PROGRESS);

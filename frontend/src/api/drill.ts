@@ -600,7 +600,7 @@ export const studyPlan = {
     }),
 
   confirm: (draft: StudyPlanDraft) =>
-    apiFetch<PlanView>('/study-plan/confirm', {
+    legacyDtoFetch<PlanView>('/study-plan/confirm', {
       method: 'POST',
       body: JSON.stringify({ draft }),
     }),
@@ -666,26 +666,34 @@ export const aiSettings = {
 };
 
 // 个人资料：上传书 / 项目文档，解析文本后供规划与出题引用
+async function legacyDtoFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const value = await apiFetch<T | { code: number; message: string; data: T }>(path, init);
+  if (value && typeof value === 'object' && 'code' in value) {
+    if (value.code !== 200) throw new ApiError(value.code, value.message);
+    return value.data;
+  }
+  return value as T;
+}
 export const corpus = {
-  list: () => apiFetch<CorpusView[]>('/corpus'),
+  list: () => legacyDtoFetch<CorpusView[]>('/corpus'),
   // 网页态：浏览器上传字节
   upload: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return apiFetch<CorpusView>('/corpus/upload', { method: 'POST', body: form });
+    return legacyDtoFetch<CorpusView>('/corpus/upload', { method: 'POST', body: form });
   },
   // 桌面态：直接把本地路径交给后端读盘，免上传（解大项目痛点；仅本地部署有意义）
   fromPath: (path: string) =>
-    apiFetch<CorpusView>('/corpus/from-path', {
+    legacyDtoFetch<CorpusView>('/corpus/from-path', {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
   // 云端桌面态：Electron 在本机读好的文件字节传上来，服务端 Tika 解析合并
   fromFiles: (form: FormData) =>
-    apiFetch<CorpusView>('/corpus/from-files', { method: 'POST', body: form }),
+    legacyDtoFetch<CorpusView>('/corpus/from-files', { method: 'POST', body: form }),
   // 资料候选知识点（异步拆块+LLM 标注完成后返回；indexed=false 表示还在处理）
   knowledgePoints: (corpusId: number) =>
-    apiFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
+    legacyDtoFetch<KnowledgePointsView>(`/corpus/${corpusId}/knowledge-points`),
   remove: async (corpusId: number) => {
     const response = await apiFetch<{ ok?: boolean; code?: number; message?: string }>(`/corpus/${corpusId}`, {
       method: 'DELETE',

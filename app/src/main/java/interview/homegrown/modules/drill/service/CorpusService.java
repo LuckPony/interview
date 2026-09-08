@@ -9,8 +9,14 @@ import interview.homegrown.modules.drill.domain.StudyPlan;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.repository.StudyPlanRepository;
+import interview.homegrown.modules.interview.repository.InterviewSessionRepository;
+import interview.homegrown.infrastructure.file.FileStorageService;
+import interview.homegrown.infrastructure.file.DocumentParseService;
+import interview.homegrown.common.ai.AiSettingsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -26,9 +32,8 @@ import java.util.stream.Stream;
 /**
  * 个人资料 Corpus 的摄取与检索。
  *
- * <p>v1 不做向量库（RAG）：资料不大时直接把解析文本注入 prompt（全文注入）。
- * 注入前用 {@link #MAX_INJECT_CHARS} 截断，避免撑爆 LLM 上下文窗口 + 烧 token。
- * 等真遇到"一本 800 页的书"塞不进窗口，再升级到切块 + pgvector 检索。
+ * <p>规划和面试通过 CorpusLibraryService 复用章节索引与有界原文节选，
+ * 不在此重复建设向量库。旧概念生成入口保留 {@link #MAX_INJECT_CHARS} 上限。
  *
  * <p>两种摄取：{@link #upload} 收浏览器上传的字节；{@link #fromPath} 直接读本地
  * 文件 / 文件夹（桌面端用，免上传、解大项目痛点）。fromPath 仅限本地部署，
@@ -65,14 +70,23 @@ public class CorpusService {
     private final ConceptRepository conceptRepo;
     private final FileParser parser;
     private final CorpusIndexer indexer;
+    private final CorpusLibraryService library;
+    private final InterviewSessionRepository interviews;
+    private final FileStorageService storage;
+    private final DocumentParseService documentParser;
+    private final AiSettingsService settings;
 
     public CorpusService(CorpusRepository corpusRepo, StudyPlanRepository planRepo,
-                         ConceptRepository conceptRepo, FileParser parser, CorpusIndexer indexer) {
+                         ConceptRepository conceptRepo, FileParser parser, CorpusIndexer indexer,
+                         CorpusLibraryService library, InterviewSessionRepository interviews,
+                         FileStorageService storage, DocumentParseService documentParser, AiSettingsService settings) {
         this.corpusRepo = corpusRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.parser = parser;
         this.indexer = indexer;
+        this.library = library; this.interviews = interviews; this.storage = storage;
+        this.documentParser = documentParser; this.settings = settings;
     }
 
     @Transactional(readOnly = true)
@@ -82,35 +96,56 @@ public class CorpusService {
 
     @Transactional
     public void delete(Long corpusId, Long userId) {
-        Corpus corpus = corpusRepo.findById(corpusId)
+        Corpus corpus = corpusRepo.findLockedById(corpusId)
                 .filter(item -> item.getUserId().equals(userId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
-        if (planRepo.existsByUserIdAndCorpusId(userId, corpusId)) {
+        if (planRepo.existsByUserIdAndCorpusId(userId, corpusId) || interviews.existsByUserIdAndCorpusId(userId, corpusId)) {
             throw new BusinessException(
                     ErrorCode.BAD_REQUEST,
-                    "该资料正在被学习计划使用，请先删除或调整关联的学习计划"
+                    "该资料正在被学习计划或面试记录引用，请先处理关联记录"
             );
         }
         corpusRepo.delete(corpus);
+        String originalKey = corpus.getOriginalKey();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() { storage.delete(originalKey); }
+        });
     }
 
     public Corpus upload(MultipartFile file, Long userId) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("请选择一个文件再上传");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择一个文件再上传");
         }
+        String name = file.getOriginalFilename() == null ? "资料.txt" : file.getOriginalFilename().replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "_");
+        if (name.length() > 180 || !isSupportedName(name)) throw new BusinessException(ErrorCode.FILE_TYPE_NOT_SUPPORTED, "支持 PDF、Word、TXT、Markdown，文件名不超过 180 字符");
+        if (file.getSize() > MAX_FILE_BYTES) throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "单份资料最大 20 MB");
         String text;
+        byte[] bytes;
+        String mime;
         try {
-            text = parser.parse(file.getInputStream(), file.getOriginalFilename());
+            bytes = file.getBytes();
+            mime = documentParser.detectContectType(bytes);
+            text = documentParser.parseTextPreservingLayout(bytes, name, MAX_PATH_CHARS);
         } catch (IOException e) {
-            throw new IllegalArgumentException("读取上传文件失败：" + e.getMessage());
+            throw new BusinessException(ErrorCode.FILE_PARSE_FAILED, "读取上传文件失败");
         }
+        if (text.isBlank()) throw new BusinessException(ErrorCode.FILE_PARSE_FAILED, "未提取到文字，扫描件请先添加文字层");
         Corpus c = new Corpus();
         c.setUserId(userId);
-        c.setName(file.getOriginalFilename());
+        c.setName(name);
         c.setSourceType("UPLOAD");
         c.setText(text);
         c.setCharCount(text.length());
-        Corpus saved = corpusRepo.save(c);
+        c.setOriginalKey(storage.upload(bytes, name, mime));
+        c.setOriginalType(mime);
+        Corpus saved;
+        try {
+            saved = corpusRepo.save(c);
+        } catch (Exception e) {
+            storage.delete(c.getOriginalKey());
+            throw e;
+        }
         // 异步拆块 + 知识点标注（不阻塞上传请求）
         indexer.indexAsync(saved.getId());
         return saved;
@@ -244,10 +279,11 @@ public class CorpusService {
 
     /** intake 阶段方向还没建，直接按 corpusId 取「《文件名》\n文本」。无则返回 null。 */
     public String referenceWithName(Long corpusId) {
-        if (corpusId == null) return null;
-        Corpus c = corpusRepo.findById(corpusId).orElse(null);
-        if (c == null || c.getText() == null) return null;
-        return "《" + c.getName() + "》\n" + truncate(c.getText());
+        return library.reference(corpusId, settings.currentUserId());
+    }
+
+    public void requireOwned(Long corpusId, Long userId) {
+        if (corpusId != null) library.requireOwned(corpusId, userId);
     }
 
     /** 按概念取其所属方向的资料文本（出题时注入）。无绑定则返回 null。 */

@@ -61,6 +61,9 @@ public class InterviewSessionEntity {
     @Column(name = "plan_ids", length = 255)
     private String planIds;
 
+    /** 本场出题使用的知识库资料，保留溯源关系。 */
+    private Long corpusId;
+
     /** 面试开始时间（用于计时） */
     @Column(name = "start_at")
     private LocalDateTime startAt;

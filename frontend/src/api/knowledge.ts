@@ -47,6 +47,7 @@ export function askStream(
     onDone: () => void,
     onError: (msg?: string) => void,
     onStatus?: (text: string) => void,
+    purpose?: 'library',
 ): AskStream {
     const controller = new AbortController();
     let cancelled = false;
@@ -71,6 +72,7 @@ export function askStream(
                 },
                 body: JSON.stringify({
                     question,
+                    purpose,
                     conversation: conversation
                         .filter((message, index) => !message.stopped && !message.failed
                             && !(message.role === 'user' && (conversation[index + 1]?.failed || conversation[index + 1]?.stopped)))

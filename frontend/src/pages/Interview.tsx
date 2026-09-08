@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { CorpusPicker } from '../components/CorpusPicker';
 import {
   Mic, Type, FileText, BookOpen, ChevronRight, X,
   CheckCircle2, XCircle, Send, Volume2, Square, Loader2, Timer,
@@ -71,6 +73,9 @@ function fmtTime(sec: number): string {
 const SESSION_KEY = 'yan.interview.sessionId';
 
 export function Interview() {
+  const [searchParams] = useSearchParams();
+  const initialCorpus = Number(searchParams.get('corpus'));
+  const [corpusId, setCorpusId] = useState<number | null>(Number.isSafeInteger(initialCorpus) && initialCorpus > 0 ? initialCorpus : null);
   const [phase, setPhase] = useState<Phase>('config');
 
   // —— 配置态 ——
@@ -113,6 +118,7 @@ export function Interview() {
 
   // 恢复进行中的面试
   useEffect(() => {
+    if (searchParams.has('corpus')) return; // 从资料页进入时明确创建新面试，不覆盖旧记录。
     const resumeId = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('resume')
       ?? sessionStorage.getItem(SESSION_KEY);
     if (!resumeId) return;
@@ -167,14 +173,14 @@ export function Interview() {
   };
 
   const startInterview = async () => {
-    if (!resumeId && planIds.length === 0) {
-      setConfigErr('请上传简历或选择至少一个学习方向，才能开始面试（二选一，可都选）');
+    if (!resumeId && planIds.length === 0 && !corpusId) {
+      setConfigErr('请选择简历、学习方向或知识库资料中的至少一项');
       return;
     }
     setConfigErr('');
     setCreating(true);
     try {
-      const s = await interviewApi.createSession({ resumeId, planIds, difficulty, mode });
+      const s = await interviewApi.createSession({ resumeId, planIds, corpusId, difficulty, mode });
       sessionStorage.setItem(SESSION_KEY, s.id);
       setSession(s);
       setPhase('interview');
@@ -272,11 +278,12 @@ export function Interview() {
         <InterviewConfig
           mode={mode} setMode={setMode}
           plans={plans} planIds={planIds} togglePlan={togglePlan}
+          corpusId={corpusId} setCorpusId={setCorpusId}
           resumes={resumes} resumeId={resumeId} setResumeId={setResumeId}
           difficulty={difficulty} setDifficulty={setDifficulty}
           uploading={uploading} onUpload={uploadResume}
           err={configErr} creating={creating}
-          canStart={!!resumeId || planIds.length > 0}
+          canStart={!!resumeId || planIds.length > 0 || !!corpusId}
           onStart={startInterview}
         />
       )}
@@ -313,6 +320,7 @@ export function Interview() {
 function InterviewConfig(props: {
   mode: InterviewMode; setMode: (m: InterviewMode) => void;
   plans: PlanView[]; planIds: number[]; togglePlan: (id: number) => void;
+  corpusId: number | null; setCorpusId: (id: number | null) => void;
   resumes: Awaited<ReturnType<typeof resumeApi.list>>; resumeId: number | null; setResumeId: (id: number | null) => void;
   difficulty: 'JUNIOR' | 'MIDDLE' | 'SENIOR'; setDifficulty: (d: 'JUNIOR' | 'MIDDLE' | 'SENIOR') => void;
   uploading: boolean; onUpload: (f: File) => void;
@@ -346,7 +354,7 @@ function InterviewConfig(props: {
 
       {/* 面试依据 */}
       <section className="iv-block">
-        <h2 className="iv-block-title">② 面试依据（简历与学习方向二选一，可都选）</h2>
+        <h2 className="iv-block-title">② 面试依据（至少选择一项，可组合）</h2>
         <div className="iv-source-grid">
           <Card className="iv-source">
             <div className="iv-source-head">
@@ -402,11 +410,16 @@ function InterviewConfig(props: {
                 ))}
               </div>
             )}
-            {props.resumeId != null && props.planIds.length > 0 && (
+            {props.resumeId != null && props.planIds.length > 0 && !props.corpusId && (
               <p className="iv-ratio-hint">已同时选择：出题占比 <strong>简历 70%</strong> + <strong>学习方向 30%</strong></p>
             )}
           </Card>
         </div>
+        <Card className="iv-source" style={{ marginTop: 'var(--s-4)' }}>
+          <div className="iv-source-head"><BookOpen size={16} /><span className="iv-source-label">知识库资料</span><Badge kind={props.corpusId ? 'good' : 'soft'}>{props.corpusId ? '作为出题依据' : '可选'}</Badge></div>
+          <CorpusPicker value={props.corpusId} onChange={item => props.setCorpusId(item?.id ?? null)} disabled={props.creating} />
+          <p className="iv-ratio-hint">选中后，核心问题将围绕资料的章节索引与内容片段生成，并结合你的简历和学习方向控制侧重点。</p>
+        </Card>
       </section>
 
       {/* 难度 */}
@@ -437,7 +450,7 @@ function InterviewConfig(props: {
           {!props.creating && <ChevronRight size={16} strokeWidth={2} />}
         </Button>
         {!props.canStart && (
-          <p className="iv-start-hint">需先上传简历或选择学习方向</p>
+          <p className="iv-start-hint">需先选择简历、学习方向或知识库资料</p>
         )}
       </div>
     </div>

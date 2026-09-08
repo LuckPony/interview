@@ -51,15 +51,12 @@ class CorpusIndexerTest {
     }
 
     @Test
-    void 单块超硬上限才截断() {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 3000; i++) {
-            sb.append("x"); // 无空行 → 无法在段落边界收尾，触达硬上限
-        }
-        List<CorpusIndexer.Chunk> chunks = CorpusIndexer.split(sb.toString());
-        assertEquals(1, chunks.size());
-        assertTrue(chunks.get(0).text().length() <= CorpusIndexer.HARD_MAX_CHARS + 12,
-                "超硬上限截断（允许结尾标记多几个字符），实际=" + chunks.get(0).text().length());
+    void 超长无空行文本分块且保留末尾() {
+        String text = "x".repeat(CorpusIndexer.HARD_MAX_CHARS * 2 + 100) + "重要的末尾知识";
+        List<CorpusIndexer.Chunk> chunks = CorpusIndexer.split(text);
+        assertEquals(3, chunks.size());
+        assertEquals(text, chunks.stream().map(CorpusIndexer.Chunk::text).reduce("", String::concat));
+        assertTrue(chunks.stream().allMatch(c -> c.text().length() <= CorpusIndexer.HARD_MAX_CHARS));
     }
 
     @Test

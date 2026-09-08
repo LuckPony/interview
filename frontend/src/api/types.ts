@@ -244,6 +244,17 @@ export interface CorpusView {
   charCount: number;
   sourceType?: 'UPLOAD' | 'LOCAL_FILE' | 'LOCAL_FOLDER' | string;
   createdAt?: string | null;
+  overview?: string;
+  indexState?: 'PENDING' | 'RUNNING' | 'READY' | 'BASIC' | 'FAILED';
+  topics?: string[];
+  chunkCount?: number;
+  hasOriginal?: boolean;
+}
+
+export interface CorpusDetail {
+  document: CorpusView;
+  sections: { id: number; sequence: number; title: string; topic: string | null; summary: string | null; charCount: number }[];
+  usages: { kind: 'PLAN' | 'INTERVIEW' | 'INTERVIEW_PLAN'; id: string; title: string; status: string }[];
 }
 
 // ============ 问答记录（按题聚合的对话线） ============

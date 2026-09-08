@@ -19,6 +19,7 @@ import { CapturePage } from './pages/CapturePage';
 import { ResumeManagement } from './pages/ResumeManagement';
 import { AccountPage } from './pages/AccountPage';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
+import { KnowledgeToolsPage } from './pages/KnowledgeToolsPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { authReady, userId } = useAuth();
@@ -169,11 +170,11 @@ export function App() {
         }
       />
       <Route
-        path="/knowledge-base/import"
+        path="/knowledge-base/tools"
         element={
           <RequireAuth>
             <AppShell>
-              <KnowledgeBasePage />
+              <KnowledgeToolsPage />
             </AppShell>
           </RequireAuth>
         }
@@ -188,6 +189,8 @@ export function App() {
           </RequireAuth>
         }
       />
+      <Route path="/knowledge-base/:id" element={<RequireAuth><AppShell><KnowledgeBasePage /></AppShell></RequireAuth>} />
+      <Route path="/knowledge-base/import" element={<Navigate to="/knowledge-base" replace />} />
       <Route
         path="/settings"
         element={
