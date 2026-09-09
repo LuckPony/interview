@@ -16,10 +16,12 @@ class CorpusOutlineTest {
   void labels() {
     assertThat(CorpusOutline.label("## 2. DATA AND PREPROCESSING")).isEqualTo("Data and preprocessing");
     assertThat(CorpusOutline.label("3 (λ")).isEmpty();
+    assertThat(CorpusOutline.heading("3 x + y")).isFalse();
     assertThat(CorpusOutline.label("2")).isEmpty();
     assertThat(CorpusOutline.label("\u200b")).isEmpty();
     assertThat(CorpusOutline.label("MRI")).isEqualTo("MRI");
     assertThat(CorpusOutline.label("C++")).isEqualTo("C++");
+    assertThat(CorpusOutline.labels(List.of("C++", "C#"))).containsExactly("C++", "C#");
     assertThat(CorpusOutline.labels(List.of("1. INTRODUCTION", "Introduction", "2", "## 方法"))).containsExactly("Introduction", "方法");
   }
 

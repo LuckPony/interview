@@ -114,7 +114,7 @@ public class CorpusIndexer {
         index(corpusId, false);
     }
 
-    private void index(Long corpusId, boolean refresh) {
+    void index(Long corpusId, boolean refresh) {
         if (corpusId == null) return;
         if (!refresh && chunkRepo.countByCorpusId(corpusId) > 0) return;
         Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
@@ -147,12 +147,13 @@ public class CorpusIndexer {
         for (CorpusOutline.Section section : sections) {
             IndexOutput.ChunkMeta meta = findMeta(out, seq);
             String title = CorpusOutline.label(meta == null ? null : meta.title());
+            String summary = meta == null ? section.summary() : meta.summary();
             for (CorpusChunk e : section.chunks()) {
                 // 不重建已有行，保留 concept_chunk 外键及历史工具链接。
                 e.setCorpusId(corpusId);
                 e.setTitle(title.isBlank() ? section.title() : title);
                 e.setTopic(meta == null ? section.topic() : CorpusOutline.label(meta.topic()));
-                e.setSummary(meta == null ? section.summary() : meta.summary());
+                e.setSummary(summary);
                 e.setCharCount(e.getText().length());
                 entities.add(e);
             }

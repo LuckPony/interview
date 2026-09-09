@@ -12,6 +12,7 @@ public final class CorpusOutline {
   private CorpusOutline() {}
   private static final Pattern PREFIX = Pattern.compile("^(?:#{1,6}\\s+|第[一二三四五六七八九十百千零0-9]+[章节篇卷部](?:分)?[\\s、：:.]*|[0-9]+(?:\\.[0-9]+)*(?:[.．、):：]\\s*|\\s+)|[IVXLCDM]{1,6}\\.\\s+)");
   private static final Pattern ACADEMIC = Pattern.compile("(?i)^(abstract|introduction|background|methods?|materials and methods|results(?: and discussion)?|discussion|conclusions?|references|acknowledg[e]?ments|摘要|引言|结论|参考文献|致谢)$");
+  private static final Pattern FORMULA = Pattern.compile("(?i)(?:^|\\s)[a-zα-ω]\\s*[+*/^=]\\s*(?:[0-9a-zα-ω]|\\()|[+*/^=]\\s*[a-zα-ω](?:\\s|$)");
 
   public static String label(String raw) {
     if (raw == null) return "";
@@ -23,6 +24,7 @@ public final class CorpusOutline {
     if (!chinese && letters < 2 && !text.equals("C++") && !text.equals("C#")) return "";
     if (text.length() > 120 || text.matches("(?:片段|正文片段|内容片段)\\s*[0-9]+")
         || text.matches(".*[=∑∫<>\\[\\]{}].*") || text.matches("(?i)^(https?://|doi:|arxiv:).*")
+        || FORMULA.matcher(text).find()
         || text.matches(".*\\.{3,}\\s*[0-9]+$")) return "";
     // 全大写英文论文标题按句式显示，缩写（MRI、API、HTTP）保留。
     if (text.matches("[A-Z][A-Z -]{4,}")) text = text.substring(0, 1) + text.substring(1).toLowerCase(Locale.ROOT);
@@ -35,7 +37,7 @@ public final class CorpusOutline {
     return PREFIX.matcher(text).find() || ACADEMIC.matcher(text).matches();
   }
 
-  public static String key(String label) { return label.toLowerCase(Locale.ROOT).replaceAll("[\\s\\p{Punct}]+", ""); }
+  public static String key(String label) { return label.toLowerCase(Locale.ROOT).replaceAll("[\\s\\p{Punct}&&[^+#]]+", ""); }
 
   public static List<String> labels(List<String> raw) {
     var unique = new LinkedHashMap<String, String>();

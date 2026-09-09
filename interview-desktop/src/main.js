@@ -758,7 +758,7 @@ function loginCredentialStore(event) {
     throw new Error('此页面无权访问本机登录信息');
   }
   const cfg = loadConfig();
-  const server = isCloud(cfg) ? cfg.serverUrl : `http://127.0.0.1:${BACKEND_PORT}`;
+  const server = (cfg.serverUrl || '').trim() || (isCloud(cfg) ? null : `http://127.0.0.1:${BACKEND_PORT}`);
   if (!server) throw new Error('桌面端缺少服务器地址，请重新构建桌面端');
   const endpoint = new URL(server);
   if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error('后端地址无效');

@@ -1,9 +1,6 @@
 package interview.homegrown.modules.drill.web;
 
 import interview.homegrown.modules.drill.domain.Corpus;
-import interview.homegrown.modules.drill.domain.CorpusChunk;
-import interview.homegrown.modules.drill.repository.CorpusChunkRepository;
-import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.service.CorpusService;
 import interview.homegrown.modules.drill.service.CorpusLibraryService;
 import interview.homegrown.modules.drill.web.dto.CorpusView;
@@ -21,12 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
-import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 /** 个人资料上传：POST /api/corpus/upload（multipart）。解析后的文本存库，返回 id。 */
@@ -35,15 +28,10 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 public class CorpusController {
 
     private final CorpusService service;
-    private final CorpusRepository corpusRepo;
-    private final CorpusChunkRepository chunkRepo;
     private final CorpusLibraryService library;
 
-    public CorpusController(CorpusService service, CorpusRepository corpusRepo,
-                            CorpusChunkRepository chunkRepo, CorpusLibraryService library) {
+    public CorpusController(CorpusService service, CorpusLibraryService library) {
         this.service = service;
-        this.corpusRepo = corpusRepo;
-        this.chunkRepo = chunkRepo;
         this.library = library;
     }
 

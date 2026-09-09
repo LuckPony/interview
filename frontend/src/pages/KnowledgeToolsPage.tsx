@@ -49,7 +49,7 @@ export function KnowledgeToolsPage() {
       if (!alive) return;
       setDocument(detail); setText(source.text);
       const section = detail.sections.find(s => s.id === sectionId);
-      setScope(`${section ? `片段 ${section.sequence + 1}：${section.title}` : '资料原文'} · 共 ${source.totalChars.toLocaleString()} 字符${source.truncated ? '，已载入前 12000 字符；这不是全文处理，请选择章节或分段粘贴。' : '，已完整载入当前范围。'}`);
+      setScope(`${section ? `章节 ${section.sequence + 1}：${section.title}` : sectionId ? '原片段所属章节' : '资料原文'} · 共 ${source.totalChars.toLocaleString()} 字符${source.truncated ? '，已载入前 12000 字符；这不是全文处理，请选择章节或分段粘贴。' : '，已完整载入当前范围。'}`);
     }).catch(e => { if (alive) setError(libraryError(e)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; stream.current?.cancel(); };
   }, [corpusId, sectionId]);

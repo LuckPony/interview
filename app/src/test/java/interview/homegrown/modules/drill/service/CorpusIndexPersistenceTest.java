@@ -20,9 +20,38 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class CorpusIndexPersistenceTest {
+  @Test @DisplayName("重新整理旧索引按章节标注但保留全部旧 ID、原文和顺序，不删除学习关联")
+  void refreshPreservesChunkIdentity() {
+    var corpora = mock(CorpusRepository.class); var chunks = mock(CorpusChunkRepository.class);
+    var invoker = mock(StructuredOutputInvoker.class); var tx = mock(TransactionTemplate.class);
+    doAnswer(call -> { call.<Consumer<TransactionStatus>>getArgument(0).accept(mock(TransactionStatus.class)); return null; }).when(tx).executeWithoutResult(any());
+    Corpus c = new Corpus(); c.setId(1L); c.setText("资料正文"); c.setName("论文.pdf");
+    when(corpora.findById(1L)).thenReturn(Optional.of(c)); when(corpora.findLockedById(1L)).thenReturn(Optional.of(c));
+    var old = List.of(CorpusOutlineTest.chunk(10, "2. DATA AND PREPROCESSING", "预处理说明"),
+        CorpusOutlineTest.chunk(11, "3 (λ", "公式原文"), CorpusOutlineTest.chunk(12, "2", "续页原文"));
+    var originalTexts = old.stream().map(CorpusChunk::getText).toList();
+    when(chunks.findByCorpusIdOrderBySeqAsc(1L)).thenReturn(old);
+    when(invoker.invoke(anyString(), anyString(), eq(CorpusIndexer.IndexOutput.class))).thenAnswer(call -> {
+      assertThat(call.<String>getArgument(1)).contains("预处理说明", "公式原文", "续页原文").doesNotContain("【块 1】");
+      return new CorpusIndexer.IndexOutput("资料说明", List.of(new CorpusIndexer.IndexOutput.ChunkMeta(0, "数据预处理", "数据准备", "归一化和数据准备方法")));
+    });
+    doAnswer(call -> {
+      List<CorpusChunk> saved = call.getArgument(0);
+      assertThat(saved).extracting(CorpusChunk::getId).containsExactly(10L, 11L, 12L);
+      assertThat(saved).extracting(CorpusChunk::getText).containsExactlyElementsOf(originalTexts);
+      assertThat(saved).extracting(CorpusChunk::getTitle).containsOnly("数据预处理");
+      return saved;
+    }).when(chunks).saveAll(any());
+    var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(AiSettingsService.class), tx);
+    try { indexer.index(1L, true); } finally { indexer.shutdown(); }
+    verify(chunks, never()).deleteByCorpusId(any());
+  }
+
   @Test @DisplayName("索引同时持久化资料简介与章节，模型调用不在数据库事务内")
   void persistsOverview() {
     var corpora = mock(CorpusRepository.class); var chunks = mock(CorpusChunkRepository.class);

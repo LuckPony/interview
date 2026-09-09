@@ -25,7 +25,9 @@ function createCredentialStore({ directory, scope, safeStorage, platform = proce
     && typeof data.password === 'string' && data.password.length >= 6 && data.password.length <= 64;
   const clear = () => {
     // 仅删除当前后端对应的凭据文件，不影响其他服务器、AI Key 或用户资料。
-    try { fs.unlinkSync(file); } catch (error) { if (error.code !== 'ENOENT') throw new Error('无法清除本机保存的登录信息，请检查文件权限'); }
+    for (const target of [file, file + '.tmp']) {
+      try { fs.unlinkSync(target); } catch (error) { if (error.code !== 'ENOENT') throw new Error('无法清除本机保存的登录信息，请检查文件权限'); }
+    }
   };
   const read = () => {
     if (!available()) return { available: false, credentials: null, message: '系统加密服务不可用，暂不能记住密码' };
