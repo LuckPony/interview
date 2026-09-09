@@ -93,6 +93,22 @@ class CorpusLibraryServiceTest {
     assertThatThrownBy(() -> service.textTicket(1L, 8L)).isInstanceOf(BusinessException.class);
   }
 
+  @Test @DisplayName("知识库、建计划和生成上下文使用一致的目录，历史碎片链接可读取完整章节")
+  void unifiedOutline() {
+    document();
+    var main = CorpusOutlineTest.chunk(1, "2. DATA AND PREPROCESSING", "数据预处理");
+    var formula = CorpusOutlineTest.chunk(2, "3 (λ", "公式与续页");
+    var methods = CorpusOutlineTest.chunk(3, "3. METHODS", "研究方法");
+    var references = CorpusOutlineTest.chunk(4, "4. REFERENCES", "论文引用");
+    when(chunks.findByCorpusIdOrderBySeqAsc(1L)).thenReturn(List.of(main, formula, methods, references));
+    assertThat(service.detail(1L, 7L).sections()).extracting(s -> s.title()).containsExactly("Data and preprocessing", "Methods", "References");
+    assertThat(service.knowledgePoints(1L, 7L).points()).extracting(p -> p.name()).containsExactly("Data and preprocessing", "Methods");
+    assertThat(service.knowledgePoints(1L, 7L).points().getFirst().chunkCount()).isEqualTo(2);
+    assertThat(service.text(1L, 7L, 2L).text()).isEqualTo("数据预处理\n\n公式与续页");
+    assertThat(service.reference(1L, 7L)).contains("[来源 S1] Data and preprocessing", "公式与续页", "[来源 S2] Methods");
+    assertThatThrownBy(() -> service.knowledgePoints(1L, 8L)).isInstanceOf(BusinessException.class);
+  }
+
   @Test @DisplayName("资料使用关系同时包含直接引用面试与经学习计划引用的面试")
   void usages() {
     document(); StudyPlan plan = new StudyPlan(); plan.setId(20L); plan.setCorpusId(1L); plan.setTitle("并发路线");

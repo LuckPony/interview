@@ -3,6 +3,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  getLoginCredentials: () => ipcRenderer.invoke('login:read'),
+  saveLoginCredentials: value => ipcRenderer.invoke('login:save', value),
+  clearLoginCredentials: () => ipcRenderer.invoke('login:clear'),
+  updateLoginPassword: (email, password) => ipcRenderer.invoke('login:updatePassword', email, password),
   openKnowledgeOriginal: (url) => ipcRenderer.invoke('app:openKnowledgeOriginal', url),
   pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),

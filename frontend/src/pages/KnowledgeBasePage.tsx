@@ -122,7 +122,7 @@ export function KnowledgeBasePage() {
       <div className="kb-detail-hero">
         <span className="kb-document-icon"><FileText size={30} strokeWidth={1.5} /></span>
         <div><span className={`kb-status ${detail.document.indexState?.toLowerCase()}`}>{INDEX_LABELS[detail.document.indexState ?? 'PENDING']}</span>
-          <p>{chars(detail.document.charCount)} · {detail.sections.length} 个内容片段 · {date(detail.document.createdAt)}</p></div>
+          <p>{chars(detail.document.charCount)} · {detail.sections.length} 个目录章节 · {date(detail.document.createdAt)}</p></div>
         <Button variant="ghost" disabled={!!action} onClick={() => void openOriginal(detail.document, true)}>查看解析文本</Button>
         <Button variant="ghost" disabled={!!action || !detail.document.hasOriginal} onClick={() => void openOriginal(detail.document)}><ExternalLink size={16} />打开原文件</Button>
       </div>
@@ -132,10 +132,12 @@ export function KnowledgeBasePage() {
           <div className="kb-tags">{detail.document.topics?.map(t => <span key={t}>{t}</span>)}</div></section>
         <section className="kb-panel"><div className="kb-section-top"><div><span className="kb-section-label">02 / INDEX</span><h2>知识点与内容索引</h2></div>
           <button className="kb-text-link" disabled={!!action} onClick={() => void reindex()}><RefreshCw size={14} />重新整理</button></div>
-          {detail.document.indexState === 'BASIC' && <p className="kb-muted">当前为章节基础索引。配置模型后可重新整理，补充 AI 标签与摘要。</p>}
+          {detail.document.indexState === 'BASIC' && <p className="kb-muted">已按章节整理目录，公式与续页归入对应章节。配置模型后可重新整理为知识主题与摘要。</p>}
           {!detail.sections.length && <p className="kb-muted">{pending(detail.document) ? '正在整理索引，请稍候。' : '尚无索引，可点击重新整理。'}原文仍可查看。</p>}
           <div className="kb-index-list">{detail.sections.map(section => <Link key={section.id} to={`/knowledge-base/tools?corpus=${id}&section=${section.id}`} className="kb-index-row">
-            <span className="kb-index-number">{String(section.sequence + 1).padStart(2, '0')}</span><div><h3>{section.topic || section.title}</h3><p>{section.summary || section.title}</p><small>{chars(section.charCount)} · 前往工具库阅读 / 翻译</small></div><ArrowUpRight size={16} /></Link>)}</div>
+            <span className="kb-index-number">{String(section.sequence + 1).padStart(2, '0')}</span><div><h3>{section.title || section.topic}</h3>
+              {section.summary && section.summary !== section.title && section.summary !== section.topic && <p>{section.summary}</p>}
+              <small>{chars(section.charCount)}<span>阅读 / 翻译 <ArrowUpRight size={12} /></span></small></div></Link>)}</div>
         </section>
       </div><aside className="kb-detail-aside">
         <section className="kb-panel kb-use-panel"><Sparkles size={24} /><h2>把资料用起来</h2><p>从这份资料出发，让学习更聚焦。</p>

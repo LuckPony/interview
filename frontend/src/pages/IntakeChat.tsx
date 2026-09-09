@@ -301,18 +301,19 @@ export function IntakeChat() {
             {kpChecking && <p className="upload-hint">资料分析中，正在提取知识点…（约几秒）</p>}
             {kpIndexed && kp && kp.length > 0 && (
               <>
-                <span className="eyebrow">从资料中识别到的知识点（可勾选后并入规划）</span>
+                <div className="kp-heading"><span>学习主题</span><small>已选 {selected.size} / {kp.length} 项</small></div>
+                <p className="upload-hint">按资料目录与 AI 标签归组；可勾选需要学习的范围。</p>
                 <div className="kp-list">
                   {kp.map((p) => (
-                    <label className="kp-item" key={p.name}>
+                    <label className={`kp-item${selected.has(p.name) ? ' is-selected' : ''}`} key={p.name}>
                       <input
                         type="checkbox"
                         checked={selected.has(p.name)}
                         onChange={() => toggleSelected(p.name)}
                       />
-                      <span className="kp-name">{p.name}</span>
-                      {p.chunkCount > 1 && <Tag>×{p.chunkCount}</Tag>}
-                      {p.snippets[0] && <span className="kp-snippet">{p.snippets[0]}</span>}
+                      <span className="kp-content"><span className="kp-name">{p.name}</span>
+                        {p.snippets[0] && p.snippets[0] !== p.name && <span className="kp-snippet">{p.snippets[0]}</span>}</span>
+                      {p.chunkCount > 1 && <span className="kp-count">{p.chunkCount} 段来源</span>}
                     </label>
                   ))}
                 </div>

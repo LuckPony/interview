@@ -87,7 +87,7 @@ export function KnowledgeToolsPage() {
       <CorpusPicker value={corpusId} disabled={busy || loading} onChange={item => setParams(item ? { corpus: String(item.id) } : {})} />
       {!!document?.sections.length && <label className="kt-label">处理范围<select className="kb-select" aria-label="选择资料章节" disabled={busy || loading} value={sectionId ?? ''}
         onChange={e => setParams({ corpus: String(corpusId), ...(e.target.value ? { section: e.target.value } : {}) })}>
-        <option value="">资料全文 / 前 12000 字符</option>{document.sections.map(s => <option key={s.id} value={s.id}>{s.sequence + 1}. {s.topic || s.title}</option>)}</select></label>}
+        <option value="">资料全文 / 前 12000 字符</option>{sectionId && !document.sections.some(s => s.id === sectionId) && <option value={sectionId}>原片段所属章节</option>}{document.sections.map(s => <option key={s.id} value={s.id}>{s.sequence + 1}. {s.title || s.topic}</option>)}</select></label>}
       <p className="kt-scope">{scope}</p>
       <textarea className="kt-input" aria-label="待处理资料内容" placeholder="粘贴需要翻译或整理的内容…" value={text} onChange={e => setText(e.target.value)} disabled={busy || loading} />
       <div className="kt-input-footer"><small>{text.length.toLocaleString()} / 12,000 字符</small>{corpusId && document && <button className="kb-text-link" onClick={() => libraryApi.openOriginal(corpusId, !document.document.hasOriginal).catch(e => setError(libraryError(e)))}>{document.document.hasOriginal ? '打开原文件' : '查看解析文本（无原件）'}<ArrowRight size={12} /></button>}</div>

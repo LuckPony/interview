@@ -95,6 +95,13 @@
 .auth-input-wrap input:disabled { opacity: 0.6; }
 .auth-password-toggle { display: grid; place-items: center; width: 32px; height: 36px; margin-right: -6px; flex-shrink: 0; border-radius: 4px; color: #918980; }
 .auth-password-toggle:hover { color: var(--auth-accent); background: #f4eee9; }
+.auth-remember { color: #827970; margin: -2px 0 2px; }
+.auth-remember > div { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.auth-remember label { display:flex; align-items:center; gap:7px; font-size:12px; cursor:pointer; }
+.auth-remember input { width:14px; height:14px; accent-color:var(--auth-accent); }
+.auth-remember button { font-size:11px; color:var(--auth-accent); padding:4px 0; }
+.auth-remember small { display:block; font-size:10px; line-height:1.6; margin-top:7px; }
+.auth-remember button:disabled, .auth-remember input:disabled { opacity:.55; cursor:not-allowed; }
 .auth-hint, .auth-note { display: block; margin-top: 8px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .auth-hint { color: #b33d31; }
 .auth-note { color: #537357; }

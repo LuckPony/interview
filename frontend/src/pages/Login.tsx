@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui';
 import { ApiError } from '../api/client';
-import { register as apiRegister, sendRegisterCode as apiSendRegisterCode, getAuthConfig } from '../api/auth';
+import { login as apiLogin, register as apiRegister, sendRegisterCode as apiSendRegisterCode, getAuthConfig } from '../api/auth';
 import { PuzzleSlider } from '../components/PuzzleSlider';
 import logo from '../logo.png';
 import offerIllustration from '../assets/login-offer.png';
@@ -15,7 +15,7 @@ type Mode = 'login' | 'register';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function Login() {
-  const { login, completeAuth } = useAuth();
+  const { completeAuth } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
@@ -24,6 +24,43 @@ export function Login() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const credentialBridge = window.electronAPI;
+  const hasRemember = !!credentialBridge?.getLoginCredentials && !!credentialBridge.saveLoginCredentials && !!credentialBridge.clearLoginCredentials;
+  const [remember, setRemember] = useState(false);
+  const [rememberReady, setRememberReady] = useState(!hasRemember);
+  const [rememberAvailable, setRememberAvailable] = useState(false);
+  const [rememberBusy, setRememberBusy] = useState(false);
+  const [rememberNote, setRememberNote] = useState('');
+  const edited = useRef(false);
+  const filledEmail = useRef('');
+
+  useEffect(() => {
+    if (mode !== 'login' || !hasRemember) return;
+    let active = true;
+    setRememberReady(false);
+    credentialBridge!.getLoginCredentials!().then(result => {
+      if (!active) return;
+      setRememberAvailable(result.available);
+      setRememberNote(result.message ?? '仅在这台电脑加密保存，退出登录后仍可填充。');
+      setRemember(!!result.credentials);
+      if (result.credentials && !edited.current) {
+        setEmail(result.credentials.email); setPassword(result.credentials.password);
+        filledEmail.current = result.credentials.email;
+      }
+    }).catch(() => { if (active) setRememberNote('无法读取本机登录信息，仍可手动登录。'); })
+      .finally(() => { if (active) setRememberReady(true); });
+    return () => { active = false; };
+  }, [mode, hasRemember, credentialBridge]);
+
+  const clearRemembered = async (clearInput = true) => {
+    setRememberBusy(true);
+    try {
+      await credentialBridge?.clearLoginCredentials?.();
+      setRemember(false); if (clearInput) setPassword(''); filledEmail.current = ''; edited.current = true;
+      setRememberNote('已清除这台电脑保存的登录信息。');
+    } catch { setRememberNote('清除失败，请重试；本机保存的密码尚未删除。'); }
+    finally { setRememberBusy(false); }
+  };
 
   // —— 环境开关（config 未返回前按最严格处理，返回后更新）——
   const [captchaRequired, setCaptchaRequired] = useState(true);
@@ -59,6 +96,10 @@ export function Login() {
   const validEmail = (v: string) => EMAIL_RE.test(v.trim());
 
   const onEmailChange = (v: string) => {
+    edited.current = true;
+    if (filledEmail.current && filledEmail.current.toLowerCase() !== v.trim().toLowerCase()) {
+      setPassword(''); filledEmail.current = '';
+    }
     setEmail(v);
     setErr('');
     // 邮箱变了 → 之前收到的验证码作废，需重新获取
@@ -72,6 +113,7 @@ export function Login() {
   };
 
   const onPasswordChange = (v: string) => {
+    edited.current = true;
     setPassword(v);
     setErr('');
     setPwHint(v.length > 0 && v.length < 6 ? '密码至少 6 位' : '');
@@ -120,7 +162,18 @@ export function Login() {
       if (!email.trim() || !validEmail(email)) { setEmailHint('请输入正确的邮箱'); return; }
       setBusy(true);
       try {
-        await login(email.trim(), password);
+        const response = await apiLogin(email.trim(), password);
+        // 只有认证成功才覆盖保存的凭据，错误密码不会被记住。
+        if (hasRemember) {
+          try {
+            if (remember) await credentialBridge!.saveLoginCredentials!({ email: email.trim(), password });
+            else await credentialBridge!.clearLoginCredentials!();
+          } catch {
+            setErr('登录验证成功，但本机密码保存失败。请取消记住密码后重试。');
+            return;
+          }
+        }
+        completeAuth(response);
         navigate('/', { replace: true });
       } catch (e2) {
         setErr(e2 instanceof ApiError ? e2.message : '无法连接服务，请检查网络后重试');
@@ -158,6 +211,7 @@ export function Login() {
     setEmailHint('');
     setPwHint('');
     setPasswordVisible(false);
+    setPassword(''); filledEmail.current = ''; edited.current = false;
     setMode(mode === 'login' ? 'register' : 'login');
   };
 
@@ -226,6 +280,14 @@ export function Login() {
                 {pwHint && <span id="auth-password-hint" className="auth-hint">{pwHint}</span>}
               </div>
 
+              {mode === 'login' && hasRemember && <div className="auth-remember">
+                <div><label><input type="checkbox" checked={remember}
+                  disabled={!rememberReady || !rememberAvailable || rememberBusy || busy}
+                  onChange={event => { if (event.target.checked) setRemember(true); else void clearRemembered(false); }} />记住密码</label>
+                  <button type="button" disabled={!rememberReady || rememberBusy || busy} onClick={() => void clearRemembered()}>清除已保存</button></div>
+                <small role="status">{rememberNote || '正在检查本机加密存储…'}</small>
+              </div>}
+
               {mode === 'register' && (
                 <div className="auth-field">
                   <label htmlFor="auth-code">邮箱验证码</label>
@@ -249,7 +311,7 @@ export function Login() {
               )}
 
               {err && <div className="auth-error" role="alert">{err}</div>}
-              <Button type="submit" className="auth-submit" disabled={busy || (mode === 'register' && (!configLoaded || sendingCode))}>
+              <Button type="submit" className="auth-submit" disabled={busy || rememberBusy || (mode === 'login' && !rememberReady) || (mode === 'register' && (!configLoaded || sendingCode))}>
                 {busy ? mode === 'login' ? '登录中…' : '创建中…' : mode === 'login' ? '登录' : '创建账号'}
                 {!busy && <ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />}
               </Button>

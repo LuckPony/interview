@@ -87,6 +87,7 @@ export function AccountPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordChanged, setPasswordChanged] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -192,6 +193,9 @@ export function AccountPage() {
     setPasswordError('');
     try {
       await userPasswordApi.change(normalizedCode, newPassword);
+      setCredentialNotice('');
+      try { await window.electronAPI?.updateLoginPassword?.(email, newPassword); }
+      catch { setCredentialNotice('密码已修改，但本机记住密码未更新；下次登录请手动输入新密码。'); }
       setPasswordChanged(true);
       setCode('');
       setNewPassword('');
@@ -323,6 +327,7 @@ export function AccountPage() {
                 <span><CheckCircle2 size={30} /></span>
                 <h2 id="password-modal-title">密码修改成功</h2>
                 <p>新密码已经生效，下次登录请使用新密码。</p>
+                {credentialNotice && <p role="status">{credentialNotice}</p>}
                 <Button onClick={() => setShowPasswordDialog(false)}>完成</Button>
               </div>
             ) : (

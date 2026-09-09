@@ -7,6 +7,7 @@ import interview.homegrown.modules.drill.repository.CorpusRepository;
 import interview.homegrown.modules.drill.service.CorpusService;
 import interview.homegrown.modules.drill.service.CorpusLibraryService;
 import interview.homegrown.modules.drill.web.dto.CorpusView;
+import interview.homegrown.modules.drill.web.dto.CorpusKnowledgePoints;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -83,37 +84,8 @@ public class CorpusController {
      * 供建计划页展示、由用户确认。未完成索引时 indexed=false，前端显示「资料处理中…」。
      */
     @GetMapping("/{corpusId}/knowledge-points")
-    public KnowledgePointsView knowledgePoints(@PathVariable Long corpusId) {
-        Long uid = currentUserId();
-        Corpus corpus = corpusRepo.findById(corpusId)
-                .filter(c -> c.getUserId().equals(uid))
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "资料不存在"));
-        List<CorpusChunk> chunks = chunkRepo.findByCorpusIdOrderBySeqAsc(corpusId);
-        if (chunks.isEmpty()) {
-            return new KnowledgePointsView(false, List.of());
-        }
-        // 无 AI 标注时保留章节标题，避免不同知识章节被合并成一个「未标注」。
-        Map<String, List<CorpusChunk>> byTopic = new LinkedHashMap<>();
-        for (CorpusChunk c : chunks) {
-            String key = (c.getTopic() == null || c.getTopic().isBlank()) ? c.getTitle() : c.getTopic().trim();
-            if (key == null || key.isBlank()) key = "片段 " + (c.getSeq() + 1);
-            key = key.replaceFirst("^#+\\s*", "");
-            byTopic.computeIfAbsent(key, k -> new ArrayList<>()).add(c);
-        }
-        List<KnowledgePointsView.PointItem> points = byTopic.entrySet().stream()
-                .map(e -> new KnowledgePointsView.PointItem(e.getKey(), e.getValue().size(),
-                        e.getValue().stream()
-                                .limit(3)
-                                .map(c -> c.getSummary() == null || c.getSummary().isBlank()
-                                        ? c.getTitle() : c.getSummary())
-                                .toList()))
-                .toList();
-        return new KnowledgePointsView(true, points);
-    }
-
-    public record KnowledgePointsView(boolean indexed, List<PointItem> points) {
-        public record PointItem(String name, int chunkCount, List<String> snippets) {
-        }
+    public CorpusKnowledgePoints knowledgePoints(@PathVariable Long corpusId) {
+        return library.knowledgePoints(corpusId, currentUserId());
     }
 
     private CorpusView toView(Corpus corpus) {

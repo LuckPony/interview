@@ -11,6 +11,7 @@ const net = require('net');
 const fs = require('fs');
 const { URL } = require('url');
 const { autoUpdater } = require('electron-updater');
+const { createCredentialStore, trustedCredentialSender } = require('./login-credentials');
 
 // Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
 if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
@@ -750,6 +751,24 @@ function writeLlmKey(key) {
 }
 ipcMain.handle('llm:getKey', () => readLlmKey());
 ipcMain.handle('llm:setKey', (_e, key) => writeLlmKey(key));
+
+// 与退出登录清理的 token 分离；只允许本地 SPA 的主 frame 访问登录密码。
+function loginCredentialStore(event) {
+  if (!trustedCredentialSender(event, mainWindow, app.getAppPath(), app.isPackaged)) {
+    throw new Error('此页面无权访问本机登录信息');
+  }
+  const cfg = loadConfig();
+  const server = isCloud(cfg) ? cfg.serverUrl : `http://127.0.0.1:${BACKEND_PORT}`;
+  if (!server) throw new Error('桌面端缺少服务器地址，请重新构建桌面端');
+  const endpoint = new URL(server);
+  if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error('后端地址无效');
+  const scope = `${isCloud(cfg) ? 'cloud' : 'local'}:${endpoint.origin}${endpoint.pathname.replace(/\/+$/, '')}`;
+  return createCredentialStore({ directory: app.getPath('userData'), scope, safeStorage });
+}
+ipcMain.handle('login:read', event => loginCredentialStore(event).read());
+ipcMain.handle('login:save', (event, value) => loginCredentialStore(event).save(value));
+ipcMain.handle('login:clear', event => loginCredentialStore(event).clear());
+ipcMain.handle('login:updatePassword', (event, email, password) => loginCredentialStore(event).updatePassword(email, password));
 
 // —— 本地 fs 桥：渲染进程调 window.electronAPI.pickFile / pickFolder ——
 ipcMain.handle('dialog:pickFile', async () => {

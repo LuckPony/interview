@@ -17,6 +17,11 @@ declare global {
   }
 
   interface ElectronAPI {
+    /** 系统加密，仅保存在本机，按后端隔离。注销 token 不清除用户主动记住的密码。 */
+    getLoginCredentials?: () => Promise<{ available: boolean; credentials: { email: string; password: string } | null; message?: string }>;
+    saveLoginCredentials?: (value: { email: string; password: string }) => Promise<void>;
+    clearLoginCredentials?: () => Promise<void>;
+    updateLoginPassword?: (email: string, password: string) => Promise<void>;
     openKnowledgeOriginal?: (url: string) => Promise<void>;
     /** 弹系统文件选择器，返回绝对路径或 null（用户取消）。 */
     pickFile: () => Promise<string | null>;

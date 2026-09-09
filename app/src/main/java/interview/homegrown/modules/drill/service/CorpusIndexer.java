@@ -21,7 +21,6 @@ import java.util.Set;
 import jakarta.annotation.PreDestroy;
 import interview.homegrown.common.ai.AiSettingsService;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.util.regex.Pattern;
 
 /**
  * 资料结构化索引：把一篇资料拆成「逻辑主题块」+ LLM 标注（块标题 / 对应知识点 / 摘要）+ 资料总览。
@@ -50,10 +49,6 @@ public class CorpusIndexer {
     static final int HARD_MAX_CHARS = 12000;
     /** 块总数上限：超出合并进最后一块 */
     static final int MAX_CHUNKS = 30;
-
-    private static final Pattern HEADING =
-            Pattern.compile("^(#{1,4}\\s+|第[一二三四五六七八九十百千零0-9]+[章节部分篇卷][\\s、：:.]|\\d+(\\.\\d+)*[\\s、.．])");
-    private static final Pattern MARKDOWN_HEADING = Pattern.compile("^#{1,4}\\s+");
 
     private final CorpusRepository corpusRepo;
     private final CorpusChunkRepository chunkRepo;
@@ -127,8 +122,17 @@ public class CorpusIndexer {
 
         updateState(corpusId, "RUNNING");
         List<CorpusChunk> existing = chunkRepo.findByCorpusIdOrderBySeqAsc(corpusId);
-        List<Chunk> chunks = existing.isEmpty() ? split(corpus.getText())
-                : existing.stream().map(c -> new Chunk(c.getTitle(), c.getText())).toList();
+        List<CorpusChunk> raw = existing;
+        if (raw.isEmpty()) {
+            raw = new ArrayList<>();
+            for (Chunk part : split(corpus.getText())) {
+                CorpusChunk chunk = new CorpusChunk();
+                chunk.setSeq(raw.size()); chunk.setTitle(part.heading()); chunk.setText(part.text());
+                raw.add(chunk);
+            }
+        }
+        var sections = CorpusOutline.sections(raw);
+        List<Chunk> chunks = sections.stream().map(s -> new Chunk(s.title(), s.text())).toList();
         if (chunks.isEmpty()) return;
 
         IndexOutput out = annotate(corpus, chunks);
@@ -140,17 +144,18 @@ public class CorpusIndexer {
         if (current == null) return; // 用户在模型标注期间删除了资料，不写回孤儿数据。
         var entities = new ArrayList<CorpusChunk>();
         int seq = 0;
-        for (Chunk c : chunks) {
+        for (CorpusOutline.Section section : sections) {
             IndexOutput.ChunkMeta meta = findMeta(out, seq);
-            CorpusChunk e = existing.isEmpty() ? new CorpusChunk() : existing.get(seq);
-            e.setCorpusId(corpusId);
-            e.setSeq(seq);
-            e.setTitle(meta != null && meta.title() != null && !meta.title().isBlank()
-                    ? meta.title() : (c.heading().isBlank() ? "片段 " + (seq + 1) : c.heading()));
-            if (meta != null) { e.setTopic(meta.topic()); e.setSummary(meta.summary()); }
-            e.setText(c.text());
-            e.setCharCount(c.text().length());
-            entities.add(e);
+            String title = CorpusOutline.label(meta == null ? null : meta.title());
+            for (CorpusChunk e : section.chunks()) {
+                // 不重建已有行，保留 concept_chunk 外键及历史工具链接。
+                e.setCorpusId(corpusId);
+                e.setTitle(title.isBlank() ? section.title() : title);
+                e.setTopic(meta == null ? section.topic() : CorpusOutline.label(meta.topic()));
+                e.setSummary(meta == null ? section.summary() : meta.summary());
+                e.setCharCount(e.getText().length());
+                entities.add(e);
+            }
             seq++;
         }
         chunkRepo.saveAll(entities);
@@ -164,11 +169,8 @@ public class CorpusIndexer {
 
     /** 候选知识点清单（供建计划时展示给用户确认）：块 topic 去重。 */
     public List<String> candidateTopics(Long corpusId) {
-        return chunkRepo.findByCorpusIdOrderBySeqAsc(corpusId).stream()
-                .map(CorpusChunk::getTopic)
-                .filter(t -> t != null && !t.isBlank())
-                .distinct()
-                .toList();
+        return CorpusOutline.labels(CorpusOutline.sections(chunkRepo.findByCorpusIdOrderBySeqAsc(corpusId)).stream()
+                .filter(s -> !s.referenceOnly()).map(CorpusOutline.Section::name).toList());
     }
 
     // ------------------------------------------------------------ 切块
@@ -183,9 +185,18 @@ public class CorpusIndexer {
         List<Chunk> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         String curHeading = "";
+        String fence = null;
 
         for (String line : text.split("\n")) {
-            if (HEADING.matcher(line).find()) {
+            String stripped = line.stripLeading();
+            boolean fenceLine = stripped.startsWith("```") || stripped.startsWith("~~~");
+            boolean inCode = fence != null;
+            if (fenceLine) {
+                String marker = stripped.substring(0, 3);
+                if (fence == null) fence = marker;
+                else if (fence.equals(marker)) fence = null;
+            }
+            if (!inCode && !fenceLine && CorpusOutline.heading(line)) {
                 // 标题行：关闭当前块（若有），作为新块起点
                 if (cur.length() > 0) {
                     out.add(new Chunk(curHeading, cur.toString().trim()));
@@ -236,7 +247,7 @@ public class CorpusIndexer {
     // ------------------------------------------------------------ LLM 标注
 
     private static final String ANNOTATE_SYSTEM = """
-            你是资料整理助手。下面给出用户资料按顺序切好的若干块（每块只含开头预览），
+            你是资料整理助手。下面给出按顺序整理的目录章节（长章节含首中尾节选），
             请你：
             1. overview：用 150 字内概括这份资料讲什么、适合什么人学什么；
             2. chunks：为每一块给出 seq（与输入块编号一致，从 0 开始）、title（块标题）、topic（这块内容对应的"知识点名"，要像
@@ -250,7 +261,7 @@ public class CorpusIndexer {
         StringBuilder preview = new StringBuilder();
         for (int i = 0; i < chunks.size(); i++) {
             Chunk c = chunks.get(i);
-            String body = c.text().length() > 600 ? c.text().substring(0, 600) + "…" : c.text();
+            String body = CorpusLibraryService.sample(c.text(), 1200);
             preview.append("【块 ").append(i).append("】").append(c.heading()).append('\n')
                     .append(body).append("\n\n");
         }
