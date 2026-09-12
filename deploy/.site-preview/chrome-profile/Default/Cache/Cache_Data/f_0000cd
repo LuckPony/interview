@@ -1,0 +1,352 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/NoteDialog.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb655ba4"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=eb655ba4"; const useEffect = __vite__cjsImport3_react["useEffect"]; const useState = __vite__cjsImport3_react["useState"];
+import { Check, AlertTriangle } from "/node_modules/.vite/deps/lucide-react.js?v=f44114ca";
+import { drill } from "/src/api/drill.ts";
+import { Button, Badge } from "/src/components/ui.tsx";
+import { MarkdownEditor } from "/src/components/MarkdownEditor.tsx";
+import { ApiError } from "/src/api/client.ts";
+import "/src/components/NoteDialog.css";
+function msg(e) {
+  return e instanceof ApiError ? e.message : "操作失败";
+}
+export function NoteDialog({ runId, stem, onClose, onSaved }) {
+  _s();
+  const [myWords, setMyWords] = useState("");
+  const [gapFound, setGapFound] = useState("");
+  const [nextAction, setNextAction] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  useEffect(() => {
+    if (runId != null) {
+      setMyWords("");
+      setGapFound("");
+      setNextAction("");
+      setErr("");
+      setBusy(false);
+      setDone(null);
+    }
+  }, [runId]);
+  useEffect(() => {
+    if (runId == null) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [runId, onClose]);
+  if (runId == null) return null;
+  const submit = async () => {
+    if (myWords.trim().length < 10) {
+      setErr("用自己的话多写几句，至少 10 个字。");
+      return;
+    }
+    if (!gapFound.trim()) {
+      setErr("先说清楚这次暴露出的缺口在哪。");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      const nv = await drill.note(runId, { myWords, gapFound, nextAction });
+      setDone(nv);
+    } catch (e) {
+      setErr(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const finish = () => {
+    onSaved?.();
+    onClose();
+  };
+  return /* @__PURE__ */ jsxDEV("div", { className: "note-backdrop", onClick: onClose, children: /* @__PURE__ */ jsxDEV(
+    "div",
+    {
+      className: "note-dialog",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "写内化笔记",
+      onClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxDEV("header", { className: "note-dialog-head", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: "内化笔记 · NOTE" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 108,
+            columnNumber: 11
+          }, this),
+          /* @__PURE__ */ jsxDEV("h2", { children: "把这道题嚼碎" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 109,
+            columnNumber: 11
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { className: "note-dialog-sub", children: "笔记里没有「标准答案」可抄——只有你自己的话，才叫内化。" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 110,
+            columnNumber: 11
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+          lineNumber: 107,
+          columnNumber: 9
+        }, this),
+        done ? /* @__PURE__ */ jsxDEV("div", { className: "note-done", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "done-icon", children: /* @__PURE__ */ jsxDEV(Check, { size: 34, strokeWidth: 1.5 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 118,
+            columnNumber: 15
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 117,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("h3", { children: "已内化" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 120,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(Overlap, { ratio: done.overlapRatio }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 121,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { className: "done-left", children: [
+            "还剩 ",
+            done.debtLeft,
+            " 条欠账"
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 122,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "note-actions", children: /* @__PURE__ */ jsxDEV(Button, { onClick: finish, children: "完成" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 124,
+            columnNumber: 15
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 123,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+          lineNumber: 116,
+          columnNumber: 9
+        }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+          stem && /* @__PURE__ */ jsxDEV("div", { className: "note-q", children: [
+            /* @__PURE__ */ jsxDEV(Badge, { kind: "bad", children: "本题" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 131,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { className: "note-stem", children: stem }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 132,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 130,
+            columnNumber: 11
+          }, this),
+          err && /* @__PURE__ */ jsxDEV("div", { className: "banner info", children: err }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 136,
+            columnNumber: 21
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "field", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "field-label", children: "用自己的话复述（支持 Markdown）" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 139,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              MarkdownEditor,
+              {
+                rows: 6,
+                placeholder: "关上资料，凭记忆写。抄题干会被拦下。\n支持 Markdown：```python ... ``` 贴代码、**加粗**、- 列表。",
+                value: myWords,
+                onChange: setMyWords
+              },
+              void 0,
+              false,
+              {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+                lineNumber: 140,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 138,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "field", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "field-label", children: "这次暴露的缺口" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 148,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "textarea",
+              {
+                className: "note-area",
+                rows: 2,
+                placeholder: "哪一点没答上、哪点讲错了？",
+                value: gapFound,
+                onChange: (e) => setGapFound(e.target.value)
+              },
+              void 0,
+              false,
+              {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+                lineNumber: 149,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 147,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "field", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "field-label", children: "下一步怎么补（可留空）" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 158,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                className: "note-input",
+                placeholder: "例如：重看 JVM 内存模型一节",
+                value: nextAction,
+                onChange: (e) => setNextAction(e.target.value)
+              },
+              void 0,
+              false,
+              {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+                lineNumber: 159,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 157,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "note-actions", children: [
+            /* @__PURE__ */ jsxDEV(Button, { variant: "ghost", onClick: onClose, children: "取消" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 168,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(Button, { onClick: submit, disabled: busy, children: busy ? "提交中…" : "保存笔记" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+              lineNumber: 171,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+            lineNumber: 167,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+          lineNumber: 128,
+          columnNumber: 9
+        }, this)
+      ]
+    },
+    void 0,
+    true,
+    {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+      lineNumber: 100,
+      columnNumber: 7
+    },
+    this
+  ) }, void 0, false, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+    lineNumber: 99,
+    columnNumber: 5
+  }, this);
+}
+_s(NoteDialog, "QTBJpqTFGZkXoJ9zEhGHQ5pZCOI=");
+_c = NoteDialog;
+function Overlap({ ratio }) {
+  const pct = Math.round(ratio * 100);
+  const high = ratio > 0.35;
+  return /* @__PURE__ */ jsxDEV("div", { className: "overlap" + (high ? " high" : ""), children: [
+    high ? /* @__PURE__ */ jsxDEV(AlertTriangle, { size: 16, strokeWidth: 1.6 }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+      lineNumber: 188,
+      columnNumber: 7
+    }, this) : /* @__PURE__ */ jsxDEV(Check, { size: 16, strokeWidth: 1.6 }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+      lineNumber: 190,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("span", { children: [
+      "这段有 ",
+      /* @__PURE__ */ jsxDEV("strong", { children: [
+        pct,
+        "%"
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+        lineNumber: 193,
+        columnNumber: 13
+      }, this),
+      " 来自题干或评分点",
+      high ? "，自己重写更有用。" : "，基本是你自己的话。"
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+      lineNumber: 192,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx",
+    lineNumber: 186,
+    columnNumber: 5
+  }, this);
+}
+_c2 = Overlap;
+var _c, _c2;
+$RefreshReg$(_c, "NoteDialog");
+$RefreshReg$(_c2, "Overlap");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/NoteDialog.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QUFBQSxXQUdBO0FBQUEsT0FURjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBVUE7QUFFSjtBQUFDQyxNQWhCUU47QUFBTyxJQUFBTyxJQUFBRDtBQUFBLGFBQUFDLElBQUE7QUFBQSxhQUFBRCxLQUFBIiwibmFtZXMiOlsidXNlRWZmZWN0IiwidXNlU3RhdGUiLCJDaGVjayIsIkFsZXJ0VHJpYW5nbGUiLCJkcmlsbCIsIkJ1dHRvbiIsIkJhZGdlIiwiTWFya2Rvd25FZGl0b3IiLCJBcGlFcnJvciIsIm1zZyIsImUiLCJtZXNzYWdlIiwiTm90ZURpYWxvZyIsInJ1bklkIiwic3RlbSIsIm9uQ2xvc2UiLCJvblNhdmVkIiwiX3MiLCJteVdvcmRzIiwic2V0TXlXb3JkcyIsImdhcEZvdW5kIiwic2V0R2FwRm91bmQiLCJuZXh0QWN0aW9uIiwic2V0TmV4dEFjdGlvbiIsImVyciIsInNldEVyciIsImJ1c3kiLCJzZXRCdXN5IiwiZG9uZSIsInNldERvbmUiLCJvbktleSIsImtleSIsIndpbmRvdyIsImFkZEV2ZW50TGlzdGVuZXIiLCJyZW1vdmVFdmVudExpc3RlbmVyIiwic3VibWl0IiwidHJpbSIsImxlbmd0aCIsIm52Iiwibm90ZSIsImZpbmlzaCIsInN0b3BQcm9wYWdhdGlvbiIsIm92ZXJsYXBSYXRpbyIsImRlYnRMZWZ0IiwidGFyZ2V0IiwidmFsdWUiLCJPdmVybGFwIiwicmF0aW8iLCJwY3QiLCJNYXRoIiwicm91bmQiLCJoaWdoIiwiX2MyIiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiTm90ZURpYWxvZy50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgdXNlRWZmZWN0LCB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcclxuaW1wb3J0IHsgQ2hlY2ssIEFsZXJ0VHJpYW5nbGUgfSBmcm9tICdsdWNpZGUtcmVhY3QnO1xyXG5pbXBvcnQgeyBkcmlsbCB9IGZyb20gJy4uL2FwaS9kcmlsbCc7XHJcbmltcG9ydCB7IEJ1dHRvbiwgQmFkZ2UgfSBmcm9tICcuL3VpJztcclxuaW1wb3J0IHsgTWFya2Rvd25FZGl0b3IgfSBmcm9tICcuL01hcmtkb3duRWRpdG9yJztcclxuaW1wb3J0IHsgQXBpRXJyb3IgfSBmcm9tICcuLi9hcGkvY2xpZW50JztcclxuaW1wb3J0IHR5cGUgeyBOb3RlVmlldyB9IGZyb20gJy4uL2FwaS90eXBlcyc7XHJcbmltcG9ydCAnLi9Ob3RlRGlhbG9nLmNzcyc7XHJcblxyXG5mdW5jdGlvbiBtc2coZTogdW5rbm93bik6IHN0cmluZyB7XHJcbiAgcmV0dXJuIGUgaW5zdGFuY2VvZiBBcGlFcnJvciA/IGUubWVzc2FnZSA6ICfmk43kvZzlpLHotKUnO1xyXG59XHJcblxyXG5pbnRlcmZhY2UgTm90ZURpYWxvZ1Byb3BzIHtcclxuICBydW5JZDogbnVtYmVyIHwgbnVsbDtcclxuICBzdGVtPzogc3RyaW5nO1xyXG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XHJcbiAgb25TYXZlZD86ICgpID0+IHZvaWQ7XHJcbn1cclxuXHJcbmV4cG9ydCBmdW5jdGlvbiBOb3RlRGlhbG9nKHsgcnVuSWQsIHN0ZW0sIG9uQ2xvc2UsIG9uU2F2ZWQgfTogTm90ZURpYWxvZ1Byb3BzKSB7XHJcbiAgY29uc3QgW215V29yZHMsIHNldE15V29yZHNdID0gdXNlU3RhdGUoJycpO1xyXG4gIGNvbnN0IFtnYXBGb3VuZCwgc2V0R2FwRm91bmRdID0gdXNlU3RhdGUoJycpO1xyXG4gIGNvbnN0IFtuZXh0QWN0aW9uLCBzZXROZXh0QWN0aW9uXSA9IHVzZVN0YXRlKCcnKTtcclxuICBjb25zdCBbZXJyLCBzZXRFcnJdID0gdXNlU3RhdGUoJycpO1xyXG4gIGNvbnN0IFtidXN5LCBzZXRCdXN5XSA9IHVzZVN0YXRlKGZhbHNlKTtcclxuICBjb25zdCBbZG9uZSwgc2V0RG9uZV0gPSB1c2VTdGF0ZTxOb3RlVmlldyB8IG51bGw+KG51bGwpO1xyXG5cclxuICAvLyDmr4/mrKHmiZPlvIDmlrDnmoTkuIDpgZPml7bvvIzmuIXnqbrooajljZVcclxuICB1c2VFZmZlY3QoKCkgPT4ge1xyXG4gICAgaWYgKHJ1bklkICE9IG51bGwpIHtcclxuICAgICAgc2V0TXlXb3JkcygnJyk7XHJcbiAgICAgIHNldEdhcEZvdW5kKCcnKTtcclxuICAgICAgc2V0TmV4dEFjdGlvbignJyk7XHJcbiAgICAgIHNldEVycignJyk7XHJcbiAgICAgIHNldEJ1c3koZmFsc2UpO1xyXG4gICAgICBzZXREb25lKG51bGwpO1xyXG4gICAgfVxyXG4gIH0sIFtydW5JZF0pO1xyXG5cclxuICAvLyBFc2Mg5YWz6Zet77yI6YGu572p5bGC5Lmf5Y+v54K577yM5L2G6KGo5Y2V5Yy65LiN5YaS5rOh77yJXHJcbiAgdXNlRWZmZWN0KCgpID0+IHtcclxuICAgIGlmIChydW5JZCA9PSBudWxsKSByZXR1cm47XHJcbiAgICBjb25zdCBvbktleSA9IChlOiBLZXlib2FyZEV2ZW50KSA9PiB7XHJcbiAgICAgIGlmIChlLmtleSA9PT0gJ0VzY2FwZScpIG9uQ2xvc2UoKTtcclxuICAgIH07XHJcbiAgICB3aW5kb3cuYWRkRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIG9uS2V5KTtcclxuICAgIHJldHVybiAoKSA9PiB3aW5kb3cucmVtb3ZlRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIG9uS2V5KTtcclxuICB9LCBbcnVuSWQsIG9uQ2xvc2VdKTtcclxuXHJcbiAgaWYgKHJ1bklkID09IG51bGwpIHJldHVybiBudWxsO1xyXG5cclxuICBjb25zdCBzdWJtaXQgPSBhc3luYyAoKSA9PiB7XHJcbiAgICBpZiAobXlXb3Jkcy50cmltKCkubGVuZ3RoIDwgMTApIHtcclxuICAgICAgc2V0RXJyKCfnlKjoh6rlt7HnmoTor53lpJrlhpnlh6Dlj6XvvIzoh7PlsJEgMTAg5Liq5a2X44CCJyk7XHJcbiAgICAgIHJldHVybjtcclxuICAgIH1cclxuICAgIGlmICghZ2FwRm91bmQudHJpbSgpKSB7XHJcbiAgICAgIHNldEVycign5YWI6K+05riF5qWa6L+Z5qyh5pq06Zyy5Ye655qE57y65Y+j5Zyo5ZOq44CCJyk7XHJcbiAgICAgIHJldHVybjtcclxuICAgIH1cclxuICAgIHNldEJ1c3kodHJ1ZSk7XHJcbiAgICBzZXRFcnIoJycpO1xyXG4gICAgdHJ5IHtcclxuICAgICAgY29uc3QgbnYgPSBhd2FpdCBkcmlsbC5ub3RlKHJ1bklkLCB7IG15V29yZHMsIGdhcEZvdW5kLCBuZXh0QWN0aW9uIH0pO1xyXG4gICAgICBzZXREb25lKG52KTtcclxuICAgIH0gY2F0Y2ggKGUpIHtcclxuICAgICAgc2V0RXJyKG1zZyhlKSk7IC8vIOWQjuerryA0MjLvvJrmioTlhpkgLyDnvLrlj6PmnKrloatcclxuICAgIH0gZmluYWxseSB7XHJcbiAgICAgIHNldEJ1c3koZmFsc2UpO1xyXG4gICAgfVxyXG4gIH07XHJcblxyXG4gIGNvbnN0IGZpbmlzaCA9ICgpID0+IHtcclxuICAgIG9uU2F2ZWQ/LigpO1xyXG4gICAgb25DbG9zZSgpO1xyXG4gIH07XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cIm5vdGUtYmFja2Ryb3BcIiBvbkNsaWNrPXtvbkNsb3NlfT5cclxuICAgICAgPGRpdlxyXG4gICAgICAgIGNsYXNzTmFtZT1cIm5vdGUtZGlhbG9nXCJcclxuICAgICAgICByb2xlPVwiZGlhbG9nXCJcclxuICAgICAgICBhcmlhLW1vZGFsPVwidHJ1ZVwiXHJcbiAgICAgICAgYXJpYS1sYWJlbD1cIuWGmeWGheWMlueslOiusFwiXHJcbiAgICAgICAgb25DbGljaz17KGUpID0+IGUuc3RvcFByb3BhZ2F0aW9uKCl9XHJcbiAgICAgID5cclxuICAgICAgICA8aGVhZGVyIGNsYXNzTmFtZT1cIm5vdGUtZGlhbG9nLWhlYWRcIj5cclxuICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImV5ZWJyb3dcIj7lhoXljJbnrJTorrAgwrcgTk9URTwvc3Bhbj5cclxuICAgICAgICAgIDxoMj7miorov5npgZPpopjlmrznoo48L2gyPlxyXG4gICAgICAgICAgPHAgY2xhc3NOYW1lPVwibm90ZS1kaWFsb2ctc3ViXCI+XHJcbiAgICAgICAgICAgIOeslOiusOmHjOayoeacieOAjOagh+WHhuetlOahiOOAjeWPr+aKhOKAlOKAlOWPquacieS9oOiHquW3seeahOivne+8jOaJjeWPq+WGheWMluOAglxyXG4gICAgICAgICAgPC9wPlxyXG4gICAgICAgIDwvaGVhZGVyPlxyXG5cclxuICAgICAgICB7ZG9uZSA/IChcclxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibm90ZS1kb25lXCI+XHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZG9uZS1pY29uXCI+XHJcbiAgICAgICAgICAgICAgPENoZWNrIHNpemU9ezM0fSBzdHJva2VXaWR0aD17MS41fSAvPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPGgzPuW3suWGheWMljwvaDM+XHJcbiAgICAgICAgICAgIDxPdmVybGFwIHJhdGlvPXtkb25lLm92ZXJsYXBSYXRpb30gLz5cclxuICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwiZG9uZS1sZWZ0XCI+6L+Y5YmpIHtkb25lLmRlYnRMZWZ0fSDmnaHmrKDotKY8L3A+XHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibm90ZS1hY3Rpb25zXCI+XHJcbiAgICAgICAgICAgICAgPEJ1dHRvbiBvbkNsaWNrPXtmaW5pc2h9PuWujOaIkDwvQnV0dG9uPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICkgOiAoXHJcbiAgICAgICAgICA8PlxyXG4gICAgICAgICAgICB7c3RlbSAmJiAoXHJcbiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJub3RlLXFcIj5cclxuICAgICAgICAgICAgICAgIDxCYWRnZSBraW5kPVwiYmFkXCI+5pys6aKYPC9CYWRnZT5cclxuICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cIm5vdGUtc3RlbVwiPntzdGVtfTwvc3Bhbj5cclxuICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgKX1cclxuXHJcbiAgICAgICAgICAgIHtlcnIgJiYgPGRpdiBjbGFzc05hbWU9XCJiYW5uZXIgaW5mb1wiPntlcnJ9PC9kaXY+fVxyXG5cclxuICAgICAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT1cImZpZWxkXCI+XHJcbiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiZmllbGQtbGFiZWxcIj7nlKjoh6rlt7HnmoTor53lpI3ov7DvvIjmlK/mjIEgTWFya2Rvd27vvIk8L3NwYW4+XHJcbiAgICAgICAgICAgICAgPE1hcmtkb3duRWRpdG9yXHJcbiAgICAgICAgICAgICAgICByb3dzPXs2fVxyXG4gICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9eyflhbPkuIrotYTmlpnvvIzlh63orrDlv4blhpnjgILmioTpopjlubLkvJrooqvmi6bkuIvjgIJcXG7mlK/mjIEgTWFya2Rvd27vvJpgYGBweXRob24gLi4uIGBgYCDotLTku6PnoIHjgIEqKuWKoOeylyoq44CBLSDliJfooajjgIInfVxyXG4gICAgICAgICAgICAgICAgdmFsdWU9e215V29yZHN9XHJcbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17c2V0TXlXb3Jkc31cclxuICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiZmllbGRcIj5cclxuICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJmaWVsZC1sYWJlbFwiPui/measoeaatOmcsueahOe8uuWPozwvc3Bhbj5cclxuICAgICAgICAgICAgICA8dGV4dGFyZWFcclxuICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cIm5vdGUtYXJlYVwiXHJcbiAgICAgICAgICAgICAgICByb3dzPXsyfVxyXG4gICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLlk6rkuIDngrnmsqHnrZTkuIrjgIHlk6rngrnorrLplJnkuobvvJ9cIlxyXG4gICAgICAgICAgICAgICAgdmFsdWU9e2dhcEZvdW5kfVxyXG4gICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhlKSA9PiBzZXRHYXBGb3VuZChlLnRhcmdldC52YWx1ZSl9XHJcbiAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT1cImZpZWxkXCI+XHJcbiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiZmllbGQtbGFiZWxcIj7kuIvkuIDmraXmgI7kuYjooaXvvIjlj6/nlZnnqbrvvIk8L3NwYW4+XHJcbiAgICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJub3RlLWlucHV0XCJcclxuICAgICAgICAgICAgICAgIHBsYWNlaG9sZGVyPVwi5L6L5aaC77ya6YeN55yLIEpWTSDlhoXlrZjmqKHlnovkuIDoioJcIlxyXG4gICAgICAgICAgICAgICAgdmFsdWU9e25leHRBY3Rpb259XHJcbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldE5leHRBY3Rpb24oZS50YXJnZXQudmFsdWUpfVxyXG4gICAgICAgICAgICAgIC8+XHJcbiAgICAgICAgICAgIDwvbGFiZWw+XHJcblxyXG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm5vdGUtYWN0aW9uc1wiPlxyXG4gICAgICAgICAgICAgIDxCdXR0b24gdmFyaWFudD1cImdob3N0XCIgb25DbGljaz17b25DbG9zZX0+XHJcbiAgICAgICAgICAgICAgICDlj5bmtohcclxuICAgICAgICAgICAgICA8L0J1dHRvbj5cclxuICAgICAgICAgICAgICA8QnV0dG9uIG9uQ2xpY2s9e3N1Ym1pdH0gZGlzYWJsZWQ9e2J1c3l9PlxyXG4gICAgICAgICAgICAgICAge2J1c3kgPyAn5o+Q5Lqk5Lit4oCmJyA6ICfkv53lrZjnrJTorrAnfVxyXG4gICAgICAgICAgICAgIDwvQnV0dG9uPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDwvPlxyXG4gICAgICAgICl9XHJcbiAgICAgIDwvZGl2PlxyXG4gICAgPC9kaXY+XHJcbiAgKTtcclxufVxyXG5cclxuZnVuY3Rpb24gT3ZlcmxhcCh7IHJhdGlvIH06IHsgcmF0aW86IG51bWJlciB9KSB7XHJcbiAgY29uc3QgcGN0ID0gTWF0aC5yb3VuZChyYXRpbyAqIDEwMCk7XHJcbiAgY29uc3QgaGlnaCA9IHJhdGlvID4gMC4zNTtcclxuICByZXR1cm4gKFxyXG4gICAgPGRpdiBjbGFzc05hbWU9eydvdmVybGFwJyArIChoaWdoID8gJyBoaWdoJyA6ICcnKX0+XHJcbiAgICAgIHtoaWdoID8gKFxyXG4gICAgICAgIDxBbGVydFRyaWFuZ2xlIHNpemU9ezE2fSBzdHJva2VXaWR0aD17MS42fSAvPlxyXG4gICAgICApIDogKFxyXG4gICAgICAgIDxDaGVjayBzaXplPXsxNn0gc3Ryb2tlV2lkdGg9ezEuNn0gLz5cclxuICAgICAgKX1cclxuICAgICAgPHNwYW4+XHJcbiAgICAgICAg6L+Z5q615pyJIDxzdHJvbmc+e3BjdH0lPC9zdHJvbmc+IOadpeiHqumimOW5suaIluivhOWIhueCuVxyXG4gICAgICAgIHtoaWdoID8gJ++8jOiHquW3semHjeWGmeabtOacieeUqOOAgicgOiAn77yM5Z+65pys5piv5L2g6Ieq5bex55qE6K+d44CCJ31cclxuICAgICAgPC9zcGFuPlxyXG4gICAgPC9kaXY+XHJcbiAgKTtcclxufVxyXG4iXSwiZmlsZSI6IkQ6LzAxIGRvY3VtZW50cy8wMkNvZGUvUHJvamVjdC9TcHJpbmcgQm9vdCA0LjBfSmF2YSAyMV9TcHJpbmcgQUkgMi4wL2ludGVydmlldy1ob21lZ3Jvd24vZnJvbnRlbmQvc3JjL2NvbXBvbmVudHMvTm90ZURpYWxvZy50c3gifQ==

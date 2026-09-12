@@ -1,0 +1,988 @@
+[
+  {
+    "providerId": "aanda",
+    "regex": "^http(s)?://(\\w+[-.])?aanda[-.]org/(component/article|articles/\\w+)",
+    "testCaseUrl": "https://www.aanda.org/articles/aa/full_html/2020/10/aa35325-19/aa35325-19.html"
+  },
+  {
+    "providerId": "amatsoc",
+    "regex": "^http(s)?://(\\w+[-.])?ams[-.]org/journals/\\w",
+    "testCaseUrl": "https://www.ams.org/journals/proc/1978-069-02/S0002-9939-1978-0463658-5/"
+  },
+  {
+    "providerId": "asce",
+    "regex": "^http(s)?://(\\w+[-.])?ascelibrary[-.]org/doi/",
+    "testCaseUrl": "https://ascelibrary.org/doi/book/10.1061/9780784484548"
+  },
+  {
+    "providerId": "astmh",
+    "regex": "^http(s)?://(\\w+[-.])?ajtmh[-.]org/(view|content)/journals/",
+    "testCaseUrl": "https://www.ajtmh.org/view/journals/tpmd/108/5/article-p954.xml"
+  },
+  {
+    "providerId": "astonresearch",
+    "regex": "^http(s)?://(\\w+[-.])?aston[-.]ac[-.]uk/\\w+/publications/[-\\w]+",
+    "testCaseUrl": "https://research.aston.ac.uk/en/publications/2d-excitation-emission-fluorescence-mapping-analysis-of-plant-foo"
+  },
+  {
+    "providerId": "avma",
+    "regex": "^http(s)?://(\\w+[-.])?avmajournals[-.]avma[-.]org/view/journals/\\w+",
+    "testCaseUrl": "https://avmajournals.avma.org/view/journals/javma/aop/javma.22.12.0586/javma.22.12.0586.xml"
+  },
+  {
+    "providerId": "berghahn",
+    "regex": "^http(s)?://(\\w+[-.])?berghahnjournals[-.]com/\\w+/journals/[-\\w]+/\\w+/\\w+/",
+    "qualifier": { "token": "id:loginwrapper1", "condition": false },
+    "testCaseUrl": "https://www.berghahnjournals.com/view/journals/aia/30/1/aia300101.xml"
+  },
+  {
+    "providerId": "biomed-central",
+    "regex": "^http(s)?://(\\w+[-.])?biomedcentral[-.]com/articles/",
+    "testCaseUrl": "https://urbantransformations.biomedcentral.com/articles/10.1186/s42854-023-00053-z"
+  },
+  {
+    "providerId": "bioone",
+    "regex": "^http(s)?://(\\w+[-.])?bioone[-.]org/journals/[-\\w]+/",
+    "qualifier": { "token": "class:AccessFullArticlePanel", "condition": false },
+    "testCaseUrl": "https://bioone.org/journals/journal-of-shellfish-research/volume-41/issue-2/035.041.0214/Larval-Thermal-Tolerance-of-Kellets-Whelk-Kelletia-kelletii-as-a/10.2983/035.041.0214.short?utm_source=homepage&utm_medium=website&utm_campaign=ambassador"
+  },
+  {
+    "providerId": "biorxiv",
+    "regex": "^http(s)?://(\\w+[-.])?biorxiv[-.]org/content/",
+    "testCaseUrl": "https://www.biorxiv.org/content/10.1101/2020.06.11.145425v1"
+  },
+  {
+    "providerId": "bmj",
+    "regex": "^http(s)?://(\\w+[-.])?bmj[-.]com/(content|node)/",
+    "qualifier": { "token": "text:bmjj-free-access|ref-list-", "condition": true },
+    "testCaseUrl": "https://www.bmj.com/content/381/bmj.p1041"
+  },
+  {
+    "providerId": "cairn",
+    "regex": "^http(s)?://(\\w+[-.])?cairn[-.]info/\\w+",
+    "testCaseUrl": "https://www.cairn.info/revue-apres-demain-2023-2-page-5.htm"
+  },
+  {
+    "providerId": "cob",
+    "regex": "^http(s)?://(\\w+[-.])?biologists[-.]com/\\w+",
+    "testCaseUrl": "https://journals.biologists.com/bio/article/12/3/bio059845/294618/Cerebral-organoids-in-primary-progressive-multiple"
+  },
+  {
+    "providerId": "computer",
+    "regex": "^http(s)?://(\\w+[-.])?computer[-.]org/\\w+/\\w+/\\w+/\\d+/\\d+/\\w+",
+    "testCaseUrl": "https://www.computer.org/csdl/journal/oj/2022/01/09663008/1zBahhRd0Fa"
+  },
+  {
+    "providerId": "acrl",
+    "regex": "^http(s)?://(\\w+[-.])?crln[-.]acrl[-.]org/index.php/\\w+/article/view/\\d+",
+    "testCaseUrl": "https://crln.acrl.org/index.php/crlnews/article/view/25888"
+  },
+  {
+    "providerId": "cisro",
+    "regex": "^http(s)?://(\\w+[-.])?publish[-.]csiro[-.]au/.\\w",
+    "testCaseUrl": "https://www.publish.csiro.au/HC/HC23030"
+  },
+  {
+    "providerId": "dsj",
+    "regex": "^http(s)?://(\\w+[-.])?datascience[-.]codata[-.]org/article(s)/10.",
+    "testCaseUrl": "https://datascience.codata.org/articles/10.5334/dsj-2023-010"
+  },
+  {
+    "providerId": "elgaronline",
+    "regex": "^http(s)?://(\\w+[-.])?elgaronline[-.]com[-.\\w]*/(view|display)/edcoll/\\d+/[\\d.]+",
+    "testCaseUrl": "https://www.elgaronline.com/display/edcoll/9781788114707/9781788114707.00006.xml?rskey=CXduJh&result=72"
+  },
+  {
+    "providerId": "embo-press",
+    "regex": "^http(s)?://(\\w+[-.])?embopress[-.]org/doi/",
+    "testCaseUrl": "https://www.embopress.org/doi/full/10.15252/embr.201847435",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/full/",
+      "replace": "/pdf/"
+    }
+  },
+  {
+    "providerId": "f1000",
+    "regex": "^http(s)?://(\\w+[-.])?f1000(research)[-.]com/(prime|articles)/\\d+",
+    "testCaseUrl": "https://f1000research.com/articles/12-481"
+  },
+  {
+    "providerId": "hal",
+    "regex": "^http(s)?://(\\w+[-.])?hal[-.]science/\\w+\\-\\d+",
+    "testCaseUrl": "https://hal.science/hal-03124728v1"
+  },
+  {
+    "providerId": "hindawi",
+    "regex": "^http(s)?://(\\w+[-.])?hindawi[-.]com/(journals|archive)/",
+    "testCaseUrl": "https://www.hindawi.com/journals/bmri/2023/7692726/"
+  },
+  {
+    "providerId": "humankinetics",
+    "regex": "^http(s)?://journals[.-]humankinetics[.-]com/view/journals/",
+    "testCaseUrl": "https://journals.humankinetics.com/view/journals/jpah/aop/article-10.1123-jpah.2022-0468/article-10.1123-jpah.2022-0468.xml"
+  },
+  {
+    "providerId": "jama",
+    "regex": "^http(s)?://(\\w+[-.])?jamanetwork[-.]com/\\w+/\\w+/[-A-z0-9]+/\\d+",
+    "testCaseUrl": "https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2804673"
+  },
+  {
+    "providerId": "jasss",
+    "regex": "^http(s)?://(\\w+[-.])?jasss[-.]org/\\w+/\\w+",
+    "testCaseUrl": "https://www.jasss.org/26/2/9.html"
+  },
+  {
+    "providerId": "jbc",
+    "regex": "^http(s)?://(\\w+[-.])?jbc[-.]org/(article|content)/",
+    "testCaseUrl": "https://www.jbc.org/article/S0021-9258(23)01843-4/fulltext"
+  },
+  {
+    "providerId": "jci",
+    "regex": "^http(s)?://(\\w+[-.])?jci[-.]org/articles/view/\\w+",
+    "qualifier": { "token": "class:pricing-table", "condition": false },
+    "testCaseUrl": "https://www.jci.org/articles/view/169217"
+  },
+  {
+    "providerId": "mdpi",
+    "regex": "^http(s)?://(\\w+[-.])?mdpi[-.]com/\\d+-\\w+/\\d+/\\d+/\\d+",
+    "testCaseUrl": "https://www.mdpi.com/2218-273X/13/5/820"
+  },
+  {
+    "providerId": "msp",
+    "regex": "^http(s)?://(\\w+[-.])?msp[-.]org/\\w+/\\d+/[-\\w]+/(?!index)\\w+.xhtml",
+    "testCaseUrl": "https://msp.org/involve/2023/16-1/p02.xhtml"
+  },
+  {
+    "providerId": "peerj",
+    "regex": "^http(s)?://(\\w+[-.])?peerj[-.]com/articles/\\w+",
+    "testCaseUrl": "https://peerj.com/articles/14813/"
+  },
+  {
+    "providerId": "plos",
+    "regex": "^http(s)?://(\\w+[-.])?plos[-.]org/[-.\\w+]*/article",
+    "testCaseUrl": "https://journals.plos.org/digitalhealth/article?id=10.1371/journal.pdig.0000057"
+  },
+  {
+    "providerId": "pnas",
+    "regex": "^http(s)?://(\\w+[-.])?pnas[-.]org/(content|doi)/",
+    "testCaseUrl": "https://www.pnas.org/doi/10.1073/pnas.2122168120"
+  },
+  {
+    "providerId": "rio-journal",
+    "regex": "^http(s)?://(\\w+[-.])?riojournal[-.]com/article(s)?(/\\d+/|s.php\\?)?",
+    "testCaseUrl": "https://riojournal.com/article/11321/"
+  },
+  {
+    "providerId": "rschemistry",
+    "regex": "^http(s)?://(\\w+[-.])?pubs[-.]rsc[-.]org/[-.\\w]*/content/(articlelanding|articlehtml)",
+    "testCaseUrl": "https://pubs.rsc.org/en/content/articlelanding/2023/cc/d3cc90157b"
+  },
+  {
+    "providerId": "scirp",
+    "regex": "^http(s)?://(\\w+[-.])?scirp[-.]org/journal/\\w+",
+    "testCaseUrl": "https://scirp.org/journal/paperinformation.aspx?paperid=124808"
+  },
+  {
+    "providerId": "thieme",
+    "regex": "^http(s)?://(\\w+[-.])?thieme-connect[-.]com/products/ejournals/\\w+",
+    "testCaseUrl": "https://www.thieme-connect.com/products/ejournals/abstract/10.1055/a-1973-8588"
+  },
+  {
+    "providerId": "allenpress",
+    "regex": "^http(s)?://(\\w+[-.])?allenpress[-.]com/\\w+",
+    "testCaseUrl": "https://meridian.allenpress.com/thij/article/47/4/244/450153/Importance-of-Persistent-Right-to-Left-Shunt-After"
+  },
+  {
+    "providerId": "trd",
+    "regex": "^http(s)?://(\\w+[-.])?e-trd[-.]org/journal/\\w+",
+    "testCaseUrl": "https://e-trd.org/journal/view.php?number=4813"
+  },
+  {
+    "providerId": "ualberta",
+    "regex": "^http(s)?://(\\w+[-.])?journals[-.]library[-.]ualberta[-.]ca/\\w+",
+    "testCaseUrl": "https://journals.library.ualberta.ca/asperreview/index.php/asperreview/article/view/240"
+  },
+  {
+    "providerId": "unibo",
+    "regex": "^http(s)?://(\\w+[-.])?encp.unibo[-.]it/article/",
+    "testCaseUrl": "https://encp.unibo.it/article/view/15875"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?publications[.-]aap[.-]org/hospitalpediatrics/\\w+",
+    "testCaseUrl": "https://publications.aap.org/hospitalpediatrics/article/13/6/480/191228/Resident-Communication-With-Patients-and-Families"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?aacnjournals[.-]org/ajcconline/\\w+",
+    "testCaseUrl": "https://aacnjournals.org/ajcconline/article/32/3/184/32063/The-Mindful-Ethical-Practice-and-Resilience?searchresult=1"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]lifescied[.-]org/doi/\\w+",
+    "testCaseUrl": "https://www.lifescied.org/doi/10.1187/cbe.22-01-0001",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/",
+      "append": "?download=true"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?ashpublications[.-]org/hematology/\\w+",
+    "testCaseUrl": "https://ashpublications.org/hematology/article/2022/1/586/493562/Perioperative-hemostasis-for-patients-with",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]lyellcollection[.-]org/doi/\\w+",
+    "testCaseUrl": "https://www.lyellcollection.org/doi/10.1144/geoenergy2022-001"
+  },
+  {
+    "providerId": "science",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]science[.-]org/doi/\\w+",
+    "testCaseUrl": "https://www.science.org/doi/10.1126/scitranslmed.abo7728",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?pubs[.-]geoscienceworld[.-]org/canmin/\\w+",
+    "testCaseUrl": "https://pubs.geoscienceworld.org/canmin/article/60/6/851/620565/Thematic-Issue-on-Critical-Minerals-The-Canadian",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]healthaffairs[.-]org/doi/\\w+",
+    "testCaseUrl": "https://www.healthaffairs.org/doi/10.1377/hlthaff.2022.01493",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/",
+      "append": "?download=true"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?academic[.-]oup[.-]com/(jalm|ajhp)/\\w+",
+    "testCaseUrl": "https://academic.oup.com/jalm/advance-article/doi/10.1093/jalm/jfad029/7195089?searchresult=1"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?iwaponline[.-]com/jh/\\w+",
+    "testCaseUrl": "https://iwaponline.com/jh/article/doi/10.2166/hydro.2023.209/95560/Improved-community-detection-for-WDN-partitioning"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?pubs[.-]geoscienceworld[.-]org/sepm/\\w+",
+    "testCaseUrl": "https://pubs.geoscienceworld.org/sepm/jsedres/article/93/5/273/623596/Fluvial-character-and-architecture-of-an-outcrop"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]jneurosci[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.jneurosci.org/content/early/2023/06/12/JNEUROSCI.2277-22.2023",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "append": ".full.pdf"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]annfammed[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.annfammed.org/content/21/3/202",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "append": ".full.pdf"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?ng[.-]neurology[.-]org/content/\\w+",
+    "testCaseUrl": "https://ng.neurology.org/content/9/3/e200062"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?jaapl[.-]org/content/\\w+",
+    "testCaseUrl": "https://jaapl.org/content/early/2023/06/05/JAAPL.220096-22"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]jabfm[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.jabfm.org/content/36/3/405"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?jn[.-]nutrition[.-]org/article/\\w+",
+    "testCaseUrl": "https://jn.nutrition.org/article/S0022-3166(23)02516-6/fulltext"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]ajsonline[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.ajsonline.org/content/322/10/1089"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]jlr[.-]org/article/\\w+",
+    "testCaseUrl": "https://www.jlr.org/article/S0022-2275(23)00070-6/fulltext"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]mcponline[.-]org/article/\\w+",
+    "testCaseUrl": "https://www.mcponline.org/article/S1535-9476(23)00044-0/fulltext"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]molbiolcell[.-]org/doi/\\w+",
+    "testCaseUrl": "https://www.molbiolcell.org/doi/10.1091/mbc.E23-01-0025",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/",
+      "append": "?download=true"
+    }
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]ajevonline[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.ajevonline.org/content/74/1/0740019"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?jpet[.-]aspetjournals[.-]org/content/\\w+",
+    "testCaseUrl": "https://jpet.aspetjournals.org/content/early/2023/05/23/jpet.122.001545"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]ajnr[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.ajnr.org/content/early/2023/06/08/ajnr.A7901"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]ajtmh[.-]org/view/\\w+",
+    "testCaseUrl": "https://www.ajtmh.org/view/journals/tpmd/108/6/article-p1151.xml"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?eje[.-]bioscientifica[.-]com/view/\\w+",
+    "testCaseUrl": "https://eje.bioscientifica.com/view/journals/eje/187/6/EJE-22-0508.xml"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?boneandjoint[.-]org[.-]uk/Article/\\w+",
+    "testCaseUrl": "https://boneandjoint.org.uk/Article/10.1302/2633-1462.46.BJO-2023-0037.R1"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?eor[.-]bioscientifica[.-]com/view/\\w+",
+    "testCaseUrl": "https://eor.bioscientifica.com/view/journals/eor/8/6/EOR-23-0032.xml"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]cmaj[.-]ca/content/\\w+",
+    "testCaseUrl": "https://www.cmaj.ca/content/195/23/E815"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?faseb[.-]onlinelibrary[.-]wiley[.-]com/doi/\\w+",
+    "testCaseUrl": "https://faseb.onlinelibrary.wiley.com/doi/full/10.1096/fj.202201769R"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?haematologica[.-]org/article/\\w+",
+    "testCaseUrl": "https://haematologica.org/article/view/haematol.2022.281878"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?jnccn[.-]org/view/\\w+",
+    "testCaseUrl": "https://jnccn.org/view/journals/jnccn/21/6/article-p609.xml"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?ar[.-]iiarjournals[.-]org/content/\\w+",
+    "testCaseUrl": "https://ar.iiarjournals.org/content/43/6/2393"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]ghspjournal[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.ghspjournal.org/content/early/2023/06/12/GHSP-D-22-00298"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?ncmedicaljournal[.-]com/article/\\w+",
+    "testCaseUrl": "https://ncmedicaljournal.com/article/73024-retrospective-study-of-thrombosis-in-hospitalized-patients-with-covid-19-in-rural-north-carolina"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?rupress[.-]org/jcb/\\w+",
+    "testCaseUrl": "https://rupress.org/jcb/article/222/9/e202205128/214157/Arf1-PI4KIII-positive-vesicles-regulate-PI-3-P?searchresult=1"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?bjgp[.-]org/content/\\w+",
+    "testCaseUrl": "https://bjgp.org/content/early/2023/06/12/BJGP.2022.0643"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?tech[.-]snmjournals[.-]org/content/\\w+",
+    "testCaseUrl": "https://tech.snmjournals.org/content/51/2/83"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]jrheum[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.jrheum.org/content/50/6/730"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]mcponline[.-]org/article/\\w+",
+    "testCaseUrl": "https://www.mcponline.org/article/S1535-9476(23)00044-0/fulltext"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]eneuro[.-]org/content/\\w+",
+    "testCaseUrl": "https://www.eneuro.org/content/10/6/ENEURO.0196-22.2023"
+  },
+  {
+    "providerId": "highwire",
+    "regex": "^http(s)?://(\\w+[-.])?www[.-]journalofadvertisingresearch[.-]com/content/\\w+",
+    "testCaseUrl": "https://www.journalofadvertisingresearch.com/content/63/2/109"
+  },
+  {
+    "providerId": "aacr",
+    "regex": "^http(s)?://aacrjournals.org/\\w*/?article/",
+    "testCaseUrl": "https://aacrjournals.org/bloodcancerdiscov/article/4/3/228/726218/METTL3-Mediated-m6A-Modification-Controls-Splicing?guestAccessKey=df7565f1-9ca7-463f-be9a-9739e833b818",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "aai",
+    "regex": "^http(s)?://(www.)?journals.aai.org/(jimmunol|immunohorizons)/article/",
+    "testCaseUrl": "https://journals.aai.org/immunohorizons/article/7/6/421/263856/A-Nasal-Inflammatory-Cytokine-Signature-Is",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "aap",
+    "regex": "^http(s)?://publications.aap.org/patiented/article/",
+    "testCaseUrl": "https://publications.aap.org/patiented/article/doi/10.1542/ppe_document204/184636/COVID-19-How-to-Prepare-for-Your-Child-s-COVID?searchresult=1",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "aha",
+    "regex": "^http(s)?://[-.\\w]*?ahajournals[-.]org[-.\\w]*/(content|doi)",
+    "testCaseUrl": "https://www.ahajournals.org/doi/10.1161/STROKEAHA.120.031208",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "aiaa",
+    "regex": "^http(s)?://(www.)?arc.aiaa.org/doi/",
+    "testCaseUrl": "https://arc.aiaa.org/doi/10.2514/1.C036763"
+  },
+  {
+    "providerId": "ajr",
+    "regex": "^http(s)?://www.ajronline.org/doi/.*",
+    "testCaseUrl": "https://www.ajronline.org/doi/full/10.2214/AJR.20.22772",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/epdf/"
+    }
+  },
+  {
+    "providerId": "ams",
+    "regex": "^http(s)?://(www.)?journals.ametsoc.org",
+    "testCaseUrl": "https://journals.ametsoc.org/view/journals/bams/103/8/BAMS-D-21-0012.1.xml?rskey=x3GZva&result=1"
+  },
+  {
+    "providerId": "ans",
+    "regex": "^http(s)?://ans.tandfonline.com/doi/full/",
+    "testCaseUrl": "https://ans.tandfonline.com/doi/full/10.1080/00295639.2022.2150029",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "aom",
+    "regex": "^http(s)?://journals.aom.org/doi/",
+    "testCaseUrl": "https://journals.aom.org/doi/10.5465/amc.2021.0005",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "apha",
+    "regex": "^http(s)?://ajph.aphapublications.org/doi/full/",
+    "testCaseUrl": "https://ajph.aphapublications.org/doi/full/10.2105/AJPH.2023.307281",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "asihcopeiaonline",
+    "regex": "^http(s)?://meridian.allenpress.com/copeia/article/",
+    "testCaseUrl": "https://meridian.allenpress.com/copeia/article/110/1/161/479012/H-Geoffrey-Moser-Larval-Fishes-Taxonomy?searchresult=1",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "asme",
+    "regex": "^http(s)?://asmedigitalcollection.asme.org/\\w+/article/",
+    "testCaseUrl": "https://asmedigitalcollection.asme.org/biomechanical/article/127/1/32/445114/Study-of-SARS-Transmission-Via-Liquid-Droplets-in",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "asm-journals",
+    "regex": "^http(s)?://journals.asm.org/doi/",
+    "testCaseUrl": "https://journals.asm.org/doi/10.1128/cmr.00028-20",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "brill",
+    "regex": "^http(s)?://[-.\\w]*?brill[-.]com[-.\\w]*/(content|abstract|view)/journals/",
+    "testCaseUrl": "https://brill.com/view/journals/rpal/4/4/article-p1_1.xml"
+  },
+  {
+    "providerId": "caltech",
+    "regex": "^http(s)?://(\\w+[-.])?library[-.]caltech[-.]edu[-.\\w]*/",
+    "testCaseUrl": "https://authors.library.caltech.edu/62363/"
+  },
+  {
+    "providerId": "cdnsciencepub",
+    "regex": "^http(s)?://cdnsciencepub.com/doi/(abs|full)/",
+    "testCaseUrl": "https://cdnsciencepub.com/doi/full/10.1139/as-2022-0051",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "acrl",
+    "regex": "^http(s)?://(\\w+[-.])?crln[-.]acrl[-.]org/index.php/\\w+/article/view/\\d+",
+    "testCaseUrl": "https://crln.acrl.org/index.php/crlnews/article/view/25930"
+  },
+  {
+    "providerId": "csj",
+    "regex": "^http(s)?://(\\w+[-.])?journal[-.]csj[-.]jp/doi/(?!pdf)(abs|full|suppl|citedby|ref|fpi)?",
+    "testCaseUrl": "https://www.journal.csj.jp/doi/abs/10.1246/cl.230028",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".show-pdf", "attribute": "href" },
+    "pdfUrlReplace": {
+      "find": "/doi/epdf/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "degruyter",
+    "regex": "^http(s)?://(\\w+[-.])?degruyter[-.]com/document/(doi|abstract|view)/",
+    "testCaseUrl": "https://www.degruyter.com/document/doi/10.1515/sirius-2020-3030/html",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".downloadPdf", "attribute": "href" }
+  },
+  {
+    "providerId": "diabetesjournals",
+    "regex": "^http(s)?://(\\w+[-.])?diabetesjournals[-.]org/diabetes/article/",
+    "testCaseUrl": "https://www.degruyter.com/document/doi/10.1515/sirius-2020-3030/html",
+    "pdfUrlSource": {
+      "sourceType": "document",
+      "selector": ".article-pdfLink",
+      "attribute": "href"
+    }
+  },
+  {
+    "providerId": "tandf",
+    "regex": "^http(s)?://(\\w+[-.])?tandfonline[-.]com[-.\\w]*/(doi|eprint/\\w+)/(full|abs|figure|ref|citedby|pdf)/",
+    "testCaseUrl": "https://www.tandfonline.com/doi/full/10.1080/22221751.2023.2220575",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".show-pdf", "attribute": "href" },
+    "pdfUrlReplace": {
+      "find": "/doi/epdf/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "dove",
+    "regex": "^https?://(\\w+[-.])?dovepress[-.]com/",
+    "testCaseUrl": "https://www.dovepress.com/doxorubicin-loaded-platelet-decoys-for-enhanced-chemoimmunotherapy-aga-peer-reviewed-fulltext-article-IJN"
+  },
+  {
+    "providerId": "ehpoa",
+    "regex": "^http(s)?://ehp[-.]niehs[-.]nih[-.]gov/doi/",
+    "testCaseUrl": "https://ehp.niehs.nih.gov/doi/full/10.1289/EHP11662",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "emerald",
+    "regex": "^http(s)?://(\\w+[-.])?emerald[-.]com/insight/|^http(s)?://(\\w+[-.])?emeraldinsight[-.]com/insight/",
+    "testCaseUrl": "https://www.emeraldinsight.com/insight/content/doi/10.1108/NBRI-07-2022-0076/full/html",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/full/html",
+      "replace": "/full/pdf"
+    },
+    "shibbolethUrl": "https://www.emeraldinsight.com/action/ssostart?redirectUri=http://first.emeraldinsight.com//external_login.htm?athensReturn={{target}}&idp={{idp}}"
+  },
+  {
+    "providerId": "f1000",
+    "regex": "^http(s)?://f1000(research)?[-.]com/(prime|articles)/",
+    "testCaseUrl": "https://f1000research.com/articles/12-836"
+  },
+  {
+    "providerId": "futuremedicine",
+    "regex": "^http(s)?://(\\w+[-.])?futuremedicine[-.]com/doi/",
+    "testCaseUrl": "https://www.futuremedicine.com/doi/10.2217/cns-2017-0022",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "futurescience",
+    "regex": "^http(s)?://(\\w+[-.])?future-science[-.]com/doi/",
+    "testCaseUrl": "https://www.future-science.com/doi/10.2144/fsoa-2023-0051",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "ice",
+    "regex": "^http(s)?://(\\w+[-.])?icevirtuallibrary[-.]com/doi/",
+    "testCaseUrl": "https://www.icevirtuallibrary.com/doi/full/10.1680/jbibn.22.00061",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".downloadBtn", "attribute": "href" },
+    "pdfUrlReplace": {
+      "find": "/doi/reader/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "ijmr",
+    "regex": "^http(s)?://(\\w+[-.])?lww[-.]com/ijmr/",
+    "testCaseUrl": "https://journals.lww.com/ijmr/Fulltext/2023/06000/Trends_of_humoral_immune_responses_to_heterologous.4.aspx"
+  },
+  {
+    "providerId": "informs",
+    "regex": "^http(s)?://(\\w+[-.])?informs[-.]org/doi/",
+    "testCaseUrl": "https://pubsonline.informs.org/doi/10.1287/trsc.2022.0005",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "ingentaconnect",
+    "regex": "^http(s)?://(\\w+[-.])?ingentaconnect[-.]com/contentone/",
+    "testCaseUrl": "https://www.ingentaconnect.com/contentone/wfbi/sim/2023/00000105/00000001/art00002"
+  },
+  {
+    "providerId": "iospress",
+    "regex": "^http(s)?://content.iospress[-.]com/articles/",
+    "testCaseUrl": "https://content.iospress.com/articles/data-science/ds220057"
+  },
+  {
+    "providerId": "iwa",
+    "regex": "^http(s)?://(\\w+[-.])?iwaponline[-.]com/w+/(article|article-abstract)/",
+    "testCaseUrl": "https://iwaponline.com/jh/article/25/4/1153/95704/Statistical-blending-of-global-gridded"
+  },
+  {
+    "providerId": "jacc",
+    "regex": "^http(s)?://(\\w+[-.])?jacc[-.]org/doi/",
+    "testCaseUrl": "https://www.jacc.org/doi/10.1016/j.jaccao.2022.09.009",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "japmaonline",
+    "regex": "^http(s)?://(\\w+[-.])?japmaonline[-.]org/view/",
+    "testCaseUrl": "https://japmaonline.org/view/journals/apms/aop/21-165/21-165.xml"
+  },
+  {
+    "providerId": "jco",
+    "regex": "^http(s)?://(\\w+[-.])?ascopubs[-.]org/doi/",
+    "testCaseUrl": "https://ascopubs.org/doi/full/10.1200/JCO.22.01895",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/full/",
+      "replace": "/pdfdirect/"
+    }
+  },
+  {
+    "providerId": "jime",
+    "regex": "^http(s)?://jime[-.]open[-.]ac[-.]uk/articles/",
+    "testCaseUrl": "https://jime.open.ac.uk/articles/10.5334/jime.793"
+  },
+  {
+    "providerId": "jmcp",
+    "regex": "^http(s)?://(\\w+[-.])?jmcp[-.]org/doi(/abs|/full|/ref|/pdf)/",
+    "testCaseUrl": "https://www.jmcp.org/doi/abs/10.18553/jmcp.2023.29.8.884",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "jmir",
+    "regex": "^http(s)?://(\\w+[-.])?jmir[-.]org/",
+    "testCaseUrl": "https://humanfactors.jmir.org/2023/1/e46893",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "append": "/PDF"
+    }
+  },
+  {
+    "providerId": "jns",
+    "regex": "^http(s)?://(\\w+[-.])?thejns[-.]org/view/",
+    "testCaseUrl": "https://thejns.org/view/journals/j-neurosurg/aop/article-10.3171-2023.7.JNS231621/article-10.3171-2023.7.JNS231621.xml"
+  },
+  {
+    "providerId": "jol",
+    "regex": "^http(s)?://(\\w+[-.])?(banglajol|lamjol|mongoliajol|nepjol|sljol|ajol|philjol|vjol)[-.]info",
+    "testCaseUrl": "https://banglajol.info/index.php/AKMMCJ/article/view/64714"
+  },
+  {
+    "providerId": "worldscientific",
+    "regex": "^http(s)?://[-.\\w]*?worldscientific[-.]com[-.\\w]*/doi/",
+    "testCaseUrl": "https://www.worldscientific.com/doi/10.1142/9789811228476_0001",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "zenodo",
+    "regex": "^http(s)?://zenodo.org/record/\\d+",
+    "testCaseUrl": "https://zenodo.org/record/5201623#0"
+  },
+  {
+    "providerId": "utpjournals",
+    "regex": "^http(s)?://([\\w-]+.)?utpjournals.press\/doi/",
+    "testCaseUrl": "https://jmvfh.utpjournals.press/doi/full/10.3138/jmvfh-CO19-0010",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".show-pdf", "attribute": "href" }
+  },
+  {
+    "providerId": "uchicago",
+    "regex": "^http(s)?://[-.\\w]*?journals[-.]uchicago[-.]edu/doi",
+    "testCaseUrl": "https://www.journals.uchicago.edu/doi/10.1086/715158",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "ttp",
+    "regex": "^http(s)?://www.scientific.net/\\w+.\\d+.\\d+",
+    "testCaseUrl": "https://www.scientific.net/AMM.913.101"
+  },
+  {
+    "providerId": "thij",
+    "regex": "^http(s)?://meridian.allenpress.com/thij/article/",
+    "testCaseUrl": "https://meridian.allenpress.com/thij/article/50/2/e227884/491625/Cardiac-Surgery-for-Treatment-of-COVID-19?searchresult=1"
+  },
+  {
+    "providerId": "termedia",
+    "regex": "^http(s)?://www.termedia.pl/\\w+",
+    "testCaseUrl": "https://www.termedia.pl/SARS-CoV-2-vaccination-in-inflammatory-bowel-disease-IBD-patients-does-treatment-for-IBD-negatively-affect-SARS-CoV-2-antibodies-A-single-centre-prospective-study,41,51179,0,0.html"
+  },
+  {
+    "providerId": "tandf",
+    "regex": "^http(s)?://[-.\\w]*tandfonline[-.]com[-.\\w]*/(doi|eprint/\\w+)/(full|abs|figure|ref|citedby|pdf)",
+    "testCaseUrl": "https://www.tandfonline.com/doi/full/10.1080/08827500601013009"
+  },
+  {
+    "providerId": "karger",
+    "regex": "^http(s)?://(\\w+[-.])?karger[-.]com/\\w*/(article|abstract|fullText|pdf)",
+    "testCaseUrl": "https://karger.com/aha/article/doi/10.1159/000531628/855593/Acute-Myeloid-Leukemia-Treatment-in-the-Elderly-A"
+  },
+  {
+    "providerId": "koreascience",
+    "regex": "^http(s)?://(\\w+[-.])?koreascience[-.]or[-.]kr/article/",
+    "testCaseUrl": "http://koreascience.or.kr/article/JAKO201629453669628.page",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": ".page",
+      "replace": ".pdf"
+    }
+  },
+  {
+    "providerId": "scielo",
+    "regex": "^http(s)?://(www.)?scielo.(br|conicyt.cl)/",
+    "testCaseUrl": "https://www.scielo.br/j/bjb/a/8Bjdp3gfFrLSN4536Z6Bw3g/?lang=en"
+  },
+  {
+    "providerId": "aip",
+    "regex": "^http(s)?://([\\w-]+.)?pubs.aip.org/aip/acp/article/",
+    "testCaseUrl": "https://pubs.aip.org/aip/acp/article/2582/1/020036/2906755/Anxiety-in-using-learning-aid-software-in-learning?searchresult=1",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".article-pdfLink", "attribute": "href" }
+  },
+  {
+    "providerId": "siam",
+    "regex": "^http(s)?://(\\w+[-.])?epubs.siam.org[-.\\w]*/doi/(abs/|ref/)?",
+    "testCaseUrl": "https://epubs.siam.org/doi/full/10.1137/22M1517834",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "spie",
+    "regex": "^http(s)?://([\\w-]+.)?spiedigitallibrary.org[.-A-z0-9]*/(((article|proceeding).aspx?articleid|journals/([-\\w]+/){5}10.)|(conference-proceedings-of-spie/\\d+))",
+    "testCaseUrl": "https://www.spiedigitallibrary.org/journals/journal-of-biomedical-optics/volume-27/issue-2/025002/Saliva-based-detection-of-COVID-19-infection-in-a-real/10.1117/1.JBO.27.2.025002.full"
+  },
+  {
+    "providerId": "lancet",
+    "regex": "^http(s)?://([\\w-]+.)?thelancet.com/journals/",
+    "testCaseUrl": "https://www.thelancet.com/journals/lansea/article/PIIS2772-3682(23)00134-8/fulltext"
+  },
+  {
+    "providerId": "liebert",
+    "regex": "^http(s)?://([\\w-]+.)?liebertpub.com/doi/",
+    "testCaseUrl": "https://www.liebertpub.com/doi/10.1089/act.2020.29312.mha",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "liverpooluniversitypress",
+    "regex": "^http(s)?://([\\w-]+.)?liverpooluniversitypress.co.uk/doi/",
+    "testCaseUrl": "https://liverpooluniversitypress.co.uk/doi/10.3828/bjcs.2023.4",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/",
+      "append": "?download=true"
+    }
+  },
+  {
+    "providerId": "nber",
+    "regex": "^http(s)?://([\\w-]+.)?nber.org/",
+    "testCaseUrl": "https://www.nber.org/papers/w31525"
+  },
+  {
+    "providerId": "njem",
+    "regex": "^http(s)?://([\\w-]+.)?nejm.org/doi/",
+    "testCaseUrl": "https://www.nejm.org/doi/full/10.1056/NEJMoa2300161?query=featured_home",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/full/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "onepetro",
+    "regex": "^http(s)?://([\\w-]+.)?onepetro.org/",
+    "testCaseUrl": "https://onepetro.org/JSPD/article/39/03/133/521788/Weight-Assessment-of-Marine-Diesel-Main-and"
+  },
+  {
+    "providerId": "osa",
+    "regex": "^http(s)?://([\\w-]+.)?optica.org/",
+    "testCaseUrl": "https://opg.optica.org/boe/fulltext.cfm?uri=boe-14-10-5113&id=537286"
+  },
+  {
+    "providerId": "osf",
+    "regex": "^http(s)?://([\\w-]+.)?osf.io/",
+    "testCaseUrl": "https://osf.io/jysg5/#0"
+  },
+  {
+    "providerId": "portlandpress",
+    "regex": "^http(s)?://([\\w-]+.)?portlandpress.com/",
+    "testCaseUrl": "https://portlandpress.com/emergtoplifesci/article/7/1/31/232492/Mapping-trasmembrane-distribution-of-sphingomyelin"
+  },
+  {
+    "providerId": "princeton-annals",
+    "regex": "^http(s)?://annals.math.princeton.edu/",
+    "testCaseUrl": "https://annals.math.princeton.edu/2023/197-1/p04",
+    "downstreamSearch": true
+  },
+  {
+    "providerId": "psychiatrist",
+    "regex": "^http(s)?://([\\w-]+.)?psychiatrist.com/",
+    "testCaseUrl": "https://www.psychiatrist.com/jcp/neurologic/dementia/dispensary-obtained-tetrahydrocannabinol-treatment-neuropsychiatric-symptoms-dementia/",
+    "pdfUrlSource": { "sourceType": "document", "selector": ".article-dwndpdf", "attribute": "href" }
+  },
+  {
+    "providerId": "psychiatry-online",
+    "regex": "^http(s)?://([\\w-]+.)?psychiatryonline.org/doi/",
+    "testCaseUrl": "https://ajp.psychiatryonline.org/doi/10.1176/appi.ajp.20230012",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "rsna",
+    "regex": "^http(s)?://pubs.rsna.org/doi/",
+    "testCaseUrl": "https://pubs.rsna.org/doi/10.1148/radiol.223077",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  },
+  {
+    "providerId": "rsp",
+    "regex": "^http(s)?://royalsocietypublishing.org/doi/",
+    "testCaseUrl": "https://royalsocietypublishing.org/doi/10.1098/rsif.2023.0281",
+    "pdfUrlSource": { "sourceType": "url" },
+    "pdfUrlReplace": {
+      "find": "/doi/",
+      "replace": "/doi/pdf/"
+    }
+  }
+]

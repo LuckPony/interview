@@ -1,0 +1,607 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/App.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb655ba4"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$(), _s2 = $RefreshSig$();
+import { Routes, Route, Navigate } from "/node_modules/.vite/deps/react-router-dom.js?v=bcef88c6";
+import { useAuth } from "/src/auth/AuthContext.tsx";
+import { AppShell } from "/src/components/AppShell.tsx";
+import { Login } from "/src/pages/Login.tsx";
+import { Dashboard } from "/src/pages/Dashboard.tsx";
+import { Drill } from "/src/pages/Drill.tsx";
+import { Interview } from "/src/pages/Interview.tsx";
+import { InterviewHistory } from "/src/pages/InterviewHistory.tsx";
+import { InterviewDetail } from "/src/pages/InterviewDetail.tsx";
+import { Profile } from "/src/pages/Profile.tsx";
+import { Notes } from "/src/pages/Notes.tsx";
+import { ReviewPage } from "/src/pages/Review.tsx";
+import { HistoryPage } from "/src/pages/History.tsx";
+import { PlansPage } from "/src/pages/PlansPage.tsx";
+import { IntakeChat } from "/src/pages/IntakeChat.tsx";
+import { Settings } from "/src/pages/Settings.tsx";
+import { CapturePage } from "/src/pages/CapturePage.tsx";
+import { ResumeManagement } from "/src/pages/ResumeManagement.tsx";
+import { AccountPage } from "/src/pages/AccountPage.tsx";
+import { KnowledgeBasePage } from "/src/pages/KnowledgeBasePage.tsx";
+import { KnowledgeToolsPage } from "/src/pages/KnowledgeToolsPage.tsx";
+function RequireAuth({ children }) {
+  _s();
+  const { authReady, userId } = useAuth();
+  if (!authReady) return null;
+  return userId ? /* @__PURE__ */ jsxDEV(Fragment, { children }, void 0, false, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+    lineNumber: 46,
+    columnNumber: 19
+  }, this) : /* @__PURE__ */ jsxDEV(Navigate, { to: "/login", replace: true }, void 0, false, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+    lineNumber: 46,
+    columnNumber: 37
+  }, this);
+}
+_s(RequireAuth, "wg5UPeFsPssgW4BTaXs/ycJJJQQ=", false, function() {
+  return [useAuth];
+});
+_c = RequireAuth;
+export function App() {
+  _s2();
+  const { authReady, userId } = useAuth();
+  if (!authReady) return null;
+  return /* @__PURE__ */ jsxDEV(Routes, { children: [
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/login",
+        element: userId ? /* @__PURE__ */ jsxDEV(Navigate, { to: "/", replace: true }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 58,
+          columnNumber: 27
+        }, this) : /* @__PURE__ */ jsxDEV(Login, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 58,
+          columnNumber: 57
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 56,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Dashboard, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 65,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 64,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 63,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 60,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/intake",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(IntakeChat, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 75,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 74,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 73,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 70,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/drill/*",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Drill, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 86,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 85,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 84,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 81,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/resumes",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(ResumeManagement, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 96,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 95,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 94,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 91,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/rehearsal",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Interview, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 106,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 105,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 104,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 101,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/rehearsal/history",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(InterviewHistory, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 116,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 115,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 114,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 111,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/rehearsal/history/:id",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(InterviewDetail, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 126,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 125,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 124,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 121,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/profile",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Profile, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 136,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 135,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 134,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 131,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/notes",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Notes, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 146,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 145,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 144,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 141,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/notes/review/:runId",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(ReviewPage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 156,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 155,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 154,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 151,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/plan",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(PlansPage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 166,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 165,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 164,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 161,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/history",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(HistoryPage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 176,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 175,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 174,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 171,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/knowledge-base",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(KnowledgeBasePage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 186,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 185,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 184,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 181,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/knowledge-base/tools",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(KnowledgeToolsPage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 196,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 195,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 194,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 191,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/account",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(AccountPage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 206,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 205,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 204,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 201,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(Route, { path: "/knowledge-base/:id", element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(KnowledgeBasePage, {}, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 211,
+      columnNumber: 73
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 211,
+      columnNumber: 63
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 211,
+      columnNumber: 50
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 211,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV(Route, { path: "/knowledge-base/import", element: /* @__PURE__ */ jsxDEV(Navigate, { to: "/knowledge-base", replace: true }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 212,
+      columnNumber: 53
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 212,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/settings",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(Settings, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 218,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 217,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 216,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 213,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(
+      Route,
+      {
+        path: "/capture",
+        element: /* @__PURE__ */ jsxDEV(RequireAuth, { children: /* @__PURE__ */ jsxDEV(AppShell, { children: /* @__PURE__ */ jsxDEV(CapturePage, {}, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 228,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 227,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+          lineNumber: 226,
+          columnNumber: 9
+        }, this)
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+        lineNumber: 223,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV(Route, { path: "*", element: /* @__PURE__ */ jsxDEV(Navigate, { to: "/", replace: true }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 232,
+      columnNumber: 32
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+      lineNumber: 232,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx",
+    lineNumber: 55,
+    columnNumber: 5
+  }, this);
+}
+_s2(App, "wg5UPeFsPssgW4BTaXs/ycJJJQQ=", false, function() {
+  return [useAuth];
+});
+_c2 = App;
+var _c, _c2;
+$RefreshReg$(_c, "RequireAuth");
+$RefreshReg$(_c2, "App");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/App.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QUFNLE1BQUssS0FBSSxTQUFTLHVCQUFDLFlBQVMsSUFBRyxLQUFJLFNBQU8sUUFBeEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUF3QixLQUFqRDtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBQXFEO0FBQUEsT0FqTHZEO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0FrTEE7QUFFSjtBQUFDRSxJQTFMZUQsS0FBRztBQUFBLFVBQ2F6QixPQUFPO0FBQUE7QUFBQSxNQUR2QnlCO0FBQUcsSUFBQUUsSUFBQUM7QUFBQSxhQUFBRCxJQUFBO0FBQUEsYUFBQUMsS0FBQSIsIm5hbWVzIjpbIlJvdXRlcyIsIlJvdXRlIiwiTmF2aWdhdGUiLCJ1c2VBdXRoIiwiQXBwU2hlbGwiLCJMb2dpbiIsIkRhc2hib2FyZCIsIkRyaWxsIiwiSW50ZXJ2aWV3IiwiSW50ZXJ2aWV3SGlzdG9yeSIsIkludGVydmlld0RldGFpbCIsIlByb2ZpbGUiLCJOb3RlcyIsIlJldmlld1BhZ2UiLCJIaXN0b3J5UGFnZSIsIlBsYW5zUGFnZSIsIkludGFrZUNoYXQiLCJTZXR0aW5ncyIsIkNhcHR1cmVQYWdlIiwiUmVzdW1lTWFuYWdlbWVudCIsIkFjY291bnRQYWdlIiwiS25vd2xlZGdlQmFzZVBhZ2UiLCJLbm93bGVkZ2VUb29sc1BhZ2UiLCJSZXF1aXJlQXV0aCIsImNoaWxkcmVuIiwiX3MiLCJhdXRoUmVhZHkiLCJ1c2VySWQiLCJBcHAiLCJfczIiLCJfYyIsIl9jMiJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJBcHAudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgUmVhY3ROb2RlIH0gZnJvbSAncmVhY3QnO1xyXG5pbXBvcnQgeyBSb3V0ZXMsIFJvdXRlLCBOYXZpZ2F0ZSB9IGZyb20gJ3JlYWN0LXJvdXRlci1kb20nO1xyXG5pbXBvcnQgeyB1c2VBdXRoIH0gZnJvbSAnLi9hdXRoL0F1dGhDb250ZXh0JztcclxuaW1wb3J0IHsgQXBwU2hlbGwgfSBmcm9tICcuL2NvbXBvbmVudHMvQXBwU2hlbGwnO1xyXG5pbXBvcnQgeyBMb2dpbiB9IGZyb20gJy4vcGFnZXMvTG9naW4nO1xyXG5pbXBvcnQgeyBEYXNoYm9hcmQgfSBmcm9tICcuL3BhZ2VzL0Rhc2hib2FyZCc7XHJcbmltcG9ydCB7IERyaWxsIH0gZnJvbSAnLi9wYWdlcy9EcmlsbCc7XHJcbmltcG9ydCB7IEludGVydmlldyB9IGZyb20gJy4vcGFnZXMvSW50ZXJ2aWV3JztcclxuaW1wb3J0IHsgSW50ZXJ2aWV3SGlzdG9yeSB9IGZyb20gJy4vcGFnZXMvSW50ZXJ2aWV3SGlzdG9yeSc7XHJcbmltcG9ydCB7IEludGVydmlld0RldGFpbCB9IGZyb20gJy4vcGFnZXMvSW50ZXJ2aWV3RGV0YWlsJztcclxuaW1wb3J0IHsgUHJvZmlsZSB9IGZyb20gJy4vcGFnZXMvUHJvZmlsZSc7XHJcbmltcG9ydCB7IE5vdGVzIH0gZnJvbSAnLi9wYWdlcy9Ob3Rlcyc7XHJcbmltcG9ydCB7IFJldmlld1BhZ2UgfSBmcm9tICcuL3BhZ2VzL1Jldmlldyc7XHJcbmltcG9ydCB7IEhpc3RvcnlQYWdlIH0gZnJvbSAnLi9wYWdlcy9IaXN0b3J5JztcclxuaW1wb3J0IHsgUGxhbnNQYWdlIH0gZnJvbSAnLi9wYWdlcy9QbGFuc1BhZ2UnO1xyXG5pbXBvcnQgeyBJbnRha2VDaGF0IH0gZnJvbSAnLi9wYWdlcy9JbnRha2VDaGF0JztcclxuaW1wb3J0IHsgU2V0dGluZ3MgfSBmcm9tICcuL3BhZ2VzL1NldHRpbmdzJztcbmltcG9ydCB7IENhcHR1cmVQYWdlIH0gZnJvbSAnLi9wYWdlcy9DYXB0dXJlUGFnZSc7XG5pbXBvcnQgeyBSZXN1bWVNYW5hZ2VtZW50IH0gZnJvbSAnLi9wYWdlcy9SZXN1bWVNYW5hZ2VtZW50JztcbmltcG9ydCB7IEFjY291bnRQYWdlIH0gZnJvbSAnLi9wYWdlcy9BY2NvdW50UGFnZSc7XG5pbXBvcnQgeyBLbm93bGVkZ2VCYXNlUGFnZSB9IGZyb20gJy4vcGFnZXMvS25vd2xlZGdlQmFzZVBhZ2UnO1xuaW1wb3J0IHsgS25vd2xlZGdlVG9vbHNQYWdlIH0gZnJvbSAnLi9wYWdlcy9Lbm93bGVkZ2VUb29sc1BhZ2UnO1xuXHJcbmZ1bmN0aW9uIFJlcXVpcmVBdXRoKHsgY2hpbGRyZW4gfTogeyBjaGlsZHJlbjogUmVhY3ROb2RlIH0pIHtcbiAgY29uc3QgeyBhdXRoUmVhZHksIHVzZXJJZCB9ID0gdXNlQXV0aCgpO1xuICBpZiAoIWF1dGhSZWFkeSkgcmV0dXJuIG51bGw7XG4gIHJldHVybiB1c2VySWQgPyA8PntjaGlsZHJlbn08Lz4gOiA8TmF2aWdhdGUgdG89XCIvbG9naW5cIiByZXBsYWNlIC8+O1xufVxuXG5leHBvcnQgZnVuY3Rpb24gQXBwKCkge1xuICBjb25zdCB7IGF1dGhSZWFkeSwgdXNlcklkIH0gPSB1c2VBdXRoKCk7XG4gIC8vIOW3suS/neWtmOeahCB0b2tlbiDlv4XpobvlhYjpgJrov4fkupHnq68v5pys5Zyw5ZCO56uv6aqM6K+B77yb5qCh6aqM5pyf6Ze05LiN5oyC6L29IEFwcFNoZWxs77yMXG4gIC8vIOmBv+WFjeS+p+agj+OAgeS4u+mhteetiee7hOS7tuaKouWFiOivt+axgueUqOaIt+iuvue9ruOAglxuICBpZiAoIWF1dGhSZWFkeSkgcmV0dXJuIG51bGw7XG4gIHJldHVybiAoXG4gICAgPFJvdXRlcz5cclxuICAgICAgPFJvdXRlXHJcbiAgICAgICAgcGF0aD1cIi9sb2dpblwiXHJcbiAgICAgICAgZWxlbWVudD17dXNlcklkID8gPE5hdmlnYXRlIHRvPVwiL1wiIHJlcGxhY2UgLz4gOiA8TG9naW4gLz59XHJcbiAgICAgIC8+XHJcbiAgICAgIDxSb3V0ZVxyXG4gICAgICAgIHBhdGg9XCIvXCJcclxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxEYXNoYm9hcmQgLz5cclxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cclxuICAgICAgICAgIDwvUmVxdWlyZUF1dGg+XHJcbiAgICAgICAgfVxyXG4gICAgICAvPlxyXG4gICAgICA8Um91dGVcclxuICAgICAgICBwYXRoPVwiL2ludGFrZVwiXHJcbiAgICAgICAgZWxlbWVudD17XHJcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XHJcbiAgICAgICAgICAgIDxBcHBTaGVsbD5cclxuICAgICAgICAgICAgICA8SW50YWtlQ2hhdCAvPlxyXG4gICAgICAgICAgICA8L0FwcFNoZWxsPlxyXG4gICAgICAgICAgPC9SZXF1aXJlQXV0aD5cclxuICAgICAgICB9XHJcbiAgICAgIC8+XHJcbiAgICAgIHsvKiAvZHJpbGwvKiDorqkgRHJpbGwg5Zyo5a2Q6Lev55Sx6Ze05L+d5oyB5oyC6L2977yI6KeG5Zu+55Sx6Lev5b6E5rS+55Sf77yM5pSv5oyB5YmN6L+bL+WQjumAgO+8iSAqL31cclxuICAgICAgPFJvdXRlXHJcbiAgICAgICAgcGF0aD1cIi9kcmlsbC8qXCJcclxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxEcmlsbCAvPlxyXG4gICAgICAgICAgICA8L0FwcFNoZWxsPlxyXG4gICAgICAgICAgPC9SZXF1aXJlQXV0aD5cclxuICAgICAgICB9XHJcbiAgICAgIC8+XHJcbiAgICAgIDxSb3V0ZVxuICAgICAgICBwYXRoPVwiL3Jlc3VtZXNcIlxuICAgICAgICBlbGVtZW50PXtcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XG4gICAgICAgICAgICA8QXBwU2hlbGw+XG4gICAgICAgICAgICAgIDxSZXN1bWVNYW5hZ2VtZW50IC8+XG4gICAgICAgICAgICA8L0FwcFNoZWxsPlxuICAgICAgICAgIDwvUmVxdWlyZUF1dGg+XG4gICAgICAgIH1cbiAgICAgIC8+XG4gICAgICA8Um91dGVcbiAgICAgICAgcGF0aD1cIi9yZWhlYXJzYWxcIlxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxJbnRlcnZpZXcgLz5cclxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cclxuICAgICAgICAgIDwvUmVxdWlyZUF1dGg+XHJcbiAgICAgICAgfVxyXG4gICAgICAvPlxyXG4gICAgICA8Um91dGVcclxuICAgICAgICBwYXRoPVwiL3JlaGVhcnNhbC9oaXN0b3J5XCJcclxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxJbnRlcnZpZXdIaXN0b3J5IC8+XHJcbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XHJcbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxyXG4gICAgICAgIH1cclxuICAgICAgLz5cclxuICAgICAgPFJvdXRlXHJcbiAgICAgICAgcGF0aD1cIi9yZWhlYXJzYWwvaGlzdG9yeS86aWRcIlxyXG4gICAgICAgIGVsZW1lbnQ9e1xyXG4gICAgICAgICAgPFJlcXVpcmVBdXRoPlxyXG4gICAgICAgICAgICA8QXBwU2hlbGw+XHJcbiAgICAgICAgICAgICAgPEludGVydmlld0RldGFpbCAvPlxyXG4gICAgICAgICAgICA8L0FwcFNoZWxsPlxyXG4gICAgICAgICAgPC9SZXF1aXJlQXV0aD5cclxuICAgICAgICB9XHJcbiAgICAgIC8+XHJcbiAgICAgIDxSb3V0ZVxyXG4gICAgICAgIHBhdGg9XCIvcHJvZmlsZVwiXHJcbiAgICAgICAgZWxlbWVudD17XHJcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XHJcbiAgICAgICAgICAgIDxBcHBTaGVsbD5cclxuICAgICAgICAgICAgICA8UHJvZmlsZSAvPlxyXG4gICAgICAgICAgICA8L0FwcFNoZWxsPlxyXG4gICAgICAgICAgPC9SZXF1aXJlQXV0aD5cclxuICAgICAgICB9XHJcbiAgICAgIC8+XHJcbiAgICAgIDxSb3V0ZVxyXG4gICAgICAgIHBhdGg9XCIvbm90ZXNcIlxyXG4gICAgICAgIGVsZW1lbnQ9e1xyXG4gICAgICAgICAgPFJlcXVpcmVBdXRoPlxyXG4gICAgICAgICAgICA8QXBwU2hlbGw+XHJcbiAgICAgICAgICAgICAgPE5vdGVzIC8+XHJcbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XHJcbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxyXG4gICAgICAgIH1cclxuICAgICAgLz5cclxuICAgICAgPFJvdXRlXHJcbiAgICAgICAgcGF0aD1cIi9ub3Rlcy9yZXZpZXcvOnJ1bklkXCJcclxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxSZXZpZXdQYWdlIC8+XHJcbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XHJcbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxyXG4gICAgICAgIH1cclxuICAgICAgLz5cclxuICAgICAgPFJvdXRlXHJcbiAgICAgICAgcGF0aD1cIi9wbGFuXCJcclxuICAgICAgICBlbGVtZW50PXtcclxuICAgICAgICAgIDxSZXF1aXJlQXV0aD5cclxuICAgICAgICAgICAgPEFwcFNoZWxsPlxyXG4gICAgICAgICAgICAgIDxQbGFuc1BhZ2UgLz5cclxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cclxuICAgICAgICAgIDwvUmVxdWlyZUF1dGg+XHJcbiAgICAgICAgfVxyXG4gICAgICAvPlxyXG4gICAgICA8Um91dGVcclxuICAgICAgICBwYXRoPVwiL2hpc3RvcnlcIlxyXG4gICAgICAgIGVsZW1lbnQ9e1xyXG4gICAgICAgICAgPFJlcXVpcmVBdXRoPlxyXG4gICAgICAgICAgICA8QXBwU2hlbGw+XHJcbiAgICAgICAgICAgICAgPEhpc3RvcnlQYWdlIC8+XHJcbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XHJcbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxyXG4gICAgICAgIH1cclxuICAgICAgLz5cclxuICAgICAgPFJvdXRlXG4gICAgICAgIHBhdGg9XCIva25vd2xlZGdlLWJhc2VcIlxuICAgICAgICBlbGVtZW50PXtcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XG4gICAgICAgICAgICA8QXBwU2hlbGw+XG4gICAgICAgICAgICAgIDxLbm93bGVkZ2VCYXNlUGFnZSAvPlxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxuICAgICAgICB9XG4gICAgICAvPlxuICAgICAgPFJvdXRlXG4gICAgICAgIHBhdGg9XCIva25vd2xlZGdlLWJhc2UvdG9vbHNcIlxuICAgICAgICBlbGVtZW50PXtcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XG4gICAgICAgICAgICA8QXBwU2hlbGw+XG4gICAgICAgICAgICAgIDxLbm93bGVkZ2VUb29sc1BhZ2UgLz5cbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XG4gICAgICAgICAgPC9SZXF1aXJlQXV0aD5cbiAgICAgICAgfVxuICAgICAgLz5cbiAgICAgIDxSb3V0ZVxuICAgICAgICBwYXRoPVwiL2FjY291bnRcIlxuICAgICAgICBlbGVtZW50PXtcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XG4gICAgICAgICAgICA8QXBwU2hlbGw+XG4gICAgICAgICAgICAgIDxBY2NvdW50UGFnZSAvPlxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPlxuICAgICAgICB9XG4gICAgICAvPlxuICAgICAgPFJvdXRlIHBhdGg9XCIva25vd2xlZGdlLWJhc2UvOmlkXCIgZWxlbWVudD17PFJlcXVpcmVBdXRoPjxBcHBTaGVsbD48S25vd2xlZGdlQmFzZVBhZ2UgLz48L0FwcFNoZWxsPjwvUmVxdWlyZUF1dGg+fSAvPlxuICAgICAgPFJvdXRlIHBhdGg9XCIva25vd2xlZGdlLWJhc2UvaW1wb3J0XCIgZWxlbWVudD17PE5hdmlnYXRlIHRvPVwiL2tub3dsZWRnZS1iYXNlXCIgcmVwbGFjZSAvPn0gLz5cbiAgICAgIDxSb3V0ZVxuICAgICAgICBwYXRoPVwiL3NldHRpbmdzXCJcbiAgICAgICAgZWxlbWVudD17XHJcbiAgICAgICAgICA8UmVxdWlyZUF1dGg+XHJcbiAgICAgICAgICAgIDxBcHBTaGVsbD5cclxuICAgICAgICAgICAgICA8U2V0dGluZ3MgLz5cclxuICAgICAgICAgICAgPC9BcHBTaGVsbD5cclxuICAgICAgICAgIDwvUmVxdWlyZUF1dGg+XHJcbiAgICAgICAgfVxyXG4gICAgICAvPlxyXG4gICAgICA8Um91dGVcclxuICAgICAgICBwYXRoPVwiL2NhcHR1cmVcIlxyXG4gICAgICAgIGVsZW1lbnQ9e1xyXG4gICAgICAgICAgPFJlcXVpcmVBdXRoPlxyXG4gICAgICAgICAgICA8QXBwU2hlbGw+XHJcbiAgICAgICAgICAgICAgPENhcHR1cmVQYWdlIC8+XHJcbiAgICAgICAgICAgIDwvQXBwU2hlbGw+XHJcbiAgICAgICAgICA8L1JlcXVpcmVBdXRoPn1cclxuICAgICAgLz5cclxuICAgICAgPFJvdXRlIHBhdGg9XCIqXCIgZWxlbWVudD17PE5hdmlnYXRlIHRvPVwiL1wiIHJlcGxhY2UgLz59IC8+XHJcbiAgICA8L1JvdXRlcz5cclxuICApO1xyXG59XHJcbiJdLCJmaWxlIjoiRDovMDEgZG9jdW1lbnRzLzAyQ29kZS9Qcm9qZWN0L1NwcmluZyBCb290IDQuMF9KYXZhIDIxX1NwcmluZyBBSSAyLjAvaW50ZXJ2aWV3LWhvbWVncm93bi9mcm9udGVuZC9zcmMvQXBwLnRzeCJ9

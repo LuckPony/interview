@@ -1,0 +1,974 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/AccountPage.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb655ba4"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=eb655ba4"; const useEffect = __vite__cjsImport3_react["useEffect"]; const useMemo = __vite__cjsImport3_react["useMemo"]; const useState = __vite__cjsImport3_react["useState"];
+import {
+  AtSign,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  Phone,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  X
+} from "/node_modules/.vite/deps/lucide-react.js?v=f44114ca";
+import { ApiError } from "/src/api/client.ts";
+import {
+  userPasswordApi,
+  userProfileApi
+} from "/src/api/user.ts";
+import { useAuth } from "/src/auth/AuthContext.tsx";
+import { PuzzleSlider } from "/src/components/PuzzleSlider.tsx";
+import { Button, Card, Loading } from "/src/components/ui.tsx";
+import "/src/pages/AccountPage.css";
+const EMPTY_FORM = {
+  username: "",
+  nickname: "",
+  gender: null,
+  phone: "",
+  birthday: null
+};
+function message(error) {
+  if (error instanceof ApiError || error instanceof Error) return error.message;
+  return "操作失败，请稍后重试";
+}
+function toForm(profile) {
+  return {
+    username: profile.username ?? "",
+    nickname: profile.nickname ?? "",
+    gender: profile.gender,
+    phone: profile.phone ?? "",
+    birthday: profile.birthday
+  };
+}
+function passwordStrength(password) {
+  if (!password) return 0;
+  let score = password.length >= 6 ? 1 : 0;
+  if (password.length >= 10) score += 1;
+  if (/[A-Za-z]/.test(password) && /\d/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+  return Math.min(score, 4);
+}
+function maskEmail(email) {
+  const at = email.indexOf("@");
+  if (at <= 1) return `***${email.slice(Math.max(0, at))}`;
+  return `${email.slice(0, 2)}***${email.slice(at)}`;
+}
+export function AccountPage() {
+  _s();
+  const { profile, refreshProfile } = useAuth();
+  const [email, setEmail] = useState(profile?.email ?? "");
+  const [form, setForm] = useState(() => profile ? toForm(profile) : EMPTY_FORM);
+  const [loading, setLoading] = useState(!profile);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [showPuzzle, setShowPuzzle] = useState(false);
+  const [requestingCode, setRequestingCode] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [emailHint, setEmailHint] = useState("");
+  const [passwordCodeSent, setPasswordCodeSent] = useState(false);
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState("");
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const current = profile ?? await userProfileApi.get();
+        if (!active) return;
+        setEmail(current.email);
+        setForm(toForm(current));
+      } catch (e) {
+        if (active) setError(message(e));
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!showPasswordDialog) return;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape" && !changingPassword) setShowPasswordDialog(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [showPasswordDialog, changingPassword]);
+  const completion = useMemo(() => {
+    const values = [form.username, form.nickname, form.gender, form.phone, form.birthday];
+    return Math.round(values.filter(Boolean).length / values.length * 100);
+  }, [form]);
+  const strength = passwordStrength(newPassword);
+  const update = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setSaved(false);
+  };
+  const save = async () => {
+    setSaving(true);
+    setSaved(false);
+    setError("");
+    try {
+      const next = await userProfileApi.update(form);
+      setEmail(next.email);
+      setForm(toForm(next));
+      await refreshProfile();
+      setSaved(true);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const startPasswordChange = () => {
+    setPasswordError("");
+    setPasswordChanged(false);
+    setPasswordCodeSent(false);
+    setShowPuzzle(true);
+  };
+  const afterPuzzlePass = async (captchaToken) => {
+    setShowPuzzle(false);
+    setRequestingCode(true);
+    setPasswordError("");
+    setEmailHint(maskEmail(email));
+    setCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordChanged(false);
+    setPasswordCodeSent(false);
+    setShowPasswordDialog(true);
+    try {
+      const result = await userPasswordApi.sendCode(captchaToken);
+      setEmailHint(result.emailHint);
+      setPasswordCodeSent(true);
+    } catch (e) {
+      setPasswordError(message(e));
+    } finally {
+      setRequestingCode(false);
+    }
+  };
+  const applyPassword = async () => {
+    const normalizedCode = code.trim();
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      setPasswordError("请输入邮件中的 6 位数字验证码");
+      return;
+    }
+    if (newPassword.length < 6 || newPassword.length > 64) {
+      setPasswordError("新密码长度需为 6-64 位");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("两次输入的新密码不一致");
+      return;
+    }
+    setChangingPassword(true);
+    setPasswordError("");
+    try {
+      await userPasswordApi.change(normalizedCode, newPassword);
+      setCredentialNotice("");
+      try {
+        await window.electronAPI?.updateLoginPassword?.(email, newPassword);
+      } catch {
+        setCredentialNotice("密码已修改，但本机记住密码未更新；下次登录请手动输入新密码。");
+      }
+      setPasswordChanged(true);
+      setCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      setPasswordError(message(e));
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+  return /* @__PURE__ */ jsxDEV("div", { className: "page account-page", children: [
+    /* @__PURE__ */ jsxDEV("header", { className: "page-head account-head", children: [
+      /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: "个人中心 · ACCOUNT" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 232,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("h1", { children: "你的个人空间" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 233,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { children: "管理公开称呼、基础资料与账号安全。资料仅用于优化你的学习与面试体验。" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 234,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 231,
+      columnNumber: 7
+    }, this),
+    error && /* @__PURE__ */ jsxDEV("div", { className: "banner", children: error }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 237,
+      columnNumber: 17
+    }, this),
+    loading ? /* @__PURE__ */ jsxDEV(Loading, { label: "读取个人信息…" }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 240,
+      columnNumber: 7
+    }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+      /* @__PURE__ */ jsxDEV(Card, { className: "account-identity", children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "account-avatar", "aria-hidden": true, children: form.username.trim().slice(0, 1) || /* @__PURE__ */ jsxDEV(UserRound, { size: 30, strokeWidth: 1.5 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 245,
+          columnNumber: 52
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 244,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "account-identity-copy", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "account-kicker", children: "当前账号" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 248,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("h2", { children: form.username.trim() || "尚未设置用户名" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 249,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: form.nickname.trim() ? `昵称：${form.nickname.trim()}` : "完善资料，让面霸用更适合你的方式陪你学习。" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 250,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "account-email", children: [
+            /* @__PURE__ */ jsxDEV(Mail, { size: 14 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 251,
+              columnNumber: 46
+            }, this),
+            " ",
+            email
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 251,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 247,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "account-completion", "aria-label": `资料完整度 ${completion}%`, children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "account-completion-ring", style: { "--completion": `${completion * 3.6}deg` }, children: /* @__PURE__ */ jsxDEV("span", { children: [
+            completion,
+            "%"
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 255,
+            columnNumber: 17
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 254,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: "资料完整度" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 257,
+              columnNumber: 20
+            }, this),
+            /* @__PURE__ */ jsxDEV("small", { children: "补充信息可完善个人档案" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 257,
+              columnNumber: 42
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 257,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 253,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 243,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "account-layout", children: [
+        /* @__PURE__ */ jsxDEV(Card, { className: "account-form-card", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "account-section-head", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: "PROFILE" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 265,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("h2", { children: "基础资料" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 266,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { children: "这些信息可随时调整，登录邮箱除外。" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 267,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 264,
+              columnNumber: 17
+            }, this),
+            saved && /* @__PURE__ */ jsxDEV("span", { className: "account-saved", children: [
+              /* @__PURE__ */ jsxDEV(Check, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 269,
+                columnNumber: 59
+              }, this),
+              " 已保存"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 269,
+              columnNumber: 27
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 263,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "account-form-grid", children: [
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(AtSign, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 274,
+                  columnNumber: 25
+                }, this),
+                " 用户名"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 274,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { value: form.username, maxLength: 50, onChange: (event) => update("username", event.target.value), placeholder: "侧栏优先显示这个名称" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 275,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("small", { children: "未设置时将显示随机生成的“霸仔 + 三位字符”。" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 276,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 273,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(UserRound, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 279,
+                  columnNumber: 25
+                }, this),
+                " 昵称"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 279,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { value: form.nickname, maxLength: 50, onChange: (event) => update("nickname", event.target.value), placeholder: "你的常用称呼（可选）" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 280,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 278,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(Phone, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 283,
+                  columnNumber: 25
+                }, this),
+                " 手机号"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 283,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { value: form.phone, maxLength: 20, inputMode: "tel", onChange: (event) => update("phone", event.target.value), placeholder: "可选" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 284,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 282,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(CalendarDays, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 287,
+                  columnNumber: 25
+                }, this),
+                " 生日"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 287,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { type: "date", value: form.birthday ?? "", onChange: (event) => update("birthday", event.target.value || null) }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 288,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 286,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(UserRound, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 291,
+                  columnNumber: 25
+                }, this),
+                " 性别"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 291,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("select", { value: form.gender ?? "", onChange: (event) => update("gender", event.target.value || null), children: [
+                /* @__PURE__ */ jsxDEV("option", { value: "", children: "暂不设置" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 293,
+                  columnNumber: 21
+                }, this),
+                /* @__PURE__ */ jsxDEV("option", { value: "M", children: "男" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 294,
+                  columnNumber: 21
+                }, this),
+                /* @__PURE__ */ jsxDEV("option", { value: "F", children: "女" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 295,
+                  columnNumber: 21
+                }, this),
+                /* @__PURE__ */ jsxDEV("option", { value: "OTHER", children: "其他" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 296,
+                  columnNumber: 21
+                }, this)
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 292,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 290,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                /* @__PURE__ */ jsxDEV(Mail, { size: 15 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                  lineNumber: 300,
+                  columnNumber: 25
+                }, this),
+                " 登录邮箱"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 300,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("input", { value: email, disabled: true }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 301,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("small", { children: "邮箱用于登录和接收安全验证码。" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 302,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 299,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 272,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "account-actions", children: /* @__PURE__ */ jsxDEV(Button, { onClick: save, disabled: saving, children: [
+            /* @__PURE__ */ jsxDEV(Save, { size: 16, strokeWidth: 1.8 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 308,
+              columnNumber: 19
+            }, this),
+            " ",
+            saving ? "保存中…" : "保存个人信息"
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 307,
+            columnNumber: 17
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 306,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 262,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("aside", { className: "account-side-column", children: [
+          /* @__PURE__ */ jsxDEV(Card, { className: "account-security-card", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "account-security-icon", children: /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 23 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 315,
+              columnNumber: 57
+            }, this) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 315,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: "SECURITY" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 316,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("h2", { children: "账号安全" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 317,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("p", { children: "修改密码前需通过登录邮箱确认本人操作。" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 318,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "account-security-status", children: [
+              /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 319,
+                columnNumber: 58
+              }, this),
+              " 登录邮箱已绑定"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 319,
+              columnNumber: 17
+            }, this),
+            passwordError && !showPasswordDialog && /* @__PURE__ */ jsxDEV("div", { className: "account-inline-error", children: passwordError }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 320,
+              columnNumber: 58
+            }, this),
+            /* @__PURE__ */ jsxDEV("button", { type: "button", className: "account-password-button", onClick: startPasswordChange, disabled: requestingCode, children: requestingCode ? /* @__PURE__ */ jsxDEV(LoaderLabel, {}, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 322,
+              columnNumber: 37
+            }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+              /* @__PURE__ */ jsxDEV(KeyRound, { size: 16 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 322,
+                columnNumber: 57
+              }, this),
+              " 修改密码"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 322,
+              columnNumber: 55
+            }, this) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 321,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 314,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV(Card, { className: "account-tip-card", children: [
+            /* @__PURE__ */ jsxDEV(Sparkles, { size: 18 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 327,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: "更贴合你的学习体验" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 328,
+                columnNumber: 22
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { children: "用户名会显示在欢迎区，昵称等资料不会公开展示。" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 328,
+                columnNumber: 48
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 328,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 326,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 313,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 261,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 242,
+      columnNumber: 7
+    }, this),
+    showPuzzle && /* @__PURE__ */ jsxDEV(PuzzleSlider, { onPass: afterPuzzlePass, onClose: () => setShowPuzzle(false) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 335,
+      columnNumber: 22
+    }, this),
+    showPasswordDialog && /* @__PURE__ */ jsxDEV("div", { className: "password-modal-overlay", role: "presentation", onMouseDown: () => !changingPassword && setShowPasswordDialog(false), children: /* @__PURE__ */ jsxDEV("section", { className: "password-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "password-modal-title", onMouseDown: (event) => event.stopPropagation(), children: [
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "password-modal-close", onClick: () => setShowPasswordDialog(false), disabled: changingPassword, "aria-label": "关闭", children: /* @__PURE__ */ jsxDEV(X, { size: 18 }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 341,
+        columnNumber: 15
+      }, this) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 340,
+        columnNumber: 13
+      }, this),
+      passwordChanged ? /* @__PURE__ */ jsxDEV("div", { className: "password-success", children: [
+        /* @__PURE__ */ jsxDEV("span", { children: /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 30 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 346,
+          columnNumber: 23
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 346,
+          columnNumber: 17
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { id: "password-modal-title", children: "密码修改成功" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 347,
+          columnNumber: 17
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { children: "新密码已经生效，下次登录请使用新密码。" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 348,
+          columnNumber: 17
+        }, this),
+        credentialNotice && /* @__PURE__ */ jsxDEV("p", { role: "status", children: credentialNotice }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 349,
+          columnNumber: 38
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { onClick: () => setShowPasswordDialog(false), children: "完成" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 350,
+          columnNumber: 17
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 345,
+        columnNumber: 11
+      }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "password-modal-head", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "password-modal-icon", children: /* @__PURE__ */ jsxDEV(LockKeyhole, { size: 23 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 355,
+            columnNumber: 57
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 355,
+            columnNumber: 19
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: "CHANGE PASSWORD" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 356,
+              columnNumber: 24
+            }, this),
+            /* @__PURE__ */ jsxDEV("h2", { id: "password-modal-title", children: "设置新密码" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 356,
+              columnNumber: 72
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 356,
+            columnNumber: 19
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 354,
+          columnNumber: 17
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: `password-mail-notice${!requestingCode && !passwordCodeSent ? " is-error" : ""}`, children: [
+          requestingCode ? /* @__PURE__ */ jsxDEV("span", { className: "spinner", "aria-hidden": true }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 359,
+            columnNumber: 37
+          }, this) : /* @__PURE__ */ jsxDEV(Mail, { size: 17 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 359,
+            columnNumber: 80
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: requestingCode ? "正在发送验证码" : passwordCodeSent ? "验证码已经发送" : "验证码未发送" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 361,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("p", { children: requestingCode ? "正在确认账号并发送安全邮件…" : passwordCodeSent ? `请查看邮箱 ${emailHint}，验证码 15 分钟内有效。` : "请关闭窗口后重新完成图像验证。" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 362,
+              columnNumber: 21
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 360,
+            columnNumber: 19
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 358,
+          columnNumber: 17
+        }, this),
+        passwordError && /* @__PURE__ */ jsxDEV("div", { className: "account-inline-error", children: passwordError }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 370,
+          columnNumber: 35
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "password-form", children: [
+          /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              /* @__PURE__ */ jsxDEV(Mail, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 374,
+                columnNumber: 27
+              }, this),
+              " 邮箱验证码"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 374,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: code, onChange: (event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6)), inputMode: "numeric", autoComplete: "one-time-code", placeholder: "输入 6 位验证码", autoFocus: true, disabled: requestingCode }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 375,
+              columnNumber: 21
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 373,
+            columnNumber: 19
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              /* @__PURE__ */ jsxDEV(LockKeyhole, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 378,
+                columnNumber: 27
+              }, this),
+              " 新密码"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 378,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "password-input-wrap", children: [
+              /* @__PURE__ */ jsxDEV("input", { type: showPassword ? "text" : "password", value: newPassword, onChange: (event) => setNewPassword(event.target.value), autoComplete: "new-password", placeholder: "6-64 位，建议包含字母和数字" }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 380,
+                columnNumber: 23
+              }, this),
+              /* @__PURE__ */ jsxDEV("button", { type: "button", onClick: () => setShowPassword((current) => !current), "aria-label": showPassword ? "隐藏密码" : "显示密码", children: showPassword ? /* @__PURE__ */ jsxDEV(EyeOff, { size: 17 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 382,
+                columnNumber: 41
+              }, this) : /* @__PURE__ */ jsxDEV(Eye, { size: 17 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 382,
+                columnNumber: 64
+              }, this) }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 381,
+                columnNumber: 23
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 379,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "password-strength", "aria-label": `密码强度 ${strength}/4`, children: [1, 2, 3, 4].map((level) => /* @__PURE__ */ jsxDEV("i", { className: strength >= level ? "active" : "" }, level, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 386,
+              columnNumber: 52
+            }, this)) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 385,
+              columnNumber: 21
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 377,
+            columnNumber: 19
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "account-field", children: [
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+                lineNumber: 390,
+                columnNumber: 27
+              }, this),
+              " 确认新密码"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 390,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { type: showPassword ? "text" : "password", value: confirmPassword, onChange: (event) => setConfirmPassword(event.target.value), autoComplete: "new-password", placeholder: "再次输入新密码", onKeyDown: (event) => {
+              if (event.key === "Enter") void applyPassword();
+            } }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+              lineNumber: 391,
+              columnNumber: 21
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 389,
+            columnNumber: 19
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 372,
+          columnNumber: 17
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "password-modal-actions", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "password-resend", onClick: () => {
+            setShowPasswordDialog(false);
+            setShowPuzzle(true);
+          }, disabled: changingPassword, children: "没收到？重新验证发送" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 396,
+            columnNumber: 19
+          }, this),
+          /* @__PURE__ */ jsxDEV(Button, { onClick: () => void applyPassword(), disabled: !passwordCodeSent || requestingCode || changingPassword, children: changingPassword ? "修改中…" : "应用修改" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+            lineNumber: 399,
+            columnNumber: 19
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+          lineNumber: 395,
+          columnNumber: 17
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+        lineNumber: 353,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 339,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 338,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+    lineNumber: 230,
+    columnNumber: 5
+  }, this);
+}
+_s(AccountPage, "D0vZfpKWM543UJspp58xDhDwFlY=", false, function() {
+  return [useAuth];
+});
+_c = AccountPage;
+function LoaderLabel() {
+  return /* @__PURE__ */ jsxDEV(Fragment, { children: [
+    /* @__PURE__ */ jsxDEV("span", { className: "spinner", "aria-hidden": true }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+      lineNumber: 411,
+      columnNumber: 12
+    }, this),
+    " 正在发送验证码…"
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx",
+    lineNumber: 411,
+    columnNumber: 10
+  }, this);
+}
+_c2 = LoaderLabel;
+var _c, _c2;
+$RefreshReg$(_c, "AccountPage");
+$RefreshReg$(_c2, "LoaderLabel");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/AccountPage.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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VSwwQkFDYjtBQUFBLGlDQUFDLFlBQU8sTUFBSyxVQUFTLFdBQVUsbUJBQWtCLFNBQVMsTUFBTTtBQUFFL0Msa0NBQXNCLEtBQUs7QUFBR0osMEJBQWMsSUFBSTtBQUFBLFVBQUcsR0FBRyxVQUFVaUIsa0JBQWlCLDBCQUFwSjtBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUVBO0FBQUEsVUFDQSx1QkFBQyxVQUFPLFNBQVMsTUFBTSxLQUFLa0MsY0FBYyxHQUFHLFVBQVUsQ0FBQzVDLG9CQUFvQk4sa0JBQWtCZ0Isa0JBQW1CQSw2QkFBbUIsU0FBUyxVQUE3STtBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUFvSjtBQUFBLGFBSnRKO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFLQTtBQUFBLFdBL0NGO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFnREE7QUFBQSxTQTlESjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBZ0VBLEtBakVGO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FrRUE7QUFBQSxPQTlLSjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBZ0xBO0FBRUo7QUFBQzlCLEdBaFVlRCxhQUFXO0FBQUEsVUFDVzdCLE9BQU87QUFBQTtBQUFBLEtBRDdCNkI7QUFrVWhCLFNBQVM0RSxjQUFjO0FBQ3JCLFNBQU8sbUNBQUU7QUFBQSwyQkFBQyxVQUFLLFdBQVUsV0FBVSxlQUFXLFFBQXJDO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBcUM7QUFBQSxJQUFHO0FBQUEsT0FBMUM7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQUFtRDtBQUM1RDtBQUFDQyxNQUZRRDtBQUFXLElBQUFFLElBQUFEO0FBQUEsYUFBQUMsSUFBQTtBQUFBLGFBQUFELEtBQUEiLCJuYW1lcyI6WyJ1c2VFZmZlY3QiLCJ1c2VNZW1vIiwidXNlU3RhdGUiLCJBdFNpZ24iLCJDYWxlbmRhckRheXMiLCJDaGVjayIsIkNoZWNrQ2lyY2xlMiIsIkV5ZSIsIkV5ZU9mZiIsIktleVJvdW5kIiwiTG9ja0tleWhvbGUiLCJNYWlsIiwiUGhvbmUiLCJTYXZlIiwiU2hpZWxkQ2hlY2siLCJTcGFya2xlcyIsIlVzZXJSb3VuZCIsIlgiLCJBcGlFcnJvciIsInVzZXJQYXNzd29yZEFwaSIsInVzZXJQcm9maWxlQXBpIiwidXNlQXV0aCIsIlB1enpsZVNsaWRlciIsIkJ1dHRvbiIsIkNhcmQiLCJMb2FkaW5nIiwiRU1QVFlfRk9STSIsInVzZXJuYW1lIiwibmlja25hbWUiLCJnZW5kZXIiLCJwaG9uZSIsImJpcnRoZGF5IiwibWVzc2FnZSIsImVycm9yIiwiRXJyb3IiLCJ0b0Zvcm0iLCJwcm9maWxlIiwicGFzc3dvcmRTdHJlbmd0aCIsInBhc3N3b3JkIiwic2NvcmUiLCJsZW5ndGgiLCJ0ZXN0IiwiTWF0aCIsIm1pbiIsIm1hc2tFbWFpbCIsImVtYWlsIiwiYXQiLCJpbmRleE9mIiwic2xpY2UiLCJtYXgiLCJBY2NvdW50UGFnZSIsIl9zIiwicmVmcmVzaFByb2ZpbGUiLCJzZXRFbWFpbCIsImZvcm0iLCJzZXRGb3JtIiwibG9hZGluZyIsInNldExvYWRpbmciLCJzYXZpbmciLCJzZXRTYXZpbmciLCJzYXZlZCIsInNldFNhdmVkIiwic2V0RXJyb3IiLCJzaG93UHV6emxlIiwic2V0U2hvd1B1enpsZSIsInJlcXVlc3RpbmdDb2RlIiwic2V0UmVxdWVzdGluZ0NvZGUiLCJzaG93UGFzc3dvcmREaWFsb2ciLCJzZXRTaG93UGFzc3dvcmREaWFsb2ciLCJlbWFpbEhpbnQiLCJzZXRFbWFpbEhpbnQiLCJwYXNzd29yZENvZGVTZW50Iiwic2V0UGFzc3dvcmRDb2RlU2VudCIsImNvZGUiLCJzZXRDb2RlIiwibmV3UGFzc3dvcmQiLCJzZXROZXdQYXNzd29yZCIsImNvbmZpcm1QYXNzd29yZCIsInNldENvbmZpcm1QYXNzd29yZCIsInNob3dQYXNzd29yZCIsInNldFNob3dQYXNzd29yZCIsImNoYW5naW5nUGFzc3dvcmQiLCJzZXRDaGFuZ2luZ1Bhc3N3b3JkIiwicGFzc3dvcmRFcnJvciIsInNldFBhc3N3b3JkRXJyb3IiLCJwYXNzd29yZENoYW5nZWQiLCJzZXRQYXNzd29yZENoYW5nZWQiLCJjcmVkZW50aWFsTm90aWNlIiwic2V0Q3JlZGVudGlhbE5vdGljZSIsImFjdGl2ZSIsImxvYWQiLCJjdXJyZW50IiwiZ2V0IiwiZSIsImNsb3NlT25Fc2NhcGUiLCJldmVudCIsImtleSIsIndpbmRvdyIsImFkZEV2ZW50TGlzdGVuZXIiLCJyZW1vdmVFdmVudExpc3RlbmVyIiwiY29tcGxldGlvbiIsInZhbHVlcyIsInJvdW5kIiwiZmlsdGVyIiwiQm9vbGVhbiIsInN0cmVuZ3RoIiwidXBkYXRlIiwidmFsdWUiLCJzYXZlIiwibmV4dCIsInN0YXJ0UGFzc3dvcmRDaGFuZ2UiLCJhZnRlclB1enpsZVBhc3MiLCJjYXB0Y2hhVG9rZW4iLCJyZXN1bHQiLCJzZW5kQ29kZSIsImFwcGx5UGFzc3dvcmQiLCJub3JtYWxpemVkQ29kZSIsInRyaW0iLCJjaGFuZ2UiLCJlbGVjdHJvbkFQSSIsInVwZGF0ZUxvZ2luUGFzc3dvcmQiLCJ0YXJnZXQiLCJzdG9wUHJvcGFnYXRpb24iLCJyZXBsYWNlIiwibWFwIiwibGV2ZWwiLCJMb2FkZXJMYWJlbCIsIl9jMiIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkFjY291bnRQYWdlLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VFZmZlY3QsIHVzZU1lbW8sIHVzZVN0YXRlLCB0eXBlIENTU1Byb3BlcnRpZXMgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQge1xuICBBdFNpZ24sXG4gIENhbGVuZGFyRGF5cyxcbiAgQ2hlY2ssXG4gIENoZWNrQ2lyY2xlMixcbiAgRXllLFxuICBFeWVPZmYsXG4gIEtleVJvdW5kLFxuICBMb2NrS2V5aG9sZSxcbiAgTWFpbCxcbiAgUGhvbmUsXG4gIFNhdmUsXG4gIFNoaWVsZENoZWNrLFxuICBTcGFya2xlcyxcbiAgVXNlclJvdW5kLFxuICBYLFxufSBmcm9tICdsdWNpZGUtcmVhY3QnO1xuaW1wb3J0IHsgQXBpRXJyb3IgfSBmcm9tICcuLi9hcGkvY2xpZW50JztcbmltcG9ydCB7XG4gIHVzZXJQYXNzd29yZEFwaSxcbiAgdXNlclByb2ZpbGVBcGksXG4gIHR5cGUgVXBkYXRlVXNlclByb2ZpbGUsXG4gIHR5cGUgVXNlclByb2ZpbGUsXG59IGZyb20gJy4uL2FwaS91c2VyJztcbmltcG9ydCB7IHVzZUF1dGggfSBmcm9tICcuLi9hdXRoL0F1dGhDb250ZXh0JztcbmltcG9ydCB7IFB1enpsZVNsaWRlciB9IGZyb20gJy4uL2NvbXBvbmVudHMvUHV6emxlU2xpZGVyJztcbmltcG9ydCB7IEJ1dHRvbiwgQ2FyZCwgTG9hZGluZyB9IGZyb20gJy4uL2NvbXBvbmVudHMvdWknO1xuaW1wb3J0ICcuL0FjY291bnRQYWdlLmNzcyc7XG5cbmNvbnN0IEVNUFRZX0ZPUk06IFVwZGF0ZVVzZXJQcm9maWxlID0ge1xuICB1c2VybmFtZTogJycsXG4gIG5pY2tuYW1lOiAnJyxcbiAgZ2VuZGVyOiBudWxsLFxuICBwaG9uZTogJycsXG4gIGJpcnRoZGF5OiBudWxsLFxufTtcblxuZnVuY3Rpb24gbWVzc2FnZShlcnJvcjogdW5rbm93bik6IHN0cmluZyB7XG4gIGlmIChlcnJvciBpbnN0YW5jZW9mIEFwaUVycm9yIHx8IGVycm9yIGluc3RhbmNlb2YgRXJyb3IpIHJldHVybiBlcnJvci5tZXNzYWdlO1xuICByZXR1cm4gJ+aTjeS9nOWksei0pe+8jOivt+eojeWQjumHjeivlSc7XG59XG5cbmZ1bmN0aW9uIHRvRm9ybShwcm9maWxlOiBVc2VyUHJvZmlsZSk6IFVwZGF0ZVVzZXJQcm9maWxlIHtcbiAgcmV0dXJuIHtcbiAgICB1c2VybmFtZTogcHJvZmlsZS51c2VybmFtZSA/PyAnJyxcbiAgICBuaWNrbmFtZTogcHJvZmlsZS5uaWNrbmFtZSA/PyAnJyxcbiAgICBnZW5kZXI6IHByb2ZpbGUuZ2VuZGVyLFxuICAgIHBob25lOiBwcm9maWxlLnBob25lID8/ICcnLFxuICAgIGJpcnRoZGF5OiBwcm9maWxlLmJpcnRoZGF5LFxuICB9O1xufVxuXG5mdW5jdGlvbiBwYXNzd29yZFN0cmVuZ3RoKHBhc3N3b3JkOiBzdHJpbmcpOiBudW1iZXIge1xuICBpZiAoIXBhc3N3b3JkKSByZXR1cm4gMDtcbiAgbGV0IHNjb3JlID0gcGFzc3dvcmQubGVuZ3RoID49IDYgPyAxIDogMDtcbiAgaWYgKHBhc3N3b3JkLmxlbmd0aCA+PSAxMCkgc2NvcmUgKz0gMTtcbiAgaWYgKC9bQS1aYS16XS8udGVzdChwYXNzd29yZCkgJiYgL1xcZC8udGVzdChwYXNzd29yZCkpIHNjb3JlICs9IDE7XG4gIGlmICgvW15BLVphLXowLTldLy50ZXN0KHBhc3N3b3JkKSkgc2NvcmUgKz0gMTtcbiAgcmV0dXJuIE1hdGgubWluKHNjb3JlLCA0KTtcbn1cblxuZnVuY3Rpb24gbWFza0VtYWlsKGVtYWlsOiBzdHJpbmcpOiBzdHJpbmcge1xuICBjb25zdCBhdCA9IGVtYWlsLmluZGV4T2YoJ0AnKTtcbiAgaWYgKGF0IDw9IDEpIHJldHVybiBgKioqJHtlbWFpbC5zbGljZShNYXRoLm1heCgwLCBhdCkpfWA7XG4gIHJldHVybiBgJHtlbWFpbC5zbGljZSgwLCAyKX0qKioke2VtYWlsLnNsaWNlKGF0KX1gO1xufVxuXG5leHBvcnQgZnVuY3Rpb24gQWNjb3VudFBhZ2UoKSB7XG4gIGNvbnN0IHsgcHJvZmlsZSwgcmVmcmVzaFByb2ZpbGUgfSA9IHVzZUF1dGgoKTtcbiAgY29uc3QgW2VtYWlsLCBzZXRFbWFpbF0gPSB1c2VTdGF0ZShwcm9maWxlPy5lbWFpbCA/PyAnJyk7XG4gIGNvbnN0IFtmb3JtLCBzZXRGb3JtXSA9IHVzZVN0YXRlPFVwZGF0ZVVzZXJQcm9maWxlPigoKSA9PiBwcm9maWxlID8gdG9Gb3JtKHByb2ZpbGUpIDogRU1QVFlfRk9STSk7XG4gIGNvbnN0IFtsb2FkaW5nLCBzZXRMb2FkaW5nXSA9IHVzZVN0YXRlKCFwcm9maWxlKTtcbiAgY29uc3QgW3NhdmluZywgc2V0U2F2aW5nXSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgW3NhdmVkLCBzZXRTYXZlZF0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuXG4gIGNvbnN0IFtzaG93UHV6emxlLCBzZXRTaG93UHV6emxlXSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgW3JlcXVlc3RpbmdDb2RlLCBzZXRSZXF1ZXN0aW5nQ29kZV0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtzaG93UGFzc3dvcmREaWFsb2csIHNldFNob3dQYXNzd29yZERpYWxvZ10gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtlbWFpbEhpbnQsIHNldEVtYWlsSGludF0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtwYXNzd29yZENvZGVTZW50LCBzZXRQYXNzd29yZENvZGVTZW50XSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgW2NvZGUsIHNldENvZGVdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbbmV3UGFzc3dvcmQsIHNldE5ld1Bhc3N3b3JkXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW2NvbmZpcm1QYXNzd29yZCwgc2V0Q29uZmlybVBhc3N3b3JkXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3Nob3dQYXNzd29yZCwgc2V0U2hvd1Bhc3N3b3JkXSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgW2NoYW5naW5nUGFzc3dvcmQsIHNldENoYW5naW5nUGFzc3dvcmRdID0gdXNlU3RhdGUoZmFsc2UpO1xuICBjb25zdCBbcGFzc3dvcmRFcnJvciwgc2V0UGFzc3dvcmRFcnJvcl0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtwYXNzd29yZENoYW5nZWQsIHNldFBhc3N3b3JkQ2hhbmdlZF0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtjcmVkZW50aWFsTm90aWNlLCBzZXRDcmVkZW50aWFsTm90aWNlXSA9IHVzZVN0YXRlKCcnKTtcblxuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGxldCBhY3RpdmUgPSB0cnVlO1xuICAgIGNvbnN0IGxvYWQgPSBhc3luYyAoKSA9PiB7XG4gICAgICB0cnkge1xuICAgICAgICBjb25zdCBjdXJyZW50ID0gcHJvZmlsZSA/PyBhd2FpdCB1c2VyUHJvZmlsZUFwaS5nZXQoKTtcbiAgICAgICAgaWYgKCFhY3RpdmUpIHJldHVybjtcbiAgICAgICAgc2V0RW1haWwoY3VycmVudC5lbWFpbCk7XG4gICAgICAgIHNldEZvcm0odG9Gb3JtKGN1cnJlbnQpKTtcbiAgICAgIH0gY2F0Y2ggKGUpIHtcbiAgICAgICAgaWYgKGFjdGl2ZSkgc2V0RXJyb3IobWVzc2FnZShlKSk7XG4gICAgICB9IGZpbmFsbHkge1xuICAgICAgICBpZiAoYWN0aXZlKSBzZXRMb2FkaW5nKGZhbHNlKTtcbiAgICAgIH1cbiAgICB9O1xuICAgIHZvaWQgbG9hZCgpO1xuICAgIHJldHVybiAoKSA9PiB7IGFjdGl2ZSA9IGZhbHNlOyB9O1xuICAgIC8vIOmmluasoei/m+WFpeaXtuivu+WPluS4gOasoeWNs+WPr++8jOmBv+WFjeS/neWtmOWQjiBBdXRoQ29udGV4dCDliLfmlrDopobnm5bnlKjmiLfmraPlnKjovpPlhaXnmoTlhoXlrrnjgIJcbiAgICAvLyBlc2xpbnQtZGlzYWJsZS1uZXh0LWxpbmUgcmVhY3QtaG9va3MvZXhoYXVzdGl2ZS1kZXBzXG4gIH0sIFtdKTtcblxuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGlmICghc2hvd1Bhc3N3b3JkRGlhbG9nKSByZXR1cm47XG4gICAgY29uc3QgY2xvc2VPbkVzY2FwZSA9IChldmVudDogS2V5Ym9hcmRFdmVudCkgPT4ge1xuICAgICAgaWYgKGV2ZW50LmtleSA9PT0gJ0VzY2FwZScgJiYgIWNoYW5naW5nUGFzc3dvcmQpIHNldFNob3dQYXNzd29yZERpYWxvZyhmYWxzZSk7XG4gICAgfTtcbiAgICB3aW5kb3cuYWRkRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIGNsb3NlT25Fc2NhcGUpO1xuICAgIHJldHVybiAoKSA9PiB3aW5kb3cucmVtb3ZlRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIGNsb3NlT25Fc2NhcGUpO1xuICB9LCBbc2hvd1Bhc3N3b3JkRGlhbG9nLCBjaGFuZ2luZ1Bhc3N3b3JkXSk7XG5cbiAgY29uc3QgY29tcGxldGlvbiA9IHVzZU1lbW8oKCkgPT4ge1xuICAgIGNvbnN0IHZhbHVlcyA9IFtmb3JtLnVzZXJuYW1lLCBmb3JtLm5pY2tuYW1lLCBmb3JtLmdlbmRlciwgZm9ybS5waG9uZSwgZm9ybS5iaXJ0aGRheV07XG4gICAgcmV0dXJuIE1hdGgucm91bmQoKHZhbHVlcy5maWx0ZXIoQm9vbGVhbikubGVuZ3RoIC8gdmFsdWVzLmxlbmd0aCkgKiAxMDApO1xuICB9LCBbZm9ybV0pO1xuICBjb25zdCBzdHJlbmd0aCA9IHBhc3N3b3JkU3RyZW5ndGgobmV3UGFzc3dvcmQpO1xuXG4gIGNvbnN0IHVwZGF0ZSA9IDxLIGV4dGVuZHMga2V5b2YgVXBkYXRlVXNlclByb2ZpbGU+KGtleTogSywgdmFsdWU6IFVwZGF0ZVVzZXJQcm9maWxlW0tdKSA9PiB7XG4gICAgc2V0Rm9ybShjdXJyZW50ID0+ICh7IC4uLmN1cnJlbnQsIFtrZXldOiB2YWx1ZSB9KSk7XG4gICAgc2V0U2F2ZWQoZmFsc2UpO1xuICB9O1xuXG4gIGNvbnN0IHNhdmUgPSBhc3luYyAoKSA9PiB7XG4gICAgc2V0U2F2aW5nKHRydWUpO1xuICAgIHNldFNhdmVkKGZhbHNlKTtcbiAgICBzZXRFcnJvcignJyk7XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IG5leHQgPSBhd2FpdCB1c2VyUHJvZmlsZUFwaS51cGRhdGUoZm9ybSk7XG4gICAgICBzZXRFbWFpbChuZXh0LmVtYWlsKTtcbiAgICAgIHNldEZvcm0odG9Gb3JtKG5leHQpKTtcbiAgICAgIGF3YWl0IHJlZnJlc2hQcm9maWxlKCk7XG4gICAgICBzZXRTYXZlZCh0cnVlKTtcbiAgICB9IGNhdGNoIChlKSB7XG4gICAgICBzZXRFcnJvcihtZXNzYWdlKGUpKTtcbiAgICB9IGZpbmFsbHkge1xuICAgICAgc2V0U2F2aW5nKGZhbHNlKTtcbiAgICB9XG4gIH07XG5cbiAgY29uc3Qgc3RhcnRQYXNzd29yZENoYW5nZSA9ICgpID0+IHtcbiAgICBzZXRQYXNzd29yZEVycm9yKCcnKTtcbiAgICBzZXRQYXNzd29yZENoYW5nZWQoZmFsc2UpO1xuICAgIHNldFBhc3N3b3JkQ29kZVNlbnQoZmFsc2UpO1xuICAgIHNldFNob3dQdXp6bGUodHJ1ZSk7XG4gIH07XG5cbiAgY29uc3QgYWZ0ZXJQdXp6bGVQYXNzID0gYXN5bmMgKGNhcHRjaGFUb2tlbjogc3RyaW5nKSA9PiB7XG4gICAgc2V0U2hvd1B1enpsZShmYWxzZSk7XG4gICAgc2V0UmVxdWVzdGluZ0NvZGUodHJ1ZSk7XG4gICAgc2V0UGFzc3dvcmRFcnJvcignJyk7XG4gICAgc2V0RW1haWxIaW50KG1hc2tFbWFpbChlbWFpbCkpO1xuICAgIHNldENvZGUoJycpO1xuICAgIHNldE5ld1Bhc3N3b3JkKCcnKTtcbiAgICBzZXRDb25maXJtUGFzc3dvcmQoJycpO1xuICAgIHNldFBhc3N3b3JkQ2hhbmdlZChmYWxzZSk7XG4gICAgc2V0UGFzc3dvcmRDb2RlU2VudChmYWxzZSk7XG4gICAgc2V0U2hvd1Bhc3N3b3JkRGlhbG9nKHRydWUpO1xuICAgIHRyeSB7XG4gICAgICBjb25zdCByZXN1bHQgPSBhd2FpdCB1c2VyUGFzc3dvcmRBcGkuc2VuZENvZGUoY2FwdGNoYVRva2VuKTtcbiAgICAgIHNldEVtYWlsSGludChyZXN1bHQuZW1haWxIaW50KTtcbiAgICAgIHNldFBhc3N3b3JkQ29kZVNlbnQodHJ1ZSk7XG4gICAgfSBjYXRjaCAoZSkge1xuICAgICAgc2V0UGFzc3dvcmRFcnJvcihtZXNzYWdlKGUpKTtcbiAgICB9IGZpbmFsbHkge1xuICAgICAgc2V0UmVxdWVzdGluZ0NvZGUoZmFsc2UpO1xuICAgIH1cbiAgfTtcblxuICBjb25zdCBhcHBseVBhc3N3b3JkID0gYXN5bmMgKCkgPT4ge1xuICAgIGNvbnN0IG5vcm1hbGl6ZWRDb2RlID0gY29kZS50cmltKCk7XG4gICAgaWYgKCEvXlxcZHs2fSQvLnRlc3Qobm9ybWFsaXplZENvZGUpKSB7XG4gICAgICBzZXRQYXNzd29yZEVycm9yKCfor7fovpPlhaXpgq7ku7bkuK3nmoQgNiDkvY3mlbDlrZfpqozor4HnoIEnKTtcbiAgICAgIHJldHVybjtcbiAgICB9XG4gICAgaWYgKG5ld1Bhc3N3b3JkLmxlbmd0aCA8IDYgfHwgbmV3UGFzc3dvcmQubGVuZ3RoID4gNjQpIHtcbiAgICAgIHNldFBhc3N3b3JkRXJyb3IoJ+aWsOWvhueggemVv+W6pumcgOS4uiA2LTY0IOS9jScpO1xuICAgICAgcmV0dXJuO1xuICAgIH1cbiAgICBpZiAobmV3UGFzc3dvcmQgIT09IGNvbmZpcm1QYXNzd29yZCkge1xuICAgICAgc2V0UGFzc3dvcmRFcnJvcign5Lik5qyh6L6T5YWl55qE5paw5a+G56CB5LiN5LiA6Ie0Jyk7XG4gICAgICByZXR1cm47XG4gICAgfVxuICAgIHNldENoYW5naW5nUGFzc3dvcmQodHJ1ZSk7XG4gICAgc2V0UGFzc3dvcmRFcnJvcignJyk7XG4gICAgdHJ5IHtcbiAgICAgIGF3YWl0IHVzZXJQYXNzd29yZEFwaS5jaGFuZ2Uobm9ybWFsaXplZENvZGUsIG5ld1Bhc3N3b3JkKTtcbiAgICAgIHNldENyZWRlbnRpYWxOb3RpY2UoJycpO1xuICAgICAgdHJ5IHsgYXdhaXQgd2luZG93LmVsZWN0cm9uQVBJPy51cGRhdGVMb2dpblBhc3N3b3JkPy4oZW1haWwsIG5ld1Bhc3N3b3JkKTsgfVxuICAgICAgY2F0Y2ggeyBzZXRDcmVkZW50aWFsTm90aWNlKCflr4bnoIHlt7Lkv67mlLnvvIzkvYbmnKzmnLrorrDkvY/lr4bnoIHmnKrmm7TmlrDvvJvkuIvmrKHnmbvlvZXor7fmiYvliqjovpPlhaXmlrDlr4bnoIHjgIInKTsgfVxuICAgICAgc2V0UGFzc3dvcmRDaGFuZ2VkKHRydWUpO1xuICAgICAgc2V0Q29kZSgnJyk7XG4gICAgICBzZXROZXdQYXNzd29yZCgnJyk7XG4gICAgICBzZXRDb25maXJtUGFzc3dvcmQoJycpO1xuICAgIH0gY2F0Y2ggKGUpIHtcbiAgICAgIHNldFBhc3N3b3JkRXJyb3IobWVzc2FnZShlKSk7XG4gICAgfSBmaW5hbGx5IHtcbiAgICAgIHNldENoYW5naW5nUGFzc3dvcmQoZmFsc2UpO1xuICAgIH1cbiAgfTtcblxuICByZXR1cm4gKFxuICAgIDxkaXYgY2xhc3NOYW1lPVwicGFnZSBhY2NvdW50LXBhZ2VcIj5cbiAgICAgIDxoZWFkZXIgY2xhc3NOYW1lPVwicGFnZS1oZWFkIGFjY291bnQtaGVhZFwiPlxuICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJleWVicm93XCI+5Liq5Lq65Lit5b+DIMK3IEFDQ09VTlQ8L3NwYW4+XG4gICAgICAgIDxoMT7kvaDnmoTkuKrkurrnqbrpl7Q8L2gxPlxuICAgICAgICA8cD7nrqHnkIblhazlvIDnp7DlkbzjgIHln7rnoYDotYTmlpnkuI7otKblj7flronlhajjgILotYTmlpnku4XnlKjkuo7kvJjljJbkvaDnmoTlrabkuaDkuI7pnaLor5XkvZPpqozjgII8L3A+XG4gICAgICA8L2hlYWRlcj5cblxuICAgICAge2Vycm9yICYmIDxkaXYgY2xhc3NOYW1lPVwiYmFubmVyXCI+e2Vycm9yfTwvZGl2Pn1cblxuICAgICAge2xvYWRpbmcgPyAoXG4gICAgICAgIDxMb2FkaW5nIGxhYmVsPVwi6K+75Y+W5Liq5Lq65L+h5oGv4oCmXCIgLz5cbiAgICAgICkgOiAoXG4gICAgICAgIDw+XG4gICAgICAgICAgPENhcmQgY2xhc3NOYW1lPVwiYWNjb3VudC1pZGVudGl0eVwiPlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiYWNjb3VudC1hdmF0YXJcIiBhcmlhLWhpZGRlbj5cbiAgICAgICAgICAgICAge2Zvcm0udXNlcm5hbWUudHJpbSgpLnNsaWNlKDAsIDEpIHx8IDxVc2VyUm91bmQgc2l6ZT17MzB9IHN0cm9rZVdpZHRoPXsxLjV9IC8+fVxuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LWlkZW50aXR5LWNvcHlcIj5cbiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiYWNjb3VudC1raWNrZXJcIj7lvZPliY3otKblj7c8L3NwYW4+XG4gICAgICAgICAgICAgIDxoMj57Zm9ybS51c2VybmFtZS50cmltKCkgfHwgJ+Wwmuacquiuvue9rueUqOaIt+WQjSd9PC9oMj5cbiAgICAgICAgICAgICAgPHA+e2Zvcm0ubmlja25hbWUudHJpbSgpID8gYOaYteensO+8miR7Zm9ybS5uaWNrbmFtZS50cmltKCl9YCA6ICflrozlloTotYTmlpnvvIzorqnpnaLpnLjnlKjmm7TpgILlkIjkvaDnmoTmlrnlvI/pmarkvaDlrabkuaDjgIInfTwvcD5cbiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LWVtYWlsXCI+PE1haWwgc2l6ZT17MTR9IC8+IHtlbWFpbH08L2Rpdj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LWNvbXBsZXRpb25cIiBhcmlhLWxhYmVsPXtg6LWE5paZ5a6M5pW05bqmICR7Y29tcGxldGlvbn0lYH0+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWNjb3VudC1jb21wbGV0aW9uLXJpbmdcIiBzdHlsZT17eyAnLS1jb21wbGV0aW9uJzogYCR7Y29tcGxldGlvbiAqIDMuNn1kZWdgIH0gYXMgQ1NTUHJvcGVydGllc30+XG4gICAgICAgICAgICAgICAgPHNwYW4+e2NvbXBsZXRpb259JTwvc3Bhbj5cbiAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgIDxkaXY+PHN0cm9uZz7otYTmlpnlrozmlbTluqY8L3N0cm9uZz48c21hbGw+6KGl5YWF5L+h5oGv5Y+v5a6M5ZaE5Liq5Lq65qGj5qGIPC9zbWFsbD48L2Rpdj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvQ2FyZD5cblxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWNjb3VudC1sYXlvdXRcIj5cbiAgICAgICAgICAgIDxDYXJkIGNsYXNzTmFtZT1cImFjY291bnQtZm9ybS1jYXJkXCI+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWNjb3VudC1zZWN0aW9uLWhlYWRcIj5cbiAgICAgICAgICAgICAgICA8ZGl2PlxuICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiZXllYnJvd1wiPlBST0ZJTEU8L3NwYW4+XG4gICAgICAgICAgICAgICAgICA8aDI+5Z+656GA6LWE5paZPC9oMj5cbiAgICAgICAgICAgICAgICAgIDxwPui/meS6m+S/oeaBr+WPr+maj+aXtuiwg+aVtO+8jOeZu+W9lemCrueusemZpOWkluOAgjwvcD5cbiAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICB7c2F2ZWQgJiYgPHNwYW4gY2xhc3NOYW1lPVwiYWNjb3VudC1zYXZlZFwiPjxDaGVjayBzaXplPXsxNX0gLz4g5bey5L+d5a2YPC9zcGFuPn1cbiAgICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LWZvcm0tZ3JpZFwiPlxuICAgICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJhY2NvdW50LWZpZWxkXCI+XG4gICAgICAgICAgICAgICAgICA8c3Bhbj48QXRTaWduIHNpemU9ezE1fSAvPiDnlKjmiLflkI08L3NwYW4+XG4gICAgICAgICAgICAgICAgICA8aW5wdXQgdmFsdWU9e2Zvcm0udXNlcm5hbWV9IG1heExlbmd0aD17NTB9IG9uQ2hhbmdlPXtldmVudCA9PiB1cGRhdGUoJ3VzZXJuYW1lJywgZXZlbnQudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCLkvqfmoI/kvJjlhYjmmL7npLrov5nkuKrlkI3np7BcIiAvPlxuICAgICAgICAgICAgICAgICAgPHNtYWxsPuacquiuvue9ruaXtuWwhuaYvuekuumaj+acuueUn+aIkOeahOKAnOmcuOS7lCArIOS4ieS9jeWtl+espuKAneOAgjwvc21hbGw+XG4gICAgICAgICAgICAgICAgPC9sYWJlbD5cbiAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYWNjb3VudC1maWVsZFwiPlxuICAgICAgICAgICAgICAgICAgPHNwYW4+PFVzZXJSb3VuZCBzaXplPXsxNX0gLz4g5pi156ewPC9zcGFuPlxuICAgICAgICAgICAgICAgICAgPGlucHV0IHZhbHVlPXtmb3JtLm5pY2tuYW1lfSBtYXhMZW5ndGg9ezUwfSBvbkNoYW5nZT17ZXZlbnQgPT4gdXBkYXRlKCduaWNrbmFtZScsIGV2ZW50LnRhcmdldC52YWx1ZSl9IHBsYWNlaG9sZGVyPVwi5L2g55qE5bi455So56ew5ZG877yI5Y+v6YCJ77yJXCIgLz5cbiAgICAgICAgICAgICAgICA8L2xhYmVsPlxuICAgICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJhY2NvdW50LWZpZWxkXCI+XG4gICAgICAgICAgICAgICAgICA8c3Bhbj48UGhvbmUgc2l6ZT17MTV9IC8+IOaJi+acuuWPtzwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgIDxpbnB1dCB2YWx1ZT17Zm9ybS5waG9uZX0gbWF4TGVuZ3RoPXsyMH0gaW5wdXRNb2RlPVwidGVsXCIgb25DaGFuZ2U9e2V2ZW50ID0+IHVwZGF0ZSgncGhvbmUnLCBldmVudC50YXJnZXQudmFsdWUpfSBwbGFjZWhvbGRlcj1cIuWPr+mAiVwiIC8+XG4gICAgICAgICAgICAgICAgPC9sYWJlbD5cbiAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYWNjb3VudC1maWVsZFwiPlxuICAgICAgICAgICAgICAgICAgPHNwYW4+PENhbGVuZGFyRGF5cyBzaXplPXsxNX0gLz4g55Sf5pelPC9zcGFuPlxuICAgICAgICAgICAgICAgICAgPGlucHV0IHR5cGU9XCJkYXRlXCIgdmFsdWU9e2Zvcm0uYmlydGhkYXkgPz8gJyd9IG9uQ2hhbmdlPXtldmVudCA9PiB1cGRhdGUoJ2JpcnRoZGF5JywgZXZlbnQudGFyZ2V0LnZhbHVlIHx8IG51bGwpfSAvPlxuICAgICAgICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT1cImFjY291bnQtZmllbGRcIj5cbiAgICAgICAgICAgICAgICAgIDxzcGFuPjxVc2VyUm91bmQgc2l6ZT17MTV9IC8+IOaAp+WIqzwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgIDxzZWxlY3QgdmFsdWU9e2Zvcm0uZ2VuZGVyID8/ICcnfSBvbkNoYW5nZT17ZXZlbnQgPT4gdXBkYXRlKCdnZW5kZXInLCAoZXZlbnQudGFyZ2V0LnZhbHVlIHx8IG51bGwpIGFzIFVzZXJQcm9maWxlWydnZW5kZXInXSl9PlxuICAgICAgICAgICAgICAgICAgICA8b3B0aW9uIHZhbHVlPVwiXCI+5pqC5LiN6K6+572uPC9vcHRpb24+XG4gICAgICAgICAgICAgICAgICAgIDxvcHRpb24gdmFsdWU9XCJNXCI+55S3PC9vcHRpb24+XG4gICAgICAgICAgICAgICAgICAgIDxvcHRpb24gdmFsdWU9XCJGXCI+5aWzPC9vcHRpb24+XG4gICAgICAgICAgICAgICAgICAgIDxvcHRpb24gdmFsdWU9XCJPVEhFUlwiPuWFtuS7ljwvb3B0aW9uPlxuICAgICAgICAgICAgICAgICAgPC9zZWxlY3Q+XG4gICAgICAgICAgICAgICAgPC9sYWJlbD5cbiAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYWNjb3VudC1maWVsZFwiPlxuICAgICAgICAgICAgICAgICAgPHNwYW4+PE1haWwgc2l6ZT17MTV9IC8+IOeZu+W9lemCrueusTwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgIDxpbnB1dCB2YWx1ZT17ZW1haWx9IGRpc2FibGVkIC8+XG4gICAgICAgICAgICAgICAgICA8c21hbGw+6YKu566x55So5LqO55m75b2V5ZKM5o6l5pS25a6J5YWo6aqM6K+B56CB44CCPC9zbWFsbD5cbiAgICAgICAgICAgICAgICA8L2xhYmVsPlxuICAgICAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImFjY291bnQtYWN0aW9uc1wiPlxuICAgICAgICAgICAgICAgIDxCdXR0b24gb25DbGljaz17c2F2ZX0gZGlzYWJsZWQ9e3NhdmluZ30+XG4gICAgICAgICAgICAgICAgICA8U2F2ZSBzaXplPXsxNn0gc3Ryb2tlV2lkdGg9ezEuOH0gLz4ge3NhdmluZyA/ICfkv53lrZjkuK3igKYnIDogJ+S/neWtmOS4quS6uuS/oeaBryd9XG4gICAgICAgICAgICAgICAgPC9CdXR0b24+XG4gICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPC9DYXJkPlxuXG4gICAgICAgICAgICA8YXNpZGUgY2xhc3NOYW1lPVwiYWNjb3VudC1zaWRlLWNvbHVtblwiPlxuICAgICAgICAgICAgICA8Q2FyZCBjbGFzc05hbWU9XCJhY2NvdW50LXNlY3VyaXR5LWNhcmRcIj5cbiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJhY2NvdW50LXNlY3VyaXR5LWljb25cIj48U2hpZWxkQ2hlY2sgc2l6ZT17MjN9IC8+PC9zcGFuPlxuICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImV5ZWJyb3dcIj5TRUNVUklUWTwvc3Bhbj5cbiAgICAgICAgICAgICAgICA8aDI+6LSm5Y+35a6J5YWoPC9oMj5cbiAgICAgICAgICAgICAgICA8cD7kv67mlLnlr4bnoIHliY3pnIDpgJrov4fnmbvlvZXpgq7nrrHnoa7orqTmnKzkurrmk43kvZzjgII8L3A+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LXNlY3VyaXR5LXN0YXR1c1wiPjxDaGVja0NpcmNsZTIgc2l6ZT17MTV9IC8+IOeZu+W9lemCrueuseW3sue7keWumjwvZGl2PlxuICAgICAgICAgICAgICAgIHtwYXNzd29yZEVycm9yICYmICFzaG93UGFzc3dvcmREaWFsb2cgJiYgPGRpdiBjbGFzc05hbWU9XCJhY2NvdW50LWlubGluZS1lcnJvclwiPntwYXNzd29yZEVycm9yfTwvZGl2Pn1cbiAgICAgICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJhY2NvdW50LXBhc3N3b3JkLWJ1dHRvblwiIG9uQ2xpY2s9e3N0YXJ0UGFzc3dvcmRDaGFuZ2V9IGRpc2FibGVkPXtyZXF1ZXN0aW5nQ29kZX0+XG4gICAgICAgICAgICAgICAgICB7cmVxdWVzdGluZ0NvZGUgPyA8TG9hZGVyTGFiZWwgLz4gOiA8PjxLZXlSb3VuZCBzaXplPXsxNn0gLz4g5L+u5pS55a+G56CBPC8+fVxuICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgICA8L0NhcmQ+XG5cbiAgICAgICAgICAgICAgPENhcmQgY2xhc3NOYW1lPVwiYWNjb3VudC10aXAtY2FyZFwiPlxuICAgICAgICAgICAgICAgIDxTcGFya2xlcyBzaXplPXsxOH0gLz5cbiAgICAgICAgICAgICAgICA8ZGl2PjxzdHJvbmc+5pu06LS05ZCI5L2g55qE5a2m5Lmg5L2T6aqMPC9zdHJvbmc+PHA+55So5oi35ZCN5Lya5pi+56S65Zyo5qyi6L+O5Yy677yM5pi156ew562J6LWE5paZ5LiN5Lya5YWs5byA5bGV56S644CCPC9wPjwvZGl2PlxuICAgICAgICAgICAgICA8L0NhcmQ+XG4gICAgICAgICAgICA8L2FzaWRlPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8Lz5cbiAgICAgICl9XG5cbiAgICAgIHtzaG93UHV6emxlICYmIDxQdXp6bGVTbGlkZXIgb25QYXNzPXthZnRlclB1enpsZVBhc3N9IG9uQ2xvc2U9eygpID0+IHNldFNob3dQdXp6bGUoZmFsc2UpfSAvPn1cblxuICAgICAge3Nob3dQYXNzd29yZERpYWxvZyAmJiAoXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicGFzc3dvcmQtbW9kYWwtb3ZlcmxheVwiIHJvbGU9XCJwcmVzZW50YXRpb25cIiBvbk1vdXNlRG93bj17KCkgPT4gIWNoYW5naW5nUGFzc3dvcmQgJiYgc2V0U2hvd1Bhc3N3b3JkRGlhbG9nKGZhbHNlKX0+XG4gICAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwicGFzc3dvcmQtbW9kYWxcIiByb2xlPVwiZGlhbG9nXCIgYXJpYS1tb2RhbD1cInRydWVcIiBhcmlhLWxhYmVsbGVkYnk9XCJwYXNzd29yZC1tb2RhbC10aXRsZVwiIG9uTW91c2VEb3duPXtldmVudCA9PiBldmVudC5zdG9wUHJvcGFnYXRpb24oKX0+XG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJwYXNzd29yZC1tb2RhbC1jbG9zZVwiIG9uQ2xpY2s9eygpID0+IHNldFNob3dQYXNzd29yZERpYWxvZyhmYWxzZSl9IGRpc2FibGVkPXtjaGFuZ2luZ1Bhc3N3b3JkfSBhcmlhLWxhYmVsPVwi5YWz6ZetXCI+XG4gICAgICAgICAgICAgIDxYIHNpemU9ezE4fSAvPlxuICAgICAgICAgICAgPC9idXR0b24+XG5cbiAgICAgICAgICAgIHtwYXNzd29yZENoYW5nZWQgPyAoXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicGFzc3dvcmQtc3VjY2Vzc1wiPlxuICAgICAgICAgICAgICAgIDxzcGFuPjxDaGVja0NpcmNsZTIgc2l6ZT17MzB9IC8+PC9zcGFuPlxuICAgICAgICAgICAgICAgIDxoMiBpZD1cInBhc3N3b3JkLW1vZGFsLXRpdGxlXCI+5a+G56CB5L+u5pS55oiQ5YqfPC9oMj5cbiAgICAgICAgICAgICAgICA8cD7mlrDlr4bnoIHlt7Lnu4/nlJ/mlYjvvIzkuIvmrKHnmbvlvZXor7fkvb/nlKjmlrDlr4bnoIHjgII8L3A+XG4gICAgICAgICAgICAgICAge2NyZWRlbnRpYWxOb3RpY2UgJiYgPHAgcm9sZT1cInN0YXR1c1wiPntjcmVkZW50aWFsTm90aWNlfTwvcD59XG4gICAgICAgICAgICAgICAgPEJ1dHRvbiBvbkNsaWNrPXsoKSA9PiBzZXRTaG93UGFzc3dvcmREaWFsb2coZmFsc2UpfT7lrozmiJA8L0J1dHRvbj5cbiAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICApIDogKFxuICAgICAgICAgICAgICA8PlxuICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicGFzc3dvcmQtbW9kYWwtaGVhZFwiPlxuICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwicGFzc3dvcmQtbW9kYWwtaWNvblwiPjxMb2NrS2V5aG9sZSBzaXplPXsyM30gLz48L3NwYW4+XG4gICAgICAgICAgICAgICAgICA8ZGl2PjxzcGFuIGNsYXNzTmFtZT1cImV5ZWJyb3dcIj5DSEFOR0UgUEFTU1dPUkQ8L3NwYW4+PGgyIGlkPVwicGFzc3dvcmQtbW9kYWwtdGl0bGVcIj7orr7nva7mlrDlr4bnoIE8L2gyPjwvZGl2PlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPXtgcGFzc3dvcmQtbWFpbC1ub3RpY2UkeyFyZXF1ZXN0aW5nQ29kZSAmJiAhcGFzc3dvcmRDb2RlU2VudCA/ICcgaXMtZXJyb3InIDogJyd9YH0+XG4gICAgICAgICAgICAgICAgICB7cmVxdWVzdGluZ0NvZGUgPyA8c3BhbiBjbGFzc05hbWU9XCJzcGlubmVyXCIgYXJpYS1oaWRkZW4gLz4gOiA8TWFpbCBzaXplPXsxN30gLz59XG4gICAgICAgICAgICAgICAgICA8ZGl2PlxuICAgICAgICAgICAgICAgICAgICA8c3Ryb25nPntyZXF1ZXN0aW5nQ29kZSA/ICfmraPlnKjlj5HpgIHpqozor4HnoIEnIDogcGFzc3dvcmRDb2RlU2VudCA/ICfpqozor4HnoIHlt7Lnu4/lj5HpgIEnIDogJ+mqjOivgeeggeacquWPkemAgSd9PC9zdHJvbmc+XG4gICAgICAgICAgICAgICAgICAgIDxwPntyZXF1ZXN0aW5nQ29kZVxuICAgICAgICAgICAgICAgICAgICAgID8gJ+ato+WcqOehruiupOi0puWPt+W5tuWPkemAgeWuieWFqOmCruS7tuKApidcbiAgICAgICAgICAgICAgICAgICAgICA6IHBhc3N3b3JkQ29kZVNlbnRcbiAgICAgICAgICAgICAgICAgICAgICAgID8gYOivt+afpeeci+mCrueusSAke2VtYWlsSGludH3vvIzpqozor4HnoIEgMTUg5YiG6ZKf5YaF5pyJ5pWI44CCYFxuICAgICAgICAgICAgICAgICAgICAgICAgOiAn6K+35YWz6Zet56qX5Y+j5ZCO6YeN5paw5a6M5oiQ5Zu+5YOP6aqM6K+B44CCJ308L3A+XG4gICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgICAgICAgIHtwYXNzd29yZEVycm9yICYmIDxkaXYgY2xhc3NOYW1lPVwiYWNjb3VudC1pbmxpbmUtZXJyb3JcIj57cGFzc3dvcmRFcnJvcn08L2Rpdj59XG5cbiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInBhc3N3b3JkLWZvcm1cIj5cbiAgICAgICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJhY2NvdW50LWZpZWxkXCI+XG4gICAgICAgICAgICAgICAgICAgIDxzcGFuPjxNYWlsIHNpemU9ezE1fSAvPiDpgq7nrrHpqozor4HnoIE8L3NwYW4+XG4gICAgICAgICAgICAgICAgICAgIDxpbnB1dCB2YWx1ZT17Y29kZX0gb25DaGFuZ2U9e2V2ZW50ID0+IHNldENvZGUoZXZlbnQudGFyZ2V0LnZhbHVlLnJlcGxhY2UoL1xcRC9nLCAnJykuc2xpY2UoMCwgNikpfSBpbnB1dE1vZGU9XCJudW1lcmljXCIgYXV0b0NvbXBsZXRlPVwib25lLXRpbWUtY29kZVwiIHBsYWNlaG9sZGVyPVwi6L6T5YWlIDYg5L2N6aqM6K+B56CBXCIgYXV0b0ZvY3VzIGRpc2FibGVkPXtyZXF1ZXN0aW5nQ29kZX0gLz5cbiAgICAgICAgICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYWNjb3VudC1maWVsZFwiPlxuICAgICAgICAgICAgICAgICAgICA8c3Bhbj48TG9ja0tleWhvbGUgc2l6ZT17MTV9IC8+IOaWsOWvhueggTwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJwYXNzd29yZC1pbnB1dC13cmFwXCI+XG4gICAgICAgICAgICAgICAgICAgICAgPGlucHV0IHR5cGU9e3Nob3dQYXNzd29yZCA/ICd0ZXh0JyA6ICdwYXNzd29yZCd9IHZhbHVlPXtuZXdQYXNzd29yZH0gb25DaGFuZ2U9e2V2ZW50ID0+IHNldE5ld1Bhc3N3b3JkKGV2ZW50LnRhcmdldC52YWx1ZSl9IGF1dG9Db21wbGV0ZT1cIm5ldy1wYXNzd29yZFwiIHBsYWNlaG9sZGVyPVwiNi02NCDkvY3vvIzlu7rorq7ljIXlkKvlrZfmr43lkozmlbDlrZdcIiAvPlxuICAgICAgICAgICAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIG9uQ2xpY2s9eygpID0+IHNldFNob3dQYXNzd29yZChjdXJyZW50ID0+ICFjdXJyZW50KX0gYXJpYS1sYWJlbD17c2hvd1Bhc3N3b3JkID8gJ+makOiXj+WvhueggScgOiAn5pi+56S65a+G56CBJ30+XG4gICAgICAgICAgICAgICAgICAgICAgICB7c2hvd1Bhc3N3b3JkID8gPEV5ZU9mZiBzaXplPXsxN30gLz4gOiA8RXllIHNpemU9ezE3fSAvPn1cbiAgICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicGFzc3dvcmQtc3RyZW5ndGhcIiBhcmlhLWxhYmVsPXtg5a+G56CB5by65bqmICR7c3RyZW5ndGh9LzRgfT5cbiAgICAgICAgICAgICAgICAgICAgICB7WzEsIDIsIDMsIDRdLm1hcChsZXZlbCA9PiA8aSBjbGFzc05hbWU9e3N0cmVuZ3RoID49IGxldmVsID8gJ2FjdGl2ZScgOiAnJ30ga2V5PXtsZXZlbH0gLz4pfVxuICAgICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiYWNjb3VudC1maWVsZFwiPlxuICAgICAgICAgICAgICAgICAgICA8c3Bhbj48U2hpZWxkQ2hlY2sgc2l6ZT17MTV9IC8+IOehruiupOaWsOWvhueggTwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgICAgPGlucHV0IHR5cGU9e3Nob3dQYXNzd29yZCA/ICd0ZXh0JyA6ICdwYXNzd29yZCd9IHZhbHVlPXtjb25maXJtUGFzc3dvcmR9IG9uQ2hhbmdlPXtldmVudCA9PiBzZXRDb25maXJtUGFzc3dvcmQoZXZlbnQudGFyZ2V0LnZhbHVlKX0gYXV0b0NvbXBsZXRlPVwibmV3LXBhc3N3b3JkXCIgcGxhY2Vob2xkZXI9XCLlho3mrKHovpPlhaXmlrDlr4bnoIFcIiBvbktleURvd249e2V2ZW50ID0+IHsgaWYgKGV2ZW50LmtleSA9PT0gJ0VudGVyJykgdm9pZCBhcHBseVBhc3N3b3JkKCk7IH19IC8+XG4gICAgICAgICAgICAgICAgICA8L2xhYmVsPlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJwYXNzd29yZC1tb2RhbC1hY3Rpb25zXCI+XG4gICAgICAgICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJwYXNzd29yZC1yZXNlbmRcIiBvbkNsaWNrPXsoKSA9PiB7IHNldFNob3dQYXNzd29yZERpYWxvZyhmYWxzZSk7IHNldFNob3dQdXp6bGUodHJ1ZSk7IH19IGRpc2FibGVkPXtjaGFuZ2luZ1Bhc3N3b3JkfT5cbiAgICAgICAgICAgICAgICAgICAg5rKh5pS25Yiw77yf6YeN5paw6aqM6K+B5Y+R6YCBXG4gICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICAgIDxCdXR0b24gb25DbGljaz17KCkgPT4gdm9pZCBhcHBseVBhc3N3b3JkKCl9IGRpc2FibGVkPXshcGFzc3dvcmRDb2RlU2VudCB8fCByZXF1ZXN0aW5nQ29kZSB8fCBjaGFuZ2luZ1Bhc3N3b3JkfT57Y2hhbmdpbmdQYXNzd29yZCA/ICfkv67mlLnkuK3igKYnIDogJ+W6lOeUqOS/ruaUuSd9PC9CdXR0b24+XG4gICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgIDwvPlxuICAgICAgICAgICAgKX1cbiAgICAgICAgICA8L3NlY3Rpb24+XG4gICAgICAgIDwvZGl2PlxuICAgICAgKX1cbiAgICA8L2Rpdj5cbiAgKTtcbn1cblxuZnVuY3Rpb24gTG9hZGVyTGFiZWwoKSB7XG4gIHJldHVybiA8PjxzcGFuIGNsYXNzTmFtZT1cInNwaW5uZXJcIiBhcmlhLWhpZGRlbiAvPiDmraPlnKjlj5HpgIHpqozor4HnoIHigKY8Lz47XG59XG4iXSwiZmlsZSI6IkQ6LzAxIGRvY3VtZW50cy8wMkNvZGUvUHJvamVjdC9TcHJpbmcgQm9vdCA0LjBfSmF2YSAyMV9TcHJpbmcgQUkgMi4wL2ludGVydmlldy1ob21lZ3Jvd24vZnJvbnRlbmQvc3JjL3BhZ2VzL0FjY291bnRQYWdlLnRzeCJ9

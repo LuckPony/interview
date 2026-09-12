@@ -1,0 +1,218 @@
+{
+   "accessOptions": {
+      "message": "Click here for other access options from $1"
+   },
+   "agreeAndContinue": {
+      "message": "Agree"
+   },
+   "articlePdfFound": {
+      "message": "Article PDF found"
+   },
+   "articlePdfNotFound": {
+      "message": "PDF access not found"
+   },
+   "authors": {
+      "message": "Authors"
+   },
+   "cancel": {
+      "message": "Cancel"
+   },
+   "citedBy": {
+      "message": "Cited by $1"
+   },
+   "clickHasFoundMany": {
+      "message": "Click has found $1 references"
+   },
+   "clickHasFoundOne": {
+      "message": "Click has found 1 reference"
+   },
+   "clickToLogin": {
+      "message": "Click to login to EndNote Click for one-click access to full text PDF"
+   },
+   "close": {
+      "message": "закрыть"
+   },
+   "done": {
+      "message": "Done"
+   },
+   "downloadPdf": {
+      "message": "Загрузить PDF"
+   },
+   "downloadSelected": {
+      "message": "Download selected PDFs"
+   },
+   "editReference": {
+      "message": "Edit reference"
+   },
+   "email": {
+      "message": "Email"
+   },
+   "enableDownloads": {
+      "message": "Enable downloads to EndNote"
+   },
+   "enableViewBar": {
+      "message": "Enable the corner View PDF button"
+   },
+   "exportENDesktopM": {
+      "message": "Export available PDFs and references as a .ris file"
+   },
+   "exportENDesktopS": {
+      "message": "Export PDF and reference as a .ris file"
+   },
+   "exportENWebM": {
+      "message": "Push selected references to EndNote account"
+   },
+   "exportENWebS": {
+      "message": "Push reference to EndNote account"
+   },
+   "exportPdf": {
+      "message": "Export PDF to EndNote"
+   },
+   "exportSelected": {
+      "message": "Export selected PDFs"
+   },
+   "extensionDescription": {
+      "message": "Fast, one-click access to millions of research papers."
+   },
+   "extensionName": {
+      "message": "EndNote Click"
+   },
+   "extensionShortName": {
+      "message": "EndNote"
+   },
+   "faqs": {
+      "message": "Часто задаваемые вопросы"
+   },
+   "feedback": {
+      "message": "Feedback"
+   },
+   "forgottenPassword": {
+      "message": "Forgotten password?"
+   },
+   "getStarted": {
+      "message": "Get started"
+   },
+   "inYourLocker": {
+      "message": "In Your Locker"
+   },
+   "includePdf": {
+      "message": "Include PDF"
+   },
+   "keepLooking": {
+      "message": "Keep looking for PDF?"
+   },
+   "myLocker": {
+      "message": "Хранилище EndNote Click"
+   },
+   "noAuthorsListed": {
+      "message": "No authors listed"
+   },
+   "noRef": {
+      "message": "EndNote Click was unable to determine a reference for this search result"
+   },
+   "noThankYou": {
+      "message": "Decline"
+   },
+   "okGotIt": {
+      "message": "Ok, got it!"
+   },
+   "onboarder": {
+      "message": "EndNote Click has found this PDF for you and added this button to give you one click access to it."
+   },
+   "openAccess": {
+      "message": "Open Access"
+   },
+   "openAccessVersion": {
+      "message": "Open Access version"
+   },
+   "optInPrompt": {
+      "message": "Your EndNote Click usage data will help us identify areas where we may be missing coverage. Share your data with us to make the extension better."
+   },
+   "password": {
+      "message": "Пароль"
+   },
+   "pdfFound": {
+      "message": "PDF found"
+   },
+   "pdfLink": {
+      "message": "PDF Link: "
+   },
+   "pdfNoFound": {
+      "message": "PDF not found"
+   },
+   "publication": {
+      "message": "Publication"
+   },
+   "publisherPdfFound": {
+      "message": "Publisher PDF Found"
+   },
+   "publisherVersion": {
+      "message": "Publisher version"
+   },
+   "pushToEndNote": {
+      "message": "Push to EndNote"
+   },
+   "pushing": {
+      "message": "Pushing"
+   },
+   "referenceType": {
+      "message": "Reference type"
+   },
+   "search": {
+      "message": "Search"
+   },
+   "searchInstitutionLibrary": {
+      "message": "Search Institution Library"
+   },
+   "searchLibrary": {
+      "message": "Search library"
+   },
+   "searching": {
+      "message": "Searching"
+   },
+   "searchingFor": {
+      "message": "Click is searching for references..."
+   },
+   "seeOurPolicy": {
+      "message": "See our plain-English Privacy Policy for more information"
+   },
+   "selectAllPdfs": {
+      "message": "Select all available PDFs"
+   },
+   "selectAllReferences": {
+      "message": "Select all available references"
+   },
+   "settings": {
+      "message": "Настройки"
+   },
+   "signIn": {
+      "message": "Войти"
+   },
+   "title": {
+      "message": "Title"
+   },
+   "toExistingAccount": {
+      "message": "To an existing account"
+   },
+   "topicKeywords": {
+      "message": "topic keywords"
+   },
+   "viewPdf": {
+      "message": "Открыть PDF"
+   },
+   "viewPdfWithENC": {
+      "message": "View PDF with EndNote Click"
+   },
+   "viewSelected": {
+      "message": "View selected PDFs"
+   },
+   "welcome": {
+      "message": "Добро пожаловать в EndNote Click"
+   },
+   "withNewAccount": {
+      "message": "With a new account"
+   },
+   "yourLocker": {
+      "message": "Your EndNote Click Locker"
+   }
+}

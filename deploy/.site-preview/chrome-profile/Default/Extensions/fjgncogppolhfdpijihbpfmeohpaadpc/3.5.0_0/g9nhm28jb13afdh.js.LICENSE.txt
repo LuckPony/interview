@@ -1,0 +1,51 @@
+/*!
+ * Browser tracker for Snowplow v3.23.0 (http://bit.ly/sp-js)
+ * Copyright 2022 Snowplow Analytics Ltd, 2010 Anthon Pang
+ * Licensed under BSD-3-Clause
+ */
+
+/*!
+ * Core functionality for Snowplow Browser trackers v3.23.0 (http://bit.ly/sp-js)
+ * Copyright 2022 Snowplow Analytics Ltd, 2010 Anthon Pang
+ * Licensed under BSD-3-Clause
+ */
+
+/**
+ * @license React
+ * react-dom.production.min.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
+ * @license React
+ * react-jsx-runtime.production.min.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
+ * @license React
+ * react.production.min.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
+ * @license React
+ * scheduler.production.min.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */

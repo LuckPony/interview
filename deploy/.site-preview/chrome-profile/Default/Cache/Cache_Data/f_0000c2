@@ -1,0 +1,970 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/KnowledgeBasePage.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb655ba4"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=eb655ba4"; const useCallback = __vite__cjsImport3_react["useCallback"]; const useEffect = __vite__cjsImport3_react["useEffect"]; const useLayoutEffect = __vite__cjsImport3_react["useLayoutEffect"]; const useMemo = __vite__cjsImport3_react["useMemo"]; const useRef = __vite__cjsImport3_react["useRef"]; const useState = __vite__cjsImport3_react["useState"];
+import { Link, useNavigate, useParams } from "/node_modules/.vite/deps/react-router-dom.js?v=bcef88c6";
+import { ArrowLeft, ArrowUpRight, BookOpen, Check, Database, ExternalLink, FileText, FolderUp, Layers, Loader2, MessagesSquare, RefreshCw, Search, Sparkles, Trash2, Wrench } from "/node_modules/.vite/deps/lucide-react.js?v=f44114ca";
+import { corpus } from "/src/api/drill.ts";
+import { libraryApi, libraryError, LIBRARY_ACCEPT, INDEX_LABELS } from "/src/api/library.ts";
+import { Button, Loading } from "/src/components/ui.tsx";
+import { useFileDrop } from "/src/lib/useFileDrop.ts";
+import "/src/pages/KnowledgeBasePage.css";
+const chars = (n) => n < 1e3 ? `${n} 字符` : `${(n / 1e3).toFixed(1)}k 字符`;
+const date = (value) => value ? new Date(value).toLocaleDateString("zh-CN") : "刚刚导入";
+const pending = (item) => ["PENDING", "RUNNING"].includes(item.indexState ?? "PENDING");
+export function KnowledgeBasePage() {
+  _s();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [uploading, setUploading] = useState("");
+  const [action, setAction] = useState("");
+  const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("全部");
+  const fileRef = useRef(null);
+  const pageRef = useRef(null);
+  const routeVersion = useRef(0);
+  useEffect(() => {
+    routeVersion.current++;
+    return () => {
+      routeVersion.current++;
+    };
+  }, [id]);
+  useLayoutEffect(() => {
+    pageRef.current?.closest(".main")?.scrollTo(0, 0);
+  }, [id]);
+  const uploadBusy = useRef(false);
+  const epoch = useRef(0);
+  const load = useCallback(async (quiet = false) => {
+    const version = ++epoch.current;
+    if (!quiet) setLoading(true);
+    setError("");
+    try {
+      if (id) {
+        const value = await libraryApi.detail(Number(id));
+        if (version === epoch.current) setDetail(value);
+      } else {
+        const value = await corpus.list();
+        if (version === epoch.current) setItems(value);
+      }
+    } catch (e) {
+      if (version === epoch.current) setError(libraryError(e));
+    } finally {
+      if (version === epoch.current) setLoading(false);
+    }
+  }, [id]);
+  useEffect(() => {
+    setDetail(null);
+    setNotice("");
+    void load();
+    return () => {
+      epoch.current++;
+    };
+  }, [load]);
+  const processing = id ? !!detail && pending(detail.document) : items.some(pending);
+  useEffect(() => {
+    if (!processing) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load(true);
+    }, 6e3);
+    return () => window.clearInterval(timer);
+  }, [processing, load]);
+  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.topics ?? []))].slice(0, 14), [items]);
+  const filtered = items.filter((item) => (tag === "全部" || item.topics?.includes(tag)) && `${item.name} ${item.overview ?? ""} ${(item.topics ?? []).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const upload = async (files) => {
+    if (uploadBusy.current || !files.length) return;
+    if (files.length > 10) {
+      setError("每次最多导入 10 份资料");
+      return;
+    }
+    for (const file of files) {
+      if (!LIBRARY_ACCEPT.split(",").includes("." + file.name.split(".").pop()?.toLowerCase())) {
+        setError("支持 PDF、Word（DOCX）、TXT、Markdown 格式");
+        return;
+      }
+      if (!file.size || file.size > 20 * 1024 * 1024) {
+        setError("资料不能为空，每份文件最大 20 MB");
+        return;
+      }
+    }
+    uploadBusy.current = true;
+    setError("");
+    setNotice("");
+    const originVersion = routeVersion.current;
+    let count = 0;
+    try {
+      for (const file of files) {
+        setUploading(`正在导入 ${count + 1}/${files.length} · ${file.name}`);
+        await corpus.upload(file);
+        count++;
+      }
+      if (originVersion === routeVersion.current) setNotice(`已导入 ${count} 份资料，知识点索引将在后台整理。`);
+    } catch (e) {
+      if (originVersion === routeVersion.current) setError(`${count ? `已成功导入 ${count} 份。` : ""}${libraryError(e)}`);
+    } finally {
+      uploadBusy.current = false;
+      setUploading("");
+      if (originVersion === routeVersion.current) {
+        if (!id) corpus.list().then((data) => {
+          if (originVersion === routeVersion.current) setItems(data);
+        }).catch((e) => setError(libraryError(e)));
+        else
+          navigate("/knowledge-base");
+      }
+    }
+  };
+  const { dragging, dropProps } = useFileDrop((files) => {
+    void upload(files);
+  }, !!uploading);
+  const openOriginal = async (document2, parsedText = false) => {
+    setAction("original");
+    setError("");
+    try {
+      await libraryApi.openOriginal(document2.id, parsedText);
+    } catch (e) {
+      setError(libraryError(e));
+    } finally {
+      setAction("");
+    }
+  };
+  const remove = async (document2) => {
+    if (!window.confirm(`删除「${document2.name}」？被学习计划或面试记录引用的资料会受到保护。`)) return;
+    setAction("delete");
+    setError("");
+    try {
+      await corpus.remove(document2.id);
+      navigate("/knowledge-base");
+      if (!id) setItems((v) => v.filter((x) => x.id !== document2.id));
+    } catch (e) {
+      setError(libraryError(e));
+    } finally {
+      setAction("");
+    }
+  };
+  const reindex = async () => {
+    if (!detail) return;
+    setAction("index");
+    setError("");
+    try {
+      await libraryApi.reindex(detail.document.id);
+      setDetail((value) => value && { ...value, document: { ...value.document, indexState: "RUNNING" } });
+      setNotice("已提交重新整理；若未配置模型，将保留基础索引。");
+    } catch (e) {
+      setError(libraryError(e));
+    } finally {
+      setAction("");
+    }
+  };
+  return /* @__PURE__ */ jsxDEV("div", { ref: pageRef, className: "page knowledge-page", ...dropProps, children: [
+    dragging && /* @__PURE__ */ jsxDEV("div", { className: "kb-drop-overlay", children: [
+      /* @__PURE__ */ jsxDEV(FolderUp, { size: 36 }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 127,
+        columnNumber: 51
+      }, this),
+      /* @__PURE__ */ jsxDEV("h2", { children: "让新知识，有处安放" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 127,
+        columnNumber: 73
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { children: "松开鼠标导入资料 · 每份最大 20 MB" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 127,
+        columnNumber: 91
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 127,
+      columnNumber: 18
+    }, this),
+    /* @__PURE__ */ jsxDEV("input", { ref: fileRef, type: "file", accept: LIBRARY_ACCEPT, multiple: true, hidden: true, onChange: (e) => {
+      const files = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      void upload(files);
+    } }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 128,
+      columnNumber: 5
+    }, this),
+    /* @__PURE__ */ jsxDEV("header", { className: "kb-header", children: [
+      /* @__PURE__ */ jsxDEV("div", { children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "eyebrow", children: [
+          "KNOWLEDGE LIBRARY · ",
+          id ? "资料详情" : "知识库管理"
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 130,
+          columnNumber: 12
+        }, this),
+        /* @__PURE__ */ jsxDEV("h1", { children: id ? detail?.document.name ?? "资料详情" : "让积累，成为你的底气。" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 131,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { children: id ? "读懂资料的结构，看见它如何参与学习与面试。" : "整理自己的资料，让每一次规划与练习，都有据可循。" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 132,
+          columnNumber: 9
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 130,
+        columnNumber: 7
+      }, this),
+      id ? /* @__PURE__ */ jsxDEV(Link, { className: "kb-text-link", to: "/knowledge-base", children: [
+        /* @__PURE__ */ jsxDEV(ArrowLeft, { size: 15 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 133,
+          columnNumber: 65
+        }, this),
+        "返回知识库"
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 133,
+        columnNumber: 13
+      }, this) : /* @__PURE__ */ jsxDEV("div", { className: "kb-header-actions", children: [
+        /* @__PURE__ */ jsxDEV(Link, { className: "kb-secondary-link", to: "/knowledge-base/tools", children: [
+          /* @__PURE__ */ jsxDEV(Wrench, { size: 16 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 134,
+            columnNumber: 105
+          }, this),
+          "工具库"
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 134,
+          columnNumber: 42
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { disabled: !!uploading, onClick: () => fileRef.current?.click(), children: [
+          /* @__PURE__ */ jsxDEV(FolderUp, { size: 16 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 135,
+            columnNumber: 83
+          }, this),
+          "导入资料"
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 135,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 134,
+        columnNumber: 7
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 129,
+      columnNumber: 5
+    }, this),
+    error && /* @__PURE__ */ jsxDEV("div", { className: "banner warn", role: "alert", children: [
+      error,
+      /* @__PURE__ */ jsxDEV("button", { className: "kb-text-link", onClick: () => void load(), children: "重新读取" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 137,
+        columnNumber: 64
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 137,
+      columnNumber: 15
+    }, this),
+    notice && /* @__PURE__ */ jsxDEV("p", { className: "kb-notice", role: "status", children: [
+      /* @__PURE__ */ jsxDEV(Check, { size: 15 }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 138,
+        columnNumber: 55
+      }, this),
+      notice
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 138,
+      columnNumber: 16
+    }, this),
+    uploading && /* @__PURE__ */ jsxDEV("p", { className: "kb-notice", role: "status", children: [
+      /* @__PURE__ */ jsxDEV(Loader2, { size: 15, className: "spin" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 139,
+        columnNumber: 58
+      }, this),
+      uploading
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 139,
+      columnNumber: 19
+    }, this),
+    loading ? /* @__PURE__ */ jsxDEV(Loading, { label: "读取资料与索引…" }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 140,
+      columnNumber: 16
+    }, this) : id ? detail && /* @__PURE__ */ jsxDEV(Fragment, { children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "kb-detail-hero", children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "kb-document-icon", children: /* @__PURE__ */ jsxDEV(FileText, { size: 30, strokeWidth: 1.5 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 142,
+          columnNumber: 44
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 142,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("span", { className: `kb-status ${detail.document.indexState?.toLowerCase()}`, children: INDEX_LABELS[detail.document.indexState ?? "PENDING"] }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 143,
+            columnNumber: 14
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: [
+            chars(detail.document.charCount),
+            " · ",
+            detail.sections.length,
+            " 个目录章节 · ",
+            date(detail.document.createdAt)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 144,
+            columnNumber: 11
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 143,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { variant: "ghost", disabled: !!action, onClick: () => void openOriginal(detail.document, true), children: "查看解析文本" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 145,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV(Button, { variant: "ghost", disabled: !!action || !detail.document.hasOriginal, onClick: () => void openOriginal(detail.document), children: [
+          /* @__PURE__ */ jsxDEV(ExternalLink, { size: 16 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 146,
+            columnNumber: 136
+          }, this),
+          "打开原文件"
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 146,
+          columnNumber: 9
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 141,
+        columnNumber: 7
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "kb-muted", children: detail.document.hasOriginal ? "PDF 在浏览器显示原始文档；Word 等格式将下载原件，用本机阅读器打开。" : "历史资料没有保存原文件，无法恢复原排版与图片。请重新导入原件；当前仍可查看用于索引的解析文本。" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 148,
+        columnNumber: 7
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "kb-detail-grid", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "kb-detail-main", children: [
+          /* @__PURE__ */ jsxDEV("section", { className: "kb-panel", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "kb-section-label", children: "01 / OVERVIEW" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 150,
+              columnNumber: 39
+            }, this),
+            /* @__PURE__ */ jsxDEV("h2", { children: "内容简介" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 150,
+              columnNumber: 94
+            }, this),
+            /* @__PURE__ */ jsxDEV("p", { className: "kb-overview", children: detail.document.overview }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 150,
+              columnNumber: 107
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "kb-tags", children: detail.document.topics?.map((t) => /* @__PURE__ */ jsxDEV("span", { children: t }, t, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 151,
+              columnNumber: 72
+            }, this)) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 151,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 150,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("section", { className: "kb-panel", children: [
+            /* @__PURE__ */ jsxDEV("div", { className: "kb-section-top", children: [
+              /* @__PURE__ */ jsxDEV("div", { children: [
+                /* @__PURE__ */ jsxDEV("span", { className: "kb-section-label", children: "02 / INDEX" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 152,
+                  columnNumber: 76
+                }, this),
+                /* @__PURE__ */ jsxDEV("h2", { children: "知识点与内容索引" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 152,
+                  columnNumber: 128
+                }, this)
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 152,
+                columnNumber: 71
+              }, this),
+              /* @__PURE__ */ jsxDEV("button", { className: "kb-text-link", disabled: !!action, onClick: () => void reindex(), children: [
+                /* @__PURE__ */ jsxDEV(RefreshCw, { size: 14 }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 153,
+                  columnNumber: 95
+                }, this),
+                "重新整理"
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 153,
+                columnNumber: 11
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 152,
+              columnNumber: 39
+            }, this),
+            detail.document.indexState === "BASIC" && /* @__PURE__ */ jsxDEV("p", { className: "kb-muted", children: "已按章节整理目录，公式与续页归入对应章节。配置模型后可重新整理为知识主题与摘要。" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 154,
+              columnNumber: 54
+            }, this),
+            !detail.sections.length && /* @__PURE__ */ jsxDEV("p", { className: "kb-muted", children: [
+              pending(detail.document) ? "正在整理索引，请稍候。" : "尚无索引，可点击重新整理。",
+              "原文仍可查看。"
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 155,
+              columnNumber: 39
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "kb-index-list", children: detail.sections.map((section) => /* @__PURE__ */ jsxDEV(Link, { to: `/knowledge-base/tools?corpus=${id}&section=${section.id}`, className: "kb-index-row", children: [
+              /* @__PURE__ */ jsxDEV("span", { className: "kb-index-number", children: String(section.sequence + 1).padStart(2, "0") }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 157,
+                columnNumber: 13
+              }, this),
+              /* @__PURE__ */ jsxDEV("div", { children: [
+                /* @__PURE__ */ jsxDEV("h3", { children: section.title || section.topic }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 157,
+                  columnNumber: 106
+                }, this),
+                section.summary && section.summary !== section.title && section.summary !== section.topic && /* @__PURE__ */ jsxDEV("p", { children: section.summary }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 158,
+                  columnNumber: 109
+                }, this),
+                /* @__PURE__ */ jsxDEV("small", { children: [
+                  chars(section.charCount),
+                  /* @__PURE__ */ jsxDEV("span", { children: [
+                    "阅读 / 翻译 ",
+                    /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 12 }, void 0, false, {
+                      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                      lineNumber: 159,
+                      columnNumber: 62
+                    }, this)
+                  ] }, void 0, true, {
+                    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                    lineNumber: 159,
+                    columnNumber: 48
+                  }, this)
+                ] }, void 0, true, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 159,
+                  columnNumber: 15
+                }, this)
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 157,
+                columnNumber: 101
+              }, this)
+            ] }, section.id, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 156,
+              columnNumber: 76
+            }, this)) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 156,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 152,
+            columnNumber: 9
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 149,
+          columnNumber: 39
+        }, this),
+        /* @__PURE__ */ jsxDEV("aside", { className: "kb-detail-aside", children: [
+          /* @__PURE__ */ jsxDEV("section", { className: "kb-panel kb-use-panel", children: [
+            /* @__PURE__ */ jsxDEV(Sparkles, { size: 24 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 162,
+              columnNumber: 52
+            }, this),
+            /* @__PURE__ */ jsxDEV("h2", { children: "把资料用起来" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 162,
+              columnNumber: 74
+            }, this),
+            /* @__PURE__ */ jsxDEV("p", { children: "从这份资料出发，让学习更聚焦。" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 162,
+              columnNumber: 89
+            }, this),
+            /* @__PURE__ */ jsxDEV(Link, { to: `/intake?corpus=${id}`, children: [
+              /* @__PURE__ */ jsxDEV(BookOpen, { size: 17 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 163,
+                columnNumber: 45
+              }, this),
+              "生成学习计划",
+              /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 163,
+                columnNumber: 73
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 163,
+              columnNumber: 11
+            }, this),
+            /* @__PURE__ */ jsxDEV(Link, { to: `/rehearsal?corpus=${id}`, children: [
+              /* @__PURE__ */ jsxDEV(MessagesSquare, { size: 17 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 164,
+                columnNumber: 48
+              }, this),
+              "生成模拟面试",
+              /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 164,
+                columnNumber: 82
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 164,
+              columnNumber: 11
+            }, this),
+            /* @__PURE__ */ jsxDEV(Link, { to: `/knowledge-base/tools?corpus=${id}`, children: [
+              /* @__PURE__ */ jsxDEV(Wrench, { size: 17 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 165,
+                columnNumber: 59
+              }, this),
+              "打开知识库工具",
+              /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 15 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 165,
+                columnNumber: 86
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 165,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 162,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("section", { className: "kb-panel", children: [
+            /* @__PURE__ */ jsxDEV("span", { className: "kb-section-label", children: "03 / CONNECTIONS" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 166,
+              columnNumber: 39
+            }, this),
+            /* @__PURE__ */ jsxDEV("h2", { children: [
+              "资料使用记录 ",
+              /* @__PURE__ */ jsxDEV("small", { children: detail.usages.length }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 166,
+                columnNumber: 108
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 166,
+              columnNumber: 97
+            }, this),
+            !detail.usages.length && /* @__PURE__ */ jsxDEV("p", { className: "kb-muted", children: "还没有关联的计划或面试。完成创建后会自动记录在这里。" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 167,
+              columnNumber: 37
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "kb-usage-list", children: detail.usages.map((u) => /* @__PURE__ */ jsxDEV(Link, { to: u.kind === "PLAN" ? `/plan?planId=${u.id}` : `/rehearsal/history/${u.id}`, children: [
+              u.kind === "PLAN" ? /* @__PURE__ */ jsxDEV(BookOpen, { size: 16 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 169,
+                columnNumber: 34
+              }, this) : /* @__PURE__ */ jsxDEV(MessagesSquare, { size: 16 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 169,
+                columnNumber: 59
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: [
+                u.title,
+                /* @__PURE__ */ jsxDEV("small", { children: u.kind === "PLAN" ? "学习计划" : u.kind === "INTERVIEW_PLAN" ? "通过关联计划使用知识点" : "直接基于资料出题" }, void 0, false, {
+                  fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                  lineNumber: 169,
+                  columnNumber: 103
+                }, this)
+              ] }, void 0, true, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 169,
+                columnNumber: 88
+              }, this),
+              /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 13 }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+                lineNumber: 169,
+                columnNumber: 212
+              }, this)
+            ] }, u.kind + u.id, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 168,
+              columnNumber: 68
+            }, this)) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 168,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 166,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { className: "kb-delete", disabled: !!action, onClick: () => void remove(detail.document), children: [
+            /* @__PURE__ */ jsxDEV(Trash2, { size: 14 }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 170,
+              columnNumber: 114
+            }, this),
+            "删除这份资料"
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 170,
+            columnNumber: 19
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 161,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 149,
+        columnNumber: 7
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 140,
+      columnNumber: 62
+    }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
+      /* @__PURE__ */ jsxDEV("section", { className: "kb-stats", "aria-label": "知识库统计", children: [
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV(Database, { size: 19 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 174,
+            columnNumber: 14
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: items.length }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 174,
+              columnNumber: 42
+            }, this),
+            /* @__PURE__ */ jsxDEV("small", { children: "份学习资料" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 174,
+              columnNumber: 73
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 174,
+            columnNumber: 36
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 174,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV(Layers, { size: 19 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 175,
+            columnNumber: 14
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: items.reduce((n, item) => n + (item.chunkCount ?? 0), 0) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 175,
+              columnNumber: 40
+            }, this),
+            /* @__PURE__ */ jsxDEV("small", { children: "个内容索引" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 175,
+              columnNumber: 115
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 175,
+            columnNumber: 34
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 175,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV(BookOpen, { size: 19 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 176,
+            columnNumber: 14
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: chars(items.reduce((n, item) => n + item.charCount, 0)) }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 176,
+              columnNumber: 42
+            }, this),
+            /* @__PURE__ */ jsxDEV("small", { children: "可复用知识内容" }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+              lineNumber: 176,
+              columnNumber: 116
+            }, this)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 176,
+            columnNumber: 36
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 176,
+          columnNumber: 9
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 173,
+        columnNumber: 7
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "kb-library-toolbar", children: [
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("h2", { children: "我的资料" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 178,
+            columnNumber: 48
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: "按主题整理，按目标使用" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 178,
+            columnNumber: 61
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 178,
+          columnNumber: 43
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { className: "kb-search", children: [
+          /* @__PURE__ */ jsxDEV(Search, { size: 16 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 179,
+            columnNumber: 38
+          }, this),
+          /* @__PURE__ */ jsxDEV("input", { "aria-label": "搜索知识库", value: query, onChange: (e) => setQuery(e.target.value), placeholder: "搜索资料、标签或知识点" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 179,
+            columnNumber: 58
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 179,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ jsxDEV("button", { className: "kb-icon-button", "aria-label": "刷新知识库", onClick: () => void load(true), children: /* @__PURE__ */ jsxDEV(RefreshCw, { size: 16 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 180,
+          columnNumber: 95
+        }, this) }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 180,
+          columnNumber: 9
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 178,
+        columnNumber: 7
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "kb-filters", "aria-label": "知识主题筛选", children: ["全部", ...tags].map((t) => /* @__PURE__ */ jsxDEV("button", { className: tag === t ? "active" : "", onClick: () => setTag(t), children: t }, t, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 181,
+        columnNumber: 83
+      }, this)) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 181,
+        columnNumber: 7
+      }, this),
+      !filtered.length ? /* @__PURE__ */ jsxDEV("div", { className: "kb-empty", children: [
+        /* @__PURE__ */ jsxDEV(BookOpen, { size: 35 }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 182,
+          columnNumber: 53
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { children: items.length ? "没有匹配的资料" : "你的下一份知识，从这里开始" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 182,
+          columnNumber: 75
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { children: items.length ? "试试其他关键词或主题。" : "点击右上角“导入资料”，或把文件拖到此页面。支持 PDF、DOCX、TXT、Markdown。" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 183,
+          columnNumber: 9
+        }, this),
+        items.length > 0 && /* @__PURE__ */ jsxDEV("button", { className: "kb-text-link", onClick: () => {
+          setQuery("");
+          setTag("全部");
+        }, children: "重置筛选" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 184,
+          columnNumber: 30
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 182,
+        columnNumber: 27
+      }, this) : /* @__PURE__ */ jsxDEV("div", { className: "kb-document-grid", children: filtered.map((item, i) => /* @__PURE__ */ jsxDEV("article", { className: `kb-document tone-${i % 3}`, children: /* @__PURE__ */ jsxDEV(Link, { className: "kb-document-main", to: `/knowledge-base/${item.id}`, children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "kb-document-top", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "kb-document-icon", children: /* @__PURE__ */ jsxDEV(FileText, { size: 24, strokeWidth: 1.5 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 186,
+            columnNumber: 148
+          }, this) }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 186,
+            columnNumber: 113
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: `kb-status ${item.indexState?.toLowerCase()}`, children: INDEX_LABELS[item.indexState ?? "PENDING"] }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 186,
+            columnNumber: 195
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 186,
+          columnNumber: 80
+        }, this),
+        /* @__PURE__ */ jsxDEV("h3", { children: item.name }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 187,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { children: item.overview || "正在整理内容简介，原文已保存。" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 187,
+          columnNumber: 33
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "kb-tags", children: [
+          (item.topics ?? []).slice(0, 4).map((t) => /* @__PURE__ */ jsxDEV("span", { children: t }, t, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 187,
+            columnNumber: 145
+          }, this)),
+          !item.topics?.length && /* @__PURE__ */ jsxDEV("span", { children: "待整理知识点" }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 187,
+            columnNumber: 196
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 187,
+          columnNumber: 76
+        }, this),
+        /* @__PURE__ */ jsxDEV("footer", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            date(item.createdAt),
+            " · ",
+            chars(item.charCount)
+          ] }, void 0, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 188,
+            columnNumber: 21
+          }, this),
+          /* @__PURE__ */ jsxDEV(ArrowUpRight, { size: 17 }, void 0, false, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+            lineNumber: 188,
+            columnNumber: 82
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+          lineNumber: 188,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 186,
+        columnNumber: 11
+      }, this) }, item.id, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 185,
+        columnNumber: 68
+      }, this)) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 185,
+        columnNumber: 7
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "kb-bottom-note", children: "单份最大 20 MB / 20 万字符 · 资料仅对当前账号可见 · AI 标签与摘要请结合原文核对" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+        lineNumber: 190,
+        columnNumber: 7
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+      lineNumber: 172,
+      columnNumber: 11
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx",
+    lineNumber: 126,
+    columnNumber: 10
+  }, this);
+}
+_s(KnowledgeBasePage, "HMfNSIhNk8ggvKu2yqRpHhcF83M=", false, function() {
+  return [useParams, useNavigate, useFileDrop];
+});
+_c = KnowledgeBasePage;
+var _c;
+$RefreshReg$(_c, "KnowledgeBasePage");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/pages/KnowledgeBasePage.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QUFBO0FBQUE7QUFBQTtBQUFBLGlCQUFpQixDQUFPO0FBQUEsVUFBRyxDQUFDekYsS0FBS2tELFFBQVFXLFVBQVUsdUJBQUMsVUFBSyxzQkFBTjtBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUFZO0FBQUEsYUFBbEk7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUEwSTtBQUFBLFFBQ3pNLHVCQUFDLFlBQU87QUFBQSxpQ0FBQyxVQUFNbEU7QUFBQUEsaUJBQUtLLEtBQUtzRixTQUFTO0FBQUEsWUFBRTtBQUFBLFlBQUk5RixNQUFNUSxLQUFLb0YsU0FBUztBQUFBLGVBQXBEO0FBQUE7QUFBQTtBQUFBO0FBQUEsaUJBQXNEO0FBQUEsVUFBTyx1QkFBQyxnQkFBYSxNQUFNLE1BQXBCO0FBQUE7QUFBQTtBQUFBO0FBQUEsaUJBQXVCO0FBQUEsYUFBNUY7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUErRjtBQUFBLFdBRmpHO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFFMEcsS0FIU3BGLEtBQUtLLElBQTNEO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFJL0QsQ0FBVSxLQUpSO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFJVTtBQUFBLE1BQ2QsdUJBQUMsT0FBRSxXQUFVLGtCQUFpQixrRUFBOUI7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUFnRjtBQUFBLFNBbEI1RTtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBbUJOO0FBQUEsT0FqRUs7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQWtFUDtBQUNGO0FBQUNELEdBL0plRCxtQkFBaUI7QUFBQSxVQUNoQnBDLFdBQ0VELGFBb0VleUIsV0FBVztBQUFBO0FBQUEsS0F0RTdCWTtBQUFpQixJQUFBb0c7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsidXNlQ2FsbGJhY2siLCJ1c2VFZmZlY3QiLCJ1c2VMYXlvdXRFZmZlY3QiLCJ1c2VNZW1vIiwidXNlUmVmIiwidXNlU3RhdGUiLCJMaW5rIiwidXNlTmF2aWdhdGUiLCJ1c2VQYXJhbXMiLCJBcnJvd0xlZnQiLCJBcnJvd1VwUmlnaHQiLCJCb29rT3BlbiIsIkNoZWNrIiwiRGF0YWJhc2UiLCJFeHRlcm5hbExpbmsiLCJGaWxlVGV4dCIsIkZvbGRlclVwIiwiTGF5ZXJzIiwiTG9hZGVyMiIsIk1lc3NhZ2VzU3F1YXJlIiwiUmVmcmVzaEN3IiwiU2VhcmNoIiwiU3BhcmtsZXMiLCJUcmFzaDIiLCJXcmVuY2giLCJjb3JwdXMiLCJsaWJyYXJ5QXBpIiwibGlicmFyeUVycm9yIiwiTElCUkFSWV9BQ0NFUFQiLCJJTkRFWF9MQUJFTFMiLCJCdXR0b24iLCJMb2FkaW5nIiwidXNlRmlsZURyb3AiLCJjaGFycyIsIm4iLCJ0b0ZpeGVkIiwiZGF0ZSIsInZhbHVlIiwiRGF0ZSIsInRvTG9jYWxlRGF0ZVN0cmluZyIsInBlbmRpbmciLCJpdGVtIiwiaW5jbHVkZXMiLCJpbmRleFN0YXRlIiwiS25vd2xlZGdlQmFzZVBhZ2UiLCJfcyIsImlkIiwibmF2aWdhdGUiLCJpdGVtcyIsInNldEl0ZW1zIiwiZGV0YWlsIiwic2V0RGV0YWlsIiwibG9hZGluZyIsInNldExvYWRpbmciLCJlcnJvciIsInNldEVycm9yIiwibm90aWNlIiwic2V0Tm90aWNlIiwidXBsb2FkaW5nIiwic2V0VXBsb2FkaW5nIiwiYWN0aW9uIiwic2V0QWN0aW9uIiwicXVlcnkiLCJzZXRRdWVyeSIsInRhZyIsInNldFRhZyIsImZpbGVSZWYiLCJwYWdlUmVmIiwicm91dGVWZXJzaW9uIiwiY3VycmVudCIsImNsb3Nlc3QiLCJzY3JvbGxUbyIsInVwbG9hZEJ1c3kiLCJlcG9jaCIsImxvYWQiLCJxdWlldCIsInZlcnNpb24iLCJOdW1iZXIiLCJsaXN0IiwiZSIsInByb2Nlc3NpbmciLCJkb2N1bWVudCIsInNvbWUiLCJ0aW1lciIsIndpbmRvdyIsInNldEludGVydmFsIiwiaGlkZGVuIiwiY2xlYXJJbnRlcnZhbCIsInRhZ3MiLCJTZXQiLCJmbGF0TWFwIiwidG9waWNzIiwic2xpY2UiLCJmaWx0ZXJlZCIsImZpbHRlciIsIm5hbWUiLCJvdmVydmlldyIsImpvaW4iLCJ0b0xvd2VyQ2FzZSIsInRyaW0iLCJ1cGxvYWQiLCJmaWxlcyIsImxlbmd0aCIsImZpbGUiLCJzcGxpdCIsInBvcCIsInNpemUiLCJvcmlnaW5WZXJzaW9uIiwiY291bnQiLCJ0aGVuIiwiZGF0YSIsImNhdGNoIiwiZHJhZ2dpbmciLCJkcm9wUHJvcHMiLCJvcGVuT3JpZ2luYWwiLCJwYXJzZWRUZXh0IiwicmVtb3ZlIiwiY29uZmlybSIsInYiLCJ4IiwicmVpbmRleCIsIkFycmF5IiwiZnJvbSIsInRhcmdldCIsImNsaWNrIiwiY2hhckNvdW50Iiwic2VjdGlvbnMiLCJjcmVhdGVkQXQiLCJoYXNPcmlnaW5hbCIsIm1hcCIsInQiLCJzZWN0aW9uIiwiU3RyaW5nIiwic2VxdWVuY2UiLCJwYWRTdGFydCIsInRpdGxlIiwidG9waWMiLCJzdW1tYXJ5IiwidXNhZ2VzIiwidSIsImtpbmQiLCJyZWR1Y2UiLCJjaHVua0NvdW50IiwiaSIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIktub3dsZWRnZUJhc2VQYWdlLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VDYWxsYmFjaywgdXNlRWZmZWN0LCB1c2VMYXlvdXRFZmZlY3QsIHVzZU1lbW8sIHVzZVJlZiwgdXNlU3RhdGUgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQgeyBMaW5rLCB1c2VOYXZpZ2F0ZSwgdXNlUGFyYW1zIH0gZnJvbSAncmVhY3Qtcm91dGVyLWRvbSc7XG5pbXBvcnQgeyBBcnJvd0xlZnQsIEFycm93VXBSaWdodCwgQm9va09wZW4sIENoZWNrLCBEYXRhYmFzZSwgRXh0ZXJuYWxMaW5rLCBGaWxlVGV4dCwgRm9sZGVyVXAsIExheWVycywgTG9hZGVyMiwgTWVzc2FnZXNTcXVhcmUsIFJlZnJlc2hDdywgU2VhcmNoLCBTcGFya2xlcywgVHJhc2gyLCBXcmVuY2ggfSBmcm9tICdsdWNpZGUtcmVhY3QnO1xuaW1wb3J0IHsgY29ycHVzIH0gZnJvbSAnLi4vYXBpL2RyaWxsJztcbmltcG9ydCB7IGxpYnJhcnlBcGksIGxpYnJhcnlFcnJvciwgTElCUkFSWV9BQ0NFUFQsIElOREVYX0xBQkVMUyB9IGZyb20gJy4uL2FwaS9saWJyYXJ5JztcbmltcG9ydCB0eXBlIHsgQ29ycHVzVmlldywgQ29ycHVzRGV0YWlsIH0gZnJvbSAnLi4vYXBpL3R5cGVzJztcbmltcG9ydCB7IEJ1dHRvbiwgTG9hZGluZyB9IGZyb20gJy4uL2NvbXBvbmVudHMvdWknO1xuaW1wb3J0IHsgdXNlRmlsZURyb3AgfSBmcm9tICcuLi9saWIvdXNlRmlsZURyb3AnO1xuaW1wb3J0ICcuL0tub3dsZWRnZUJhc2VQYWdlLmNzcyc7XG5cbmNvbnN0IGNoYXJzID0gKG46IG51bWJlcikgPT4gbiA8IDEwMDAgPyBgJHtufSDlrZfnrKZgIDogYCR7KG4gLyAxMDAwKS50b0ZpeGVkKDEpfWsg5a2X56ymYDtcbmNvbnN0IGRhdGUgPSAodmFsdWU/OiBzdHJpbmcgfCBudWxsKSA9PiB2YWx1ZSA/IG5ldyBEYXRlKHZhbHVlKS50b0xvY2FsZURhdGVTdHJpbmcoJ3poLUNOJykgOiAn5Yia5Yia5a+85YWlJztcbmNvbnN0IHBlbmRpbmcgPSAoaXRlbTogQ29ycHVzVmlldykgPT4gWydQRU5ESU5HJywgJ1JVTk5JTkcnXS5pbmNsdWRlcyhpdGVtLmluZGV4U3RhdGUgPz8gJ1BFTkRJTkcnKTtcblxuZXhwb3J0IGZ1bmN0aW9uIEtub3dsZWRnZUJhc2VQYWdlKCkge1xuICBjb25zdCB7IGlkIH0gPSB1c2VQYXJhbXMoKTtcbiAgY29uc3QgbmF2aWdhdGUgPSB1c2VOYXZpZ2F0ZSgpO1xuICBjb25zdCBbaXRlbXMsIHNldEl0ZW1zXSA9IHVzZVN0YXRlPENvcnB1c1ZpZXdbXT4oW10pO1xuICBjb25zdCBbZGV0YWlsLCBzZXREZXRhaWxdID0gdXNlU3RhdGU8Q29ycHVzRGV0YWlsIHwgbnVsbD4obnVsbCk7XG4gIGNvbnN0IFtsb2FkaW5nLCBzZXRMb2FkaW5nXSA9IHVzZVN0YXRlKHRydWUpO1xuICBjb25zdCBbZXJyb3IsIHNldEVycm9yXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW25vdGljZSwgc2V0Tm90aWNlXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3VwbG9hZGluZywgc2V0VXBsb2FkaW5nXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW2FjdGlvbiwgc2V0QWN0aW9uXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3F1ZXJ5LCBzZXRRdWVyeV0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFt0YWcsIHNldFRhZ10gPSB1c2VTdGF0ZSgn5YWo6YOoJyk7XG4gIGNvbnN0IGZpbGVSZWYgPSB1c2VSZWY8SFRNTElucHV0RWxlbWVudD4obnVsbCk7XG4gIGNvbnN0IHBhZ2VSZWYgPSB1c2VSZWY8SFRNTERpdkVsZW1lbnQ+KG51bGwpO1xuICBjb25zdCByb3V0ZVZlcnNpb24gPSB1c2VSZWYoMCk7XG4gIHVzZUVmZmVjdCgoKSA9PiB7IHJvdXRlVmVyc2lvbi5jdXJyZW50Kys7IHJldHVybiAoKSA9PiB7IHJvdXRlVmVyc2lvbi5jdXJyZW50Kys7IH07IH0sIFtpZF0pO1xuICB1c2VMYXlvdXRFZmZlY3QoKCkgPT4geyBwYWdlUmVmLmN1cnJlbnQ/LmNsb3Nlc3QoJy5tYWluJyk/LnNjcm9sbFRvKDAsIDApOyB9LCBbaWRdKTtcbiAgY29uc3QgdXBsb2FkQnVzeSA9IHVzZVJlZihmYWxzZSk7XG4gIGNvbnN0IGVwb2NoID0gdXNlUmVmKDApO1xuICBjb25zdCBsb2FkID0gdXNlQ2FsbGJhY2soYXN5bmMgKHF1aWV0ID0gZmFsc2UpID0+IHtcbiAgICBjb25zdCB2ZXJzaW9uID0gKytlcG9jaC5jdXJyZW50O1xuICAgIGlmICghcXVpZXQpIHNldExvYWRpbmcodHJ1ZSk7XG4gICAgc2V0RXJyb3IoJycpO1xuICAgIHRyeSB7XG4gICAgICBpZiAoaWQpIHtcbiAgICAgICAgY29uc3QgdmFsdWUgPSBhd2FpdCBsaWJyYXJ5QXBpLmRldGFpbChOdW1iZXIoaWQpKTtcbiAgICAgICAgaWYgKHZlcnNpb24gPT09IGVwb2NoLmN1cnJlbnQpIHNldERldGFpbCh2YWx1ZSk7XG4gICAgICB9IGVsc2Uge1xuICAgICAgICBjb25zdCB2YWx1ZSA9IGF3YWl0IGNvcnB1cy5saXN0KCk7XG4gICAgICAgIGlmICh2ZXJzaW9uID09PSBlcG9jaC5jdXJyZW50KSBzZXRJdGVtcyh2YWx1ZSk7XG4gICAgICB9XG4gICAgfSBjYXRjaCAoZSkgeyBpZiAodmVyc2lvbiA9PT0gZXBvY2guY3VycmVudCkgc2V0RXJyb3IobGlicmFyeUVycm9yKGUpKTsgfVxuICAgIGZpbmFsbHkgeyBpZiAodmVyc2lvbiA9PT0gZXBvY2guY3VycmVudCkgc2V0TG9hZGluZyhmYWxzZSk7IH1cbiAgfSwgW2lkXSk7XG4gIHVzZUVmZmVjdCgoKSA9PiB7IHNldERldGFpbChudWxsKTsgc2V0Tm90aWNlKCcnKTsgdm9pZCBsb2FkKCk7IHJldHVybiAoKSA9PiB7IGVwb2NoLmN1cnJlbnQrKzsgfTsgfSwgW2xvYWRdKTtcbiAgY29uc3QgcHJvY2Vzc2luZyA9IGlkID8gISFkZXRhaWwgJiYgcGVuZGluZyhkZXRhaWwuZG9jdW1lbnQpIDogaXRlbXMuc29tZShwZW5kaW5nKTtcbiAgdXNlRWZmZWN0KCgpID0+IHtcbiAgICBpZiAoIXByb2Nlc3NpbmcpIHJldHVybjtcbiAgICBjb25zdCB0aW1lciA9IHdpbmRvdy5zZXRJbnRlcnZhbCgoKSA9PiB7IGlmICghZG9jdW1lbnQuaGlkZGVuKSB2b2lkIGxvYWQodHJ1ZSk7IH0sIDYwMDApO1xuICAgIHJldHVybiAoKSA9PiB3aW5kb3cuY2xlYXJJbnRlcnZhbCh0aW1lcik7XG4gIH0sIFtwcm9jZXNzaW5nLCBsb2FkXSk7XG4gIGNvbnN0IHRhZ3MgPSB1c2VNZW1vKCgpID0+IFsuLi5uZXcgU2V0KGl0ZW1zLmZsYXRNYXAoaXRlbSA9PiBpdGVtLnRvcGljcyA/PyBbXSkpXS5zbGljZSgwLCAxNCksIFtpdGVtc10pO1xuICBjb25zdCBmaWx0ZXJlZCA9IGl0ZW1zLmZpbHRlcihpdGVtID0+ICh0YWcgPT09ICflhajpg6gnIHx8IGl0ZW0udG9waWNzPy5pbmNsdWRlcyh0YWcpKVxuICAgICYmIGAke2l0ZW0ubmFtZX0gJHtpdGVtLm92ZXJ2aWV3ID8/ICcnfSAkeyhpdGVtLnRvcGljcyA/PyBbXSkuam9pbignICcpfWAudG9Mb3dlckNhc2UoKS5pbmNsdWRlcyhxdWVyeS50cmltKCkudG9Mb3dlckNhc2UoKSkpO1xuXG4gIGNvbnN0IHVwbG9hZCA9IGFzeW5jIChmaWxlczogRmlsZVtdKSA9PiB7XG4gICAgaWYgKHVwbG9hZEJ1c3kuY3VycmVudCB8fCAhZmlsZXMubGVuZ3RoKSByZXR1cm47XG4gICAgaWYgKGZpbGVzLmxlbmd0aCA+IDEwKSB7IHNldEVycm9yKCfmr4/mrKHmnIDlpJrlr7zlhaUgMTAg5Lu96LWE5paZJyk7IHJldHVybjsgfVxuICAgIGZvciAoY29uc3QgZmlsZSBvZiBmaWxlcykge1xuICAgICAgaWYgKCFMSUJSQVJZX0FDQ0VQVC5zcGxpdCgnLCcpLmluY2x1ZGVzKCcuJyArIGZpbGUubmFtZS5zcGxpdCgnLicpLnBvcCgpPy50b0xvd2VyQ2FzZSgpKSkgeyBzZXRFcnJvcign5pSv5oyBIFBERuOAgVdvcmTvvIhET0NY77yJ44CBVFhU44CBTWFya2Rvd24g5qC85byPJyk7IHJldHVybjsgfVxuICAgICAgaWYgKCFmaWxlLnNpemUgfHwgZmlsZS5zaXplID4gMjAgKiAxMDI0ICogMTAyNCkgeyBzZXRFcnJvcign6LWE5paZ5LiN6IO95Li656m677yM5q+P5Lu95paH5Lu25pyA5aSnIDIwIE1CJyk7IHJldHVybjsgfVxuICAgIH1cbiAgICB1cGxvYWRCdXN5LmN1cnJlbnQgPSB0cnVlOyBzZXRFcnJvcignJyk7IHNldE5vdGljZSgnJyk7XG4gICAgY29uc3Qgb3JpZ2luVmVyc2lvbiA9IHJvdXRlVmVyc2lvbi5jdXJyZW50O1xuICAgIGxldCBjb3VudCA9IDA7XG4gICAgdHJ5IHtcbiAgICAgIGZvciAoY29uc3QgZmlsZSBvZiBmaWxlcykge1xuICAgICAgICBzZXRVcGxvYWRpbmcoYOato+WcqOWvvOWFpSAke2NvdW50ICsgMX0vJHtmaWxlcy5sZW5ndGh9IMK3ICR7ZmlsZS5uYW1lfWApO1xuICAgICAgICBhd2FpdCBjb3JwdXMudXBsb2FkKGZpbGUpOyBjb3VudCsrO1xuICAgICAgfVxuICAgICAgaWYgKG9yaWdpblZlcnNpb24gPT09IHJvdXRlVmVyc2lvbi5jdXJyZW50KSBzZXROb3RpY2UoYOW3suWvvOWFpSAke2NvdW50fSDku73otYTmlpnvvIznn6Xor4bngrnntKLlvJXlsIblnKjlkI7lj7DmlbTnkIbjgIJgKTtcbiAgICB9IGNhdGNoIChlKSB7IGlmIChvcmlnaW5WZXJzaW9uID09PSByb3V0ZVZlcnNpb24uY3VycmVudCkgc2V0RXJyb3IoYCR7Y291bnQgPyBg5bey5oiQ5Yqf5a+85YWlICR7Y291bnR9IOS7veOAgmAgOiAnJ30ke2xpYnJhcnlFcnJvcihlKX1gKTsgfVxuICAgIGZpbmFsbHkge1xuICAgICAgdXBsb2FkQnVzeS5jdXJyZW50ID0gZmFsc2U7IHNldFVwbG9hZGluZygnJyk7XG4gICAgICBpZiAob3JpZ2luVmVyc2lvbiA9PT0gcm91dGVWZXJzaW9uLmN1cnJlbnQpIHtcbiAgICAgICAgaWYgKCFpZCkgY29ycHVzLmxpc3QoKS50aGVuKGRhdGEgPT4geyBpZiAob3JpZ2luVmVyc2lvbiA9PT0gcm91dGVWZXJzaW9uLmN1cnJlbnQpIHNldEl0ZW1zKGRhdGEpOyB9KS5jYXRjaChlID0+IHNldEVycm9yKGxpYnJhcnlFcnJvcihlKSkpO1xuICAgICAgICBlbHNlIG5hdmlnYXRlKCcva25vd2xlZGdlLWJhc2UnKTtcbiAgICAgIH1cbiAgICB9XG4gIH07XG4gIGNvbnN0IHsgZHJhZ2dpbmcsIGRyb3BQcm9wcyB9ID0gdXNlRmlsZURyb3AoZmlsZXMgPT4geyB2b2lkIHVwbG9hZChmaWxlcyk7IH0sICEhdXBsb2FkaW5nKTtcbiAgY29uc3Qgb3Blbk9yaWdpbmFsID0gYXN5bmMgKGRvY3VtZW50OiBDb3JwdXNWaWV3LCBwYXJzZWRUZXh0ID0gZmFsc2UpID0+IHtcbiAgICBzZXRBY3Rpb24oJ29yaWdpbmFsJyk7IHNldEVycm9yKCcnKTtcbiAgICB0cnkgeyBhd2FpdCBsaWJyYXJ5QXBpLm9wZW5PcmlnaW5hbChkb2N1bWVudC5pZCwgcGFyc2VkVGV4dCk7IH0gY2F0Y2ggKGUpIHsgc2V0RXJyb3IobGlicmFyeUVycm9yKGUpKTsgfVxuICAgIGZpbmFsbHkgeyBzZXRBY3Rpb24oJycpOyB9XG4gIH07XG4gIGNvbnN0IHJlbW92ZSA9IGFzeW5jIChkb2N1bWVudDogQ29ycHVzVmlldykgPT4ge1xuICAgIGlmICghd2luZG93LmNvbmZpcm0oYOWIoOmZpOOAjCR7ZG9jdW1lbnQubmFtZX3jgI3vvJ/ooqvlrabkuaDorqHliJLmiJbpnaLor5XorrDlvZXlvJXnlKjnmoTotYTmlpnkvJrlj5fliLDkv53miqTjgIJgKSkgcmV0dXJuO1xuICAgIHNldEFjdGlvbignZGVsZXRlJyk7IHNldEVycm9yKCcnKTtcbiAgICB0cnkgeyBhd2FpdCBjb3JwdXMucmVtb3ZlKGRvY3VtZW50LmlkKTsgbmF2aWdhdGUoJy9rbm93bGVkZ2UtYmFzZScpOyBpZiAoIWlkKSBzZXRJdGVtcyh2ID0+IHYuZmlsdGVyKHggPT4geC5pZCAhPT0gZG9jdW1lbnQuaWQpKTsgfVxuICAgIGNhdGNoIChlKSB7IHNldEVycm9yKGxpYnJhcnlFcnJvcihlKSk7IH0gZmluYWxseSB7IHNldEFjdGlvbignJyk7IH1cbiAgfTtcbiAgY29uc3QgcmVpbmRleCA9IGFzeW5jICgpID0+IHtcbiAgICBpZiAoIWRldGFpbCkgcmV0dXJuO1xuICAgIHNldEFjdGlvbignaW5kZXgnKTsgc2V0RXJyb3IoJycpO1xuICAgIHRyeSB7XG4gICAgICBhd2FpdCBsaWJyYXJ5QXBpLnJlaW5kZXgoZGV0YWlsLmRvY3VtZW50LmlkKTtcbiAgICAgIHNldERldGFpbCh2YWx1ZSA9PiB2YWx1ZSAmJiAoeyAuLi52YWx1ZSwgZG9jdW1lbnQ6IHsgLi4udmFsdWUuZG9jdW1lbnQsIGluZGV4U3RhdGU6ICdSVU5OSU5HJyB9IH0pKTtcbiAgICAgIHNldE5vdGljZSgn5bey5o+Q5Lqk6YeN5paw5pW055CG77yb6Iul5pyq6YWN572u5qih5Z6L77yM5bCG5L+d55WZ5Z+656GA57Si5byV44CCJyk7XG4gICAgfSBjYXRjaCAoZSkgeyBzZXRFcnJvcihsaWJyYXJ5RXJyb3IoZSkpOyB9IGZpbmFsbHkgeyBzZXRBY3Rpb24oJycpOyB9XG4gIH07XG5cbiAgcmV0dXJuIDxkaXYgcmVmPXtwYWdlUmVmfSBjbGFzc05hbWU9XCJwYWdlIGtub3dsZWRnZS1wYWdlXCIgey4uLmRyb3BQcm9wc30+XG4gICAge2RyYWdnaW5nICYmIDxkaXYgY2xhc3NOYW1lPVwia2ItZHJvcC1vdmVybGF5XCI+PEZvbGRlclVwIHNpemU9ezM2fSAvPjxoMj7orqnmlrDnn6Xor4bvvIzmnInlpITlronmlL48L2gyPjxwPuadvuW8gOm8oOagh+WvvOWFpei1hOaWmSDCtyDmr4/ku73mnIDlpKcgMjAgTUI8L3A+PC9kaXY+fVxuICAgIDxpbnB1dCByZWY9e2ZpbGVSZWZ9IHR5cGU9XCJmaWxlXCIgYWNjZXB0PXtMSUJSQVJZX0FDQ0VQVH0gbXVsdGlwbGUgaGlkZGVuIG9uQ2hhbmdlPXtlID0+IHsgY29uc3QgZmlsZXMgPSBBcnJheS5mcm9tKGUudGFyZ2V0LmZpbGVzID8/IFtdKTsgZS50YXJnZXQudmFsdWUgPSAnJzsgdm9pZCB1cGxvYWQoZmlsZXMpOyB9fSAvPlxuICAgIDxoZWFkZXIgY2xhc3NOYW1lPVwia2ItaGVhZGVyXCI+XG4gICAgICA8ZGl2PjxzcGFuIGNsYXNzTmFtZT1cImV5ZWJyb3dcIj5LTk9XTEVER0UgTElCUkFSWSDCtyB7aWQgPyAn6LWE5paZ6K+m5oOFJyA6ICfnn6Xor4blupPnrqHnkIYnfTwvc3Bhbj5cbiAgICAgICAgPGgxPntpZCA/IGRldGFpbD8uZG9jdW1lbnQubmFtZSA/PyAn6LWE5paZ6K+m5oOFJyA6ICforqnnp6/ntK/vvIzmiJDkuLrkvaDnmoTlupXmsJTjgIInfTwvaDE+XG4gICAgICAgIDxwPntpZCA/ICfor7vmh4LotYTmlpnnmoTnu5PmnoTvvIznnIvop4HlroPlpoLkvZXlj4LkuI7lrabkuaDkuI7pnaLor5XjgIInIDogJ+aVtOeQhuiHquW3seeahOi1hOaWme+8jOiuqeavj+S4gOasoeinhOWIkuS4jue7g+S5oO+8jOmDveacieaNruWPr+W+quOAgid9PC9wPjwvZGl2PlxuICAgICAge2lkID8gPExpbmsgY2xhc3NOYW1lPVwia2ItdGV4dC1saW5rXCIgdG89XCIva25vd2xlZGdlLWJhc2VcIj48QXJyb3dMZWZ0IHNpemU9ezE1fSAvPui/lOWbnuefpeivhuW6kzwvTGluaz5cbiAgICAgICAgOiA8ZGl2IGNsYXNzTmFtZT1cImtiLWhlYWRlci1hY3Rpb25zXCI+PExpbmsgY2xhc3NOYW1lPVwia2Itc2Vjb25kYXJ5LWxpbmtcIiB0bz1cIi9rbm93bGVkZ2UtYmFzZS90b29sc1wiPjxXcmVuY2ggc2l6ZT17MTZ9IC8+5bel5YW35bqTPC9MaW5rPlxuICAgICAgICAgIDxCdXR0b24gZGlzYWJsZWQ9eyEhdXBsb2FkaW5nfSBvbkNsaWNrPXsoKSA9PiBmaWxlUmVmLmN1cnJlbnQ/LmNsaWNrKCl9PjxGb2xkZXJVcCBzaXplPXsxNn0gLz7lr7zlhaXotYTmlpk8L0J1dHRvbj48L2Rpdj59XG4gICAgPC9oZWFkZXI+XG4gICAge2Vycm9yICYmIDxkaXYgY2xhc3NOYW1lPVwiYmFubmVyIHdhcm5cIiByb2xlPVwiYWxlcnRcIj57ZXJyb3J9PGJ1dHRvbiBjbGFzc05hbWU9XCJrYi10ZXh0LWxpbmtcIiBvbkNsaWNrPXsoKSA9PiB2b2lkIGxvYWQoKX0+6YeN5paw6K+75Y+WPC9idXR0b24+PC9kaXY+fVxuICAgIHtub3RpY2UgJiYgPHAgY2xhc3NOYW1lPVwia2Itbm90aWNlXCIgcm9sZT1cInN0YXR1c1wiPjxDaGVjayBzaXplPXsxNX0gLz57bm90aWNlfTwvcD59XG4gICAge3VwbG9hZGluZyAmJiA8cCBjbGFzc05hbWU9XCJrYi1ub3RpY2VcIiByb2xlPVwic3RhdHVzXCI+PExvYWRlcjIgc2l6ZT17MTV9IGNsYXNzTmFtZT1cInNwaW5cIiAvPnt1cGxvYWRpbmd9PC9wPn1cbiAgICB7bG9hZGluZyA/IDxMb2FkaW5nIGxhYmVsPVwi6K+75Y+W6LWE5paZ5LiO57Si5byV4oCmXCIgLz4gOiBpZCA/IGRldGFpbCAmJiA8PlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJrYi1kZXRhaWwtaGVyb1wiPlxuICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJrYi1kb2N1bWVudC1pY29uXCI+PEZpbGVUZXh0IHNpemU9ezMwfSBzdHJva2VXaWR0aD17MS41fSAvPjwvc3Bhbj5cbiAgICAgICAgPGRpdj48c3BhbiBjbGFzc05hbWU9e2BrYi1zdGF0dXMgJHtkZXRhaWwuZG9jdW1lbnQuaW5kZXhTdGF0ZT8udG9Mb3dlckNhc2UoKX1gfT57SU5ERVhfTEFCRUxTW2RldGFpbC5kb2N1bWVudC5pbmRleFN0YXRlID8/ICdQRU5ESU5HJ119PC9zcGFuPlxuICAgICAgICAgIDxwPntjaGFycyhkZXRhaWwuZG9jdW1lbnQuY2hhckNvdW50KX0gwrcge2RldGFpbC5zZWN0aW9ucy5sZW5ndGh9IOS4quebruW9leeroOiKgiDCtyB7ZGF0ZShkZXRhaWwuZG9jdW1lbnQuY3JlYXRlZEF0KX08L3A+PC9kaXY+XG4gICAgICAgIDxCdXR0b24gdmFyaWFudD1cImdob3N0XCIgZGlzYWJsZWQ9eyEhYWN0aW9ufSBvbkNsaWNrPXsoKSA9PiB2b2lkIG9wZW5PcmlnaW5hbChkZXRhaWwuZG9jdW1lbnQsIHRydWUpfT7mn6XnnIvop6PmnpDmlofmnKw8L0J1dHRvbj5cbiAgICAgICAgPEJ1dHRvbiB2YXJpYW50PVwiZ2hvc3RcIiBkaXNhYmxlZD17ISFhY3Rpb24gfHwgIWRldGFpbC5kb2N1bWVudC5oYXNPcmlnaW5hbH0gb25DbGljaz17KCkgPT4gdm9pZCBvcGVuT3JpZ2luYWwoZGV0YWlsLmRvY3VtZW50KX0+PEV4dGVybmFsTGluayBzaXplPXsxNn0gLz7miZPlvIDljp/mlofku7Y8L0J1dHRvbj5cbiAgICAgIDwvZGl2PlxuICAgICAgPHAgY2xhc3NOYW1lPVwia2ItbXV0ZWRcIj57ZGV0YWlsLmRvY3VtZW50Lmhhc09yaWdpbmFsID8gJ1BERiDlnKjmtY/op4jlmajmmL7npLrljp/lp4vmlofmoaPvvJtXb3JkIOetieagvOW8j+WwhuS4i+i9veWOn+S7tu+8jOeUqOacrOacuumYheivu+WZqOaJk+W8gOOAgicgOiAn5Y6G5Y+y6LWE5paZ5rKh5pyJ5L+d5a2Y5Y6f5paH5Lu277yM5peg5rOV5oGi5aSN5Y6f5o6S54mI5LiO5Zu+54mH44CC6K+36YeN5paw5a+85YWl5Y6f5Lu277yb5b2T5YmN5LuN5Y+v5p+l55yL55So5LqO57Si5byV55qE6Kej5p6Q5paH5pys44CCJ308L3A+XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImtiLWRldGFpbC1ncmlkXCI+PGRpdiBjbGFzc05hbWU9XCJrYi1kZXRhaWwtbWFpblwiPlxuICAgICAgICA8c2VjdGlvbiBjbGFzc05hbWU9XCJrYi1wYW5lbFwiPjxzcGFuIGNsYXNzTmFtZT1cImtiLXNlY3Rpb24tbGFiZWxcIj4wMSAvIE9WRVJWSUVXPC9zcGFuPjxoMj7lhoXlrrnnroDku4s8L2gyPjxwIGNsYXNzTmFtZT1cImtiLW92ZXJ2aWV3XCI+e2RldGFpbC5kb2N1bWVudC5vdmVydmlld308L3A+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJrYi10YWdzXCI+e2RldGFpbC5kb2N1bWVudC50b3BpY3M/Lm1hcCh0ID0+IDxzcGFuIGtleT17dH0+e3R9PC9zcGFuPil9PC9kaXY+PC9zZWN0aW9uPlxuICAgICAgICA8c2VjdGlvbiBjbGFzc05hbWU9XCJrYi1wYW5lbFwiPjxkaXYgY2xhc3NOYW1lPVwia2Itc2VjdGlvbi10b3BcIj48ZGl2PjxzcGFuIGNsYXNzTmFtZT1cImtiLXNlY3Rpb24tbGFiZWxcIj4wMiAvIElOREVYPC9zcGFuPjxoMj7nn6Xor4bngrnkuI7lhoXlrrnntKLlvJU8L2gyPjwvZGl2PlxuICAgICAgICAgIDxidXR0b24gY2xhc3NOYW1lPVwia2ItdGV4dC1saW5rXCIgZGlzYWJsZWQ9eyEhYWN0aW9ufSBvbkNsaWNrPXsoKSA9PiB2b2lkIHJlaW5kZXgoKX0+PFJlZnJlc2hDdyBzaXplPXsxNH0gLz7ph43mlrDmlbTnkIY8L2J1dHRvbj48L2Rpdj5cbiAgICAgICAgICB7ZGV0YWlsLmRvY3VtZW50LmluZGV4U3RhdGUgPT09ICdCQVNJQycgJiYgPHAgY2xhc3NOYW1lPVwia2ItbXV0ZWRcIj7lt7LmjInnq6DoioLmlbTnkIbnm67lvZXvvIzlhazlvI/kuI7nu63pobXlvZLlhaXlr7nlupTnq6DoioLjgILphY3nva7mqKHlnovlkI7lj6/ph43mlrDmlbTnkIbkuLrnn6Xor4bkuLvpopjkuI7mkZjopoHjgII8L3A+fVxuICAgICAgICAgIHshZGV0YWlsLnNlY3Rpb25zLmxlbmd0aCAmJiA8cCBjbGFzc05hbWU9XCJrYi1tdXRlZFwiPntwZW5kaW5nKGRldGFpbC5kb2N1bWVudCkgPyAn5q2j5Zyo5pW055CG57Si5byV77yM6K+356iN5YCZ44CCJyA6ICflsJrml6DntKLlvJXvvIzlj6/ngrnlh7vph43mlrDmlbTnkIbjgIInfeWOn+aWh+S7jeWPr+afpeeci+OAgjwvcD59XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJrYi1pbmRleC1saXN0XCI+e2RldGFpbC5zZWN0aW9ucy5tYXAoc2VjdGlvbiA9PiA8TGluayBrZXk9e3NlY3Rpb24uaWR9IHRvPXtgL2tub3dsZWRnZS1iYXNlL3Rvb2xzP2NvcnB1cz0ke2lkfSZzZWN0aW9uPSR7c2VjdGlvbi5pZH1gfSBjbGFzc05hbWU9XCJrYi1pbmRleC1yb3dcIj5cbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImtiLWluZGV4LW51bWJlclwiPntTdHJpbmcoc2VjdGlvbi5zZXF1ZW5jZSArIDEpLnBhZFN0YXJ0KDIsICcwJyl9PC9zcGFuPjxkaXY+PGgzPntzZWN0aW9uLnRpdGxlIHx8IHNlY3Rpb24udG9waWN9PC9oMz5cbiAgICAgICAgICAgICAge3NlY3Rpb24uc3VtbWFyeSAmJiBzZWN0aW9uLnN1bW1hcnkgIT09IHNlY3Rpb24udGl0bGUgJiYgc2VjdGlvbi5zdW1tYXJ5ICE9PSBzZWN0aW9uLnRvcGljICYmIDxwPntzZWN0aW9uLnN1bW1hcnl9PC9wPn1cbiAgICAgICAgICAgICAgPHNtYWxsPntjaGFycyhzZWN0aW9uLmNoYXJDb3VudCl9PHNwYW4+6ZiF6K+7IC8g57+76K+RIDxBcnJvd1VwUmlnaHQgc2l6ZT17MTJ9IC8+PC9zcGFuPjwvc21hbGw+PC9kaXY+PC9MaW5rPil9PC9kaXY+XG4gICAgICAgIDwvc2VjdGlvbj5cbiAgICAgIDwvZGl2Pjxhc2lkZSBjbGFzc05hbWU9XCJrYi1kZXRhaWwtYXNpZGVcIj5cbiAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwia2ItcGFuZWwga2ItdXNlLXBhbmVsXCI+PFNwYXJrbGVzIHNpemU9ezI0fSAvPjxoMj7miorotYTmlpnnlKjotbfmnaU8L2gyPjxwPuS7jui/meS7vei1hOaWmeWHuuWPke+8jOiuqeWtpuS5oOabtOiBmueEpuOAgjwvcD5cbiAgICAgICAgICA8TGluayB0bz17YC9pbnRha2U/Y29ycHVzPSR7aWR9YH0+PEJvb2tPcGVuIHNpemU9ezE3fSAvPueUn+aIkOWtpuS5oOiuoeWIkjxBcnJvd1VwUmlnaHQgc2l6ZT17MTV9IC8+PC9MaW5rPlxuICAgICAgICAgIDxMaW5rIHRvPXtgL3JlaGVhcnNhbD9jb3JwdXM9JHtpZH1gfT48TWVzc2FnZXNTcXVhcmUgc2l6ZT17MTd9IC8+55Sf5oiQ5qih5ouf6Z2i6K+VPEFycm93VXBSaWdodCBzaXplPXsxNX0gLz48L0xpbms+XG4gICAgICAgICAgPExpbmsgdG89e2Ava25vd2xlZGdlLWJhc2UvdG9vbHM/Y29ycHVzPSR7aWR9YH0+PFdyZW5jaCBzaXplPXsxN30gLz7miZPlvIDnn6Xor4blupPlt6Xlhbc8QXJyb3dVcFJpZ2h0IHNpemU9ezE1fSAvPjwvTGluaz48L3NlY3Rpb24+XG4gICAgICAgIDxzZWN0aW9uIGNsYXNzTmFtZT1cImtiLXBhbmVsXCI+PHNwYW4gY2xhc3NOYW1lPVwia2Itc2VjdGlvbi1sYWJlbFwiPjAzIC8gQ09OTkVDVElPTlM8L3NwYW4+PGgyPui1hOaWmeS9v+eUqOiusOW9lSA8c21hbGw+e2RldGFpbC51c2FnZXMubGVuZ3RofTwvc21hbGw+PC9oMj5cbiAgICAgICAgICB7IWRldGFpbC51c2FnZXMubGVuZ3RoICYmIDxwIGNsYXNzTmFtZT1cImtiLW11dGVkXCI+6L+Y5rKh5pyJ5YWz6IGU55qE6K6h5YiS5oiW6Z2i6K+V44CC5a6M5oiQ5Yib5bu65ZCO5Lya6Ieq5Yqo6K6w5b2V5Zyo6L+Z6YeM44CCPC9wPn1cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImtiLXVzYWdlLWxpc3RcIj57ZGV0YWlsLnVzYWdlcy5tYXAodSA9PiA8TGluayBrZXk9e3Uua2luZCArIHUuaWR9IHRvPXt1LmtpbmQgPT09ICdQTEFOJyA/IGAvcGxhbj9wbGFuSWQ9JHt1LmlkfWAgOiBgL3JlaGVhcnNhbC9oaXN0b3J5LyR7dS5pZH1gfT5cbiAgICAgICAgICAgIHt1LmtpbmQgPT09ICdQTEFOJyA/IDxCb29rT3BlbiBzaXplPXsxNn0gLz4gOiA8TWVzc2FnZXNTcXVhcmUgc2l6ZT17MTZ9IC8+fTxzcGFuPnt1LnRpdGxlfTxzbWFsbD57dS5raW5kID09PSAnUExBTicgPyAn5a2m5Lmg6K6h5YiSJyA6IHUua2luZCA9PT0gJ0lOVEVSVklFV19QTEFOJyA/ICfpgJrov4flhbPogZTorqHliJLkvb/nlKjnn6Xor4bngrknIDogJ+ebtOaOpeWfuuS6jui1hOaWmeWHuumimCd9PC9zbWFsbD48L3NwYW4+PEFycm93VXBSaWdodCBzaXplPXsxM30gLz48L0xpbms+KX08L2Rpdj5cbiAgICAgICAgPC9zZWN0aW9uPjxidXR0b24gY2xhc3NOYW1lPVwia2ItZGVsZXRlXCIgZGlzYWJsZWQ9eyEhYWN0aW9ufSBvbkNsaWNrPXsoKSA9PiB2b2lkIHJlbW92ZShkZXRhaWwuZG9jdW1lbnQpfT48VHJhc2gyIHNpemU9ezE0fSAvPuWIoOmZpOi/meS7vei1hOaWmTwvYnV0dG9uPlxuICAgICAgPC9hc2lkZT48L2Rpdj5cbiAgICA8Lz4gOiA8PlxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwia2Itc3RhdHNcIiBhcmlhLWxhYmVsPVwi55+l6K+G5bqT57uf6K6hXCI+XG4gICAgICAgIDxkaXY+PERhdGFiYXNlIHNpemU9ezE5fSAvPjxzcGFuPjxzdHJvbmc+e2l0ZW1zLmxlbmd0aH08L3N0cm9uZz48c21hbGw+5Lu95a2m5Lmg6LWE5paZPC9zbWFsbD48L3NwYW4+PC9kaXY+XG4gICAgICAgIDxkaXY+PExheWVycyBzaXplPXsxOX0gLz48c3Bhbj48c3Ryb25nPntpdGVtcy5yZWR1Y2UoKG4sIGl0ZW0pID0+IG4gKyAoaXRlbS5jaHVua0NvdW50ID8/IDApLCAwKX08L3N0cm9uZz48c21hbGw+5Liq5YaF5a6557Si5byVPC9zbWFsbD48L3NwYW4+PC9kaXY+XG4gICAgICAgIDxkaXY+PEJvb2tPcGVuIHNpemU9ezE5fSAvPjxzcGFuPjxzdHJvbmc+e2NoYXJzKGl0ZW1zLnJlZHVjZSgobiwgaXRlbSkgPT4gbiArIGl0ZW0uY2hhckNvdW50LCAwKSl9PC9zdHJvbmc+PHNtYWxsPuWPr+WkjeeUqOefpeivhuWGheWuuTwvc21hbGw+PC9zcGFuPjwvZGl2PlxuICAgICAgPC9zZWN0aW9uPlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJrYi1saWJyYXJ5LXRvb2xiYXJcIj48ZGl2PjxoMj7miJHnmoTotYTmlpk8L2gyPjxwPuaMieS4u+mimOaVtOeQhu+8jOaMieebruagh+S9v+eUqDwvcD48L2Rpdj5cbiAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT1cImtiLXNlYXJjaFwiPjxTZWFyY2ggc2l6ZT17MTZ9IC8+PGlucHV0IGFyaWEtbGFiZWw9XCLmkJzntKLnn6Xor4blupNcIiB2YWx1ZT17cXVlcnl9IG9uQ2hhbmdlPXtlID0+IHNldFF1ZXJ5KGUudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCLmkJzntKLotYTmlpnjgIHmoIfnrb7miJbnn6Xor4bngrlcIiAvPjwvbGFiZWw+XG4gICAgICAgIDxidXR0b24gY2xhc3NOYW1lPVwia2ItaWNvbi1idXR0b25cIiBhcmlhLWxhYmVsPVwi5Yi35paw55+l6K+G5bqTXCIgb25DbGljaz17KCkgPT4gdm9pZCBsb2FkKHRydWUpfT48UmVmcmVzaEN3IHNpemU9ezE2fSAvPjwvYnV0dG9uPjwvZGl2PlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJrYi1maWx0ZXJzXCIgYXJpYS1sYWJlbD1cIuefpeivhuS4u+mimOetm+mAiVwiPntbJ+WFqOmDqCcsIC4uLnRhZ3NdLm1hcCh0ID0+IDxidXR0b24ga2V5PXt0fSBjbGFzc05hbWU9e3RhZyA9PT0gdCA/ICdhY3RpdmUnIDogJyd9IG9uQ2xpY2s9eygpID0+IHNldFRhZyh0KX0+e3R9PC9idXR0b24+KX08L2Rpdj5cbiAgICAgIHshZmlsdGVyZWQubGVuZ3RoID8gPGRpdiBjbGFzc05hbWU9XCJrYi1lbXB0eVwiPjxCb29rT3BlbiBzaXplPXszNX0gLz48aDI+e2l0ZW1zLmxlbmd0aCA/ICfmsqHmnInljLnphY3nmoTotYTmlpknIDogJ+S9oOeahOS4i+S4gOS7veefpeivhu+8jOS7jui/memHjOW8gOWniyd9PC9oMj5cbiAgICAgICAgPHA+e2l0ZW1zLmxlbmd0aCA/ICfor5Xor5Xlhbbku5blhbPplK7or43miJbkuLvpopjjgIInIDogJ+eCueWHu+WPs+S4iuinkuKAnOWvvOWFpei1hOaWmeKAne+8jOaIluaKiuaWh+S7tuaLluWIsOatpOmhtemdouOAguaUr+aMgSBQREbjgIFET0NY44CBVFhU44CBTWFya2Rvd27jgIInfTwvcD5cbiAgICAgICAge2l0ZW1zLmxlbmd0aCA+IDAgJiYgPGJ1dHRvbiBjbGFzc05hbWU9XCJrYi10ZXh0LWxpbmtcIiBvbkNsaWNrPXsoKSA9PiB7IHNldFF1ZXJ5KCcnKTsgc2V0VGFnKCflhajpg6gnKTsgfX0+6YeN572u562b6YCJPC9idXR0b24+fTwvZGl2PlxuICAgICAgICA6IDxkaXYgY2xhc3NOYW1lPVwia2ItZG9jdW1lbnQtZ3JpZFwiPntmaWx0ZXJlZC5tYXAoKGl0ZW0sIGkpID0+IDxhcnRpY2xlIGNsYXNzTmFtZT17YGtiLWRvY3VtZW50IHRvbmUtJHtpICUgM31gfSBrZXk9e2l0ZW0uaWR9PlxuICAgICAgICAgIDxMaW5rIGNsYXNzTmFtZT1cImtiLWRvY3VtZW50LW1haW5cIiB0bz17YC9rbm93bGVkZ2UtYmFzZS8ke2l0ZW0uaWR9YH0+PGRpdiBjbGFzc05hbWU9XCJrYi1kb2N1bWVudC10b3BcIj48c3BhbiBjbGFzc05hbWU9XCJrYi1kb2N1bWVudC1pY29uXCI+PEZpbGVUZXh0IHNpemU9ezI0fSBzdHJva2VXaWR0aD17MS41fSAvPjwvc3Bhbj48c3BhbiBjbGFzc05hbWU9e2BrYi1zdGF0dXMgJHtpdGVtLmluZGV4U3RhdGU/LnRvTG93ZXJDYXNlKCl9YH0+e0lOREVYX0xBQkVMU1tpdGVtLmluZGV4U3RhdGUgPz8gJ1BFTkRJTkcnXX08L3NwYW4+PC9kaXY+XG4gICAgICAgICAgICA8aDM+e2l0ZW0ubmFtZX08L2gzPjxwPntpdGVtLm92ZXJ2aWV3IHx8ICfmraPlnKjmlbTnkIblhoXlrrnnroDku4vvvIzljp/mloflt7Lkv53lrZjjgIInfTwvcD48ZGl2IGNsYXNzTmFtZT1cImtiLXRhZ3NcIj57KGl0ZW0udG9waWNzID8/IFtdKS5zbGljZSgwLCA0KS5tYXAodCA9PiA8c3BhbiBrZXk9e3R9Pnt0fTwvc3Bhbj4pfXshaXRlbS50b3BpY3M/Lmxlbmd0aCAmJiA8c3Bhbj7lvoXmlbTnkIbnn6Xor4bngrk8L3NwYW4+fTwvZGl2PlxuICAgICAgICAgICAgPGZvb3Rlcj48c3Bhbj57ZGF0ZShpdGVtLmNyZWF0ZWRBdCl9IMK3IHtjaGFycyhpdGVtLmNoYXJDb3VudCl9PC9zcGFuPjxBcnJvd1VwUmlnaHQgc2l6ZT17MTd9IC8+PC9mb290ZXI+PC9MaW5rPlxuICAgICAgICA8L2FydGljbGU+KX08L2Rpdj59XG4gICAgICA8cCBjbGFzc05hbWU9XCJrYi1ib3R0b20tbm90ZVwiPuWNleS7veacgOWkpyAyMCBNQiAvIDIwIOS4h+Wtl+espiDCtyDotYTmlpnku4Xlr7nlvZPliY3otKblj7flj6/op4EgwrcgQUkg5qCH562+5LiO5pGY6KaB6K+357uT5ZCI5Y6f5paH5qC45a+5PC9wPlxuICAgIDwvPn1cbiAgPC9kaXY+O1xufVxuIl0sImZpbGUiOiJEOi8wMSBkb2N1bWVudHMvMDJDb2RlL1Byb2plY3QvU3ByaW5nIEJvb3QgNC4wX0phdmEgMjFfU3ByaW5nIEFJIDIuMC9pbnRlcnZpZXctaG9tZWdyb3duL2Zyb250ZW5kL3NyYy9wYWdlcy9Lbm93bGVkZ2VCYXNlUGFnZS50c3gifQ==

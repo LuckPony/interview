@@ -1,0 +1,345 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/ConversationStream.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb655ba4"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { GRADE_LABEL, VERDICT_LABEL, verdictClass } from "/src/lib/labels.ts";
+import { Markdown } from "/src/components/Markdown.tsx";
+import "/src/components/ConversationStream.css";
+function parseByConcept(json) {
+  if (!json) return [];
+  try {
+    return JSON.parse(json);
+  } catch {
+    return [];
+  }
+}
+export function ConversationStream({ conv, footer, showStem = true }) {
+  const flat = [];
+  for (const run of conv.runs) {
+    for (const t of run.turns) flat.push({ run, turn: t });
+  }
+  return /* @__PURE__ */ jsxDEV("div", { className: "chat-stream", children: [
+    showStem && /* @__PURE__ */ jsxDEV(ChatRow, { side: "ai", children: /* @__PURE__ */ jsxDEV(Bubble, { side: "ai", isStem: true, children: /* @__PURE__ */ jsxDEV(Markdown, { children: conv.stem }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 58,
+      columnNumber: 13
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 57,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 56,
+      columnNumber: 7
+    }, this),
+    flat.map(
+      ({ run, turn }) => /* @__PURE__ */ jsxDEV(
+        TurnBubbles,
+        {
+          run,
+          turn
+        },
+        `${run.runId}:${turn.round}`,
+        false,
+        {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+          lineNumber: 64,
+          columnNumber: 7
+        },
+        this
+      )
+    ),
+    footer && /* @__PURE__ */ jsxDEV("div", { className: "chat-footer", children: footer }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 71,
+      columnNumber: 18
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 54,
+    columnNumber: 5
+  }, this);
+}
+_c = ConversationStream;
+function TurnBubbles({ run, turn }) {
+  const showAsk = run.mode === "REHEARSAL" && turn.round > 0;
+  const showVerdict = run.mode === "LEARN" && turn.byConceptJson != null;
+  const showAnswer = !(run.mode === "REHEARSAL" && turn.round === 0);
+  return /* @__PURE__ */ jsxDEV(Fragment, { children: [
+    showAsk && /* @__PURE__ */ jsxDEV(ChatRow, { side: "ai", children: /* @__PURE__ */ jsxDEV(Bubble, { side: "ai", children: [
+      /* @__PURE__ */ jsxDEV("span", { className: "chat-round-tag", children: [
+        "追问 R",
+        turn.round
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 91,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV(Markdown, { children: turn.stem }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 92,
+        columnNumber: 13
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 90,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 89,
+      columnNumber: 7
+    }, this),
+    showAnswer && /* @__PURE__ */ jsxDEV(ChatRow, { side: "me", children: /* @__PURE__ */ jsxDEV(Bubble, { side: "me", children: turn.rawAnswer ?? "（未作答）" }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 98,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 97,
+      columnNumber: 7
+    }, this),
+    showVerdict && /* @__PURE__ */ jsxDEV(ChatRow, { side: "ai", children: /* @__PURE__ */ jsxDEV(Bubble, { side: "ai", isVerdict: true, children: /* @__PURE__ */ jsxDEV(VerdictPanel, { run, turn }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 104,
+      columnNumber: 13
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 103,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 102,
+      columnNumber: 7
+    }, this),
+    turn.tutorText && /* @__PURE__ */ jsxDEV(ChatRow, { side: "ai", children: /* @__PURE__ */ jsxDEV(Bubble, { side: "ai", isTutor: true, children: /* @__PURE__ */ jsxDEV("div", { className: "tutor-text", children: /* @__PURE__ */ jsxDEV(Markdown, { children: turn.tutorText }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 113,
+      columnNumber: 15
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 111,
+      columnNumber: 13
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 110,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 109,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 87,
+    columnNumber: 5
+  }, this);
+}
+_c2 = TurnBubbles;
+function ChatRow({
+  side,
+  children
+}) {
+  return /* @__PURE__ */ jsxDEV("div", { className: `chat-row chat-row-${side}`, children: [
+    side === "ai" && /* @__PURE__ */ jsxDEV(Avatar, { side: "ai" }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 131,
+      columnNumber: 25
+    }, this),
+    children,
+    side === "me" && /* @__PURE__ */ jsxDEV(Avatar, { side: "me" }, void 0, false, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 133,
+      columnNumber: 25
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 130,
+    columnNumber: 5
+  }, this);
+}
+_c3 = ChatRow;
+function Avatar({ side }) {
+  return /* @__PURE__ */ jsxDEV("div", { className: `chat-avatar chat-avatar-${side}`, children: /* @__PURE__ */ jsxDEV("span", { children: side === "ai" ? "AI" : "我" }, void 0, false, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 141,
+    columnNumber: 7
+  }, this) }, void 0, false, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 140,
+    columnNumber: 5
+  }, this);
+}
+_c4 = Avatar;
+function Bubble({
+  side,
+  isStem,
+  isVerdict,
+  isTutor,
+  children
+}) {
+  return /* @__PURE__ */ jsxDEV(
+    "div",
+    {
+      className: `chat-bubble chat-bubble-${side}${isStem ? " is-stem" : ""}${isVerdict ? " is-verdict" : ""}${isTutor ? " is-tutor" : ""}`,
+      children
+    },
+    void 0,
+    false,
+    {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 160,
+      columnNumber: 5
+    },
+    this
+  );
+}
+_c5 = Bubble;
+export function VerdictPanel({ run, turn }) {
+  const data = parseByConcept(turn.byConceptJson);
+  const visible = data.map((c) => ({ ...c, pointResults: c.pointResults.filter((p) => p.verdict?.toUpperCase() !== "NA") })).filter((c) => c.pointResults.length > 0);
+  const pointCount = visible.reduce((n, c) => n + c.pointResults.length, 0);
+  return /* @__PURE__ */ jsxDEV("div", { className: "verdict-panel", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "verdict-summary", children: [
+      /* @__PURE__ */ jsxDEV("span", { className: "verdict-score", children: turn.rawScore.toFixed(0) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 178,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("small", { children: "分" }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 179,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { className: `verdict-badge ${passedClass(turn.passed)}`, children: passedLabel(turn.passed) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 180,
+        columnNumber: 9
+      }, this),
+      run.turns.length > 0 && turn.round === Math.max(...run.turns.map((t) => t.round)) && run.rawScore != null && /* @__PURE__ */ jsxDEV("span", { className: "verdict-grade", children: [
+        "run 总评 · ",
+        runGradeLabel(run)
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 186,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 177,
+      columnNumber: 7
+    }, this),
+    pointCount > 0 && /* @__PURE__ */ jsxDEV("details", { className: "verdict-details", children: [
+      /* @__PURE__ */ jsxDEV("summary", { className: "verdict-details-summary", children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "verdict-details-icon", children: "▾" }, void 0, false, {
+          fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+          lineNumber: 192,
+          columnNumber: 13
+        }, this),
+        "评分标准（",
+        pointCount,
+        " 条）"
+      ] }, void 0, true, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 191,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("ul", { className: "verdict-points", children: visible.flatMap(
+        (c) => c.pointResults.map(
+          (p, i) => /* @__PURE__ */ jsxDEV("li", { children: [
+            /* @__PURE__ */ jsxDEV("span", { className: `verdict-dot ${verdictClass(p.verdict)}` }, void 0, false, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+              lineNumber: 199,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "point-body", children: [
+              /* @__PURE__ */ jsxDEV("span", { className: `verdict-tag ${verdictClass(p.verdict)}`, children: VERDICT_LABEL[p.verdict] ?? p.verdict }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+                lineNumber: 201,
+                columnNumber: 21
+              }, this),
+              /* @__PURE__ */ jsxDEV(Markdown, { className: "point-md", children: p.point }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+                lineNumber: 205,
+                columnNumber: 21
+              }, this),
+              p.evidence && /* @__PURE__ */ jsxDEV(Markdown, { className: "evidence-md", children: p.evidence }, void 0, false, {
+                fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+                lineNumber: 206,
+                columnNumber: 36
+              }, this)
+            ] }, void 0, true, {
+              fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+              lineNumber: 200,
+              columnNumber: 19
+            }, this)
+          ] }, `${c.conceptId}-${i}`, true, {
+            fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+            lineNumber: 198,
+            columnNumber: 11
+          }, this)
+        )
+      ) }, void 0, false, {
+        fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+        lineNumber: 195,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+      lineNumber: 190,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx",
+    lineNumber: 176,
+    columnNumber: 5
+  }, this);
+}
+_c6 = VerdictPanel;
+function passedClass(p) {
+  if (p === true) return "pass";
+  if (p === false) return "fail";
+  return "";
+}
+function passedLabel(p) {
+  if (p === true) return "通过";
+  if (p === false) return "未中";
+  return "—";
+}
+function runGradeLabel(run) {
+  return GRADE_LABEL[run.grade ?? ""] ?? run.grade ?? "—";
+}
+var _c, _c2, _c3, _c4, _c5, _c6;
+$RefreshReg$(_c, "ConversationStream");
+$RefreshReg$(_c2, "TurnBubbles");
+$RefreshReg$(_c3, "ChatRow");
+$RefreshReg$(_c4, "Avatar");
+$RefreshReg$(_c5, "Bubble");
+$RefreshReg$(_c6, "VerdictPanel");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/01 documents/02Code/Project/Spring Boot 4.0_Java 21_Spring AI 2.0/interview-homegrown/frontend/src/components/ConversationStream.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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ckIsRUFBRXNCLFNBQVMsSUFBSUgsQ0FBQyxJQUE1QjtBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQVVBO0FBQUEsUUFDRDtBQUFBLE1BQ0gsS0FmRjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBZ0JBO0FBQUEsU0FyQkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQXNCQTtBQUFBLE9BcENKO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0FzQ0E7QUFFSjtBQUFDSSxNQWhEZTFCO0FBa0RoQixTQUFTZSxZQUFZVCxHQUEyQjtBQUM5QyxNQUFJQSxNQUFNLEtBQU0sUUFBTztBQUN2QixNQUFJQSxNQUFNLE1BQU8sUUFBTztBQUN4QixTQUFPO0FBQ1Q7QUFDQSxTQUFTVyxZQUFZWCxHQUEyQjtBQUM5QyxNQUFJQSxNQUFNLEtBQU0sUUFBTztBQUN2QixNQUFJQSxNQUFNLE1BQU8sUUFBTztBQUN4QixTQUFPO0FBQ1Q7QUFDQSxTQUFTYyxjQUFjbkQsS0FBOEI7QUFDbkQsU0FBT2IsWUFBWWEsSUFBSTBELFNBQVMsRUFBRSxLQUFLMUQsSUFBSTBELFNBQVM7QUFDdEQ7QUFBQyxJQUFBaEQsSUFBQVMsS0FBQUksS0FBQUUsS0FBQUssS0FBQTJCO0FBQUEsYUFBQS9DLElBQUE7QUFBQSxhQUFBUyxLQUFBO0FBQUEsYUFBQUksS0FBQTtBQUFBLGFBQUFFLEtBQUE7QUFBQSxhQUFBSyxLQUFBO0FBQUEsYUFBQTJCLEtBQUEiLCJuYW1lcyI6WyJHUkFERV9MQUJFTCIsIlZFUkRJQ1RfTEFCRUwiLCJ2ZXJkaWN0Q2xhc3MiLCJNYXJrZG93biIsInBhcnNlQnlDb25jZXB0IiwianNvbiIsIkpTT04iLCJwYXJzZSIsIkNvbnZlcnNhdGlvblN0cmVhbSIsImNvbnYiLCJmb290ZXIiLCJzaG93U3RlbSIsImZsYXQiLCJydW4iLCJydW5zIiwidCIsInR1cm5zIiwicHVzaCIsInR1cm4iLCJzdGVtIiwibWFwIiwicnVuSWQiLCJyb3VuZCIsIl9jIiwiVHVybkJ1YmJsZXMiLCJzaG93QXNrIiwibW9kZSIsInNob3dWZXJkaWN0IiwiYnlDb25jZXB0SnNvbiIsInNob3dBbnN3ZXIiLCJyYXdBbnN3ZXIiLCJ0dXRvclRleHQiLCJfYzIiLCJDaGF0Um93Iiwic2lkZSIsImNoaWxkcmVuIiwiX2MzIiwiQXZhdGFyIiwiX2M0IiwiQnViYmxlIiwiaXNTdGVtIiwiaXNWZXJkaWN0IiwiaXNUdXRvciIsIl9jNSIsIlZlcmRpY3RQYW5lbCIsImRhdGEiLCJ2aXNpYmxlIiwiYyIsInBvaW50UmVzdWx0cyIsImZpbHRlciIsInAiLCJ2ZXJkaWN0IiwidG9VcHBlckNhc2UiLCJsZW5ndGgiLCJwb2ludENvdW50IiwicmVkdWNlIiwibiIsInJhd1Njb3JlIiwidG9GaXhlZCIsInBhc3NlZENsYXNzIiwicGFzc2VkIiwicGFzc2VkTGFiZWwiLCJNYXRoIiwibWF4IiwicnVuR3JhZGVMYWJlbCIsImZsYXRNYXAiLCJpIiwicG9pbnQiLCJldmlkZW5jZSIsImNvbmNlcHRJZCIsIl9jNiIsImdyYWRlIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkNvbnZlcnNhdGlvblN0cmVhbS50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgR1JBREVfTEFCRUwsIFZFUkRJQ1RfTEFCRUwsIHZlcmRpY3RDbGFzcyB9IGZyb20gJy4uL2xpYi9sYWJlbHMnO1xyXG5pbXBvcnQgdHlwZSB7IENvbnZlcnNhdGlvblZpZXcsIENvbnZlcnNhdGlvblJ1biwgQ29udmVyc2F0aW9uVHVybiwgQnlDb25jZXB0IH0gZnJvbSAnLi4vYXBpL3R5cGVzJztcclxuaW1wb3J0IHsgTWFya2Rvd24gfSBmcm9tICcuL01hcmtkb3duJztcclxuaW1wb3J0ICcuL0NvbnZlcnNhdGlvblN0cmVhbS5jc3MnO1xyXG5cclxuZnVuY3Rpb24gcGFyc2VCeUNvbmNlcHQoanNvbj86IHN0cmluZyB8IG51bGwpOiBCeUNvbmNlcHRbXSB7XHJcbiAgaWYgKCFqc29uKSByZXR1cm4gW107XHJcbiAgdHJ5IHtcclxuICAgIHJldHVybiBKU09OLnBhcnNlKGpzb24pIGFzIEJ5Q29uY2VwdFtdO1xyXG4gIH0gY2F0Y2gge1xyXG4gICAgcmV0dXJuIFtdO1xyXG4gIH1cclxufVxyXG5cclxuaW50ZXJmYWNlIFByb3BzIHtcclxuICBjb252OiBDb252ZXJzYXRpb25WaWV3O1xyXG4gIC8qKiDlupXpg6jliqjkvZzmnaHvvIhEcmlsbCDkvKDnu6fnu63ov73pl64gKyDlhpnnrJTorrDvvIxIaXN0b3J5IOS8oOe7p+e7ree7g+S5oO+8iSAqL1xyXG4gIGZvb3Rlcj86IFJlYWN0LlJlYWN0Tm9kZTtcclxuICAvKiog5piv5ZCm5pi+56S66aKY55uu5L2c5Li65byA5Zy65rCU5rOh77yIRHJpbGwg6aG26YOo5bey5Zu65a6a6aKY55uu77yM5LygIGZhbHNlIOmBv+WFjemHjeWkje+8iSAqL1xyXG4gIHNob3dTdGVtPzogYm9vbGVhbjtcclxufVxyXG5cclxuLyoqXHJcbiAqIOiBiuWkqeawlOazoeW9ouaAge+8mkFJIOmimOebriDihpIgTWUg5Zue562UIOKGkiBBSSDliKTliIYg4oaSICjov73pl64pIEFJIOaPkOmXriDihpIgTWUg562UIOKGkiBBSSDliKTliIYg4oCmXHJcbiAqIOS4jeWGjeaMiSBydW4g5YiG5Z2X77yb5omA5pyJ6L2u5qyh5oyJ5pe26Ze06aG65bqP5Liy6LW35p2l77yM5bem5Y+z5rCU5rOh5a+56b2Q44CCXHJcbiAqL1xyXG5leHBvcnQgZnVuY3Rpb24gQ29udmVyc2F0aW9uU3RyZWFtKHsgY29udiwgZm9vdGVyLCBzaG93U3RlbSA9IHRydWUgfTogUHJvcHMpIHtcclxuICAvLyDmiYHlubPljJbmiYDmnIkgcnVuIOeahOaJgOaciSB0dXJu77yM5oyJ5pe26Ze06aG65bqPXHJcbiAgY29uc3QgZmxhdDogeyBydW46IENvbnZlcnNhdGlvblJ1bjsgdHVybjogQ29udmVyc2F0aW9uVHVybiB9W10gPSBbXTtcclxuICBmb3IgKGNvbnN0IHJ1biBvZiBjb252LnJ1bnMpIHtcclxuICAgIGZvciAoY29uc3QgdCBvZiBydW4udHVybnMpIGZsYXQucHVzaCh7IHJ1biwgdHVybjogdCB9KTtcclxuICB9XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cImNoYXQtc3RyZWFtXCI+XHJcbiAgICAgIHtzaG93U3RlbSAmJiAoXHJcbiAgICAgICAgPENoYXRSb3cgc2lkZT1cImFpXCI+XHJcbiAgICAgICAgICA8QnViYmxlIHNpZGU9XCJhaVwiIGlzU3RlbT5cclxuICAgICAgICAgICAgPE1hcmtkb3duPntjb252LnN0ZW19PC9NYXJrZG93bj5cclxuICAgICAgICAgIDwvQnViYmxlPlxyXG4gICAgICAgIDwvQ2hhdFJvdz5cclxuICAgICAgKX1cclxuXHJcbiAgICAgIHtmbGF0Lm1hcCgoeyBydW4sIHR1cm4gfSkgPT4gKFxyXG4gICAgICAgIDxUdXJuQnViYmxlc1xyXG4gICAgICAgICAga2V5PXtgJHtydW4ucnVuSWR9OiR7dHVybi5yb3VuZH1gfVxyXG4gICAgICAgICAgcnVuPXtydW59XHJcbiAgICAgICAgICB0dXJuPXt0dXJufVxyXG4gICAgICAgIC8+XHJcbiAgICAgICkpfVxyXG5cclxuICAgICAge2Zvb3RlciAmJiA8ZGl2IGNsYXNzTmFtZT1cImNoYXQtZm9vdGVyXCI+e2Zvb3Rlcn08L2Rpdj59XHJcbiAgICA8L2Rpdj5cclxuICApO1xyXG59XHJcblxyXG5mdW5jdGlvbiBUdXJuQnViYmxlcyh7IHJ1biwgdHVybiB9OiB7IHJ1bjogQ29udmVyc2F0aW9uUnVuOyB0dXJuOiBDb252ZXJzYXRpb25UdXJuIH0pIHtcclxuICAvLyBSRUhFQVJTQUwg55qEIHJvdW5kID49IDEg5omN5pyJ54us56uL6L+96Zeu6aKY5bmy44CCXHJcbiAgLy8gTEVBUk4g6IGK5aSp55qE5q+P5LiqIHR1cm4uc3RlbSDpg73lj6rmmK/mlbDmja7lupPkuLrliKTliIbkv53lrZjnmoTljp/lp4vkuLvpl67popjvvIzkuI3og73ph43lpI3muLLmn5PmiJDigJzov73pl67igJ3jgIJcclxuICBjb25zdCBzaG93QXNrID0gcnVuLm1vZGUgPT09ICdSRUhFQVJTQUwnICYmIHR1cm4ucm91bmQgPiAwO1xyXG4gIC8vIOivhOWIhuWPquWcqOecn+ato+WIpOi/h+WIhueahOi9ruasoea4suafk++8iOWIpOWIhuS8muaKiiBieUNvbmNlcHRKc29uIOWGmeWbniB0dXJu77yJ44CCXHJcbiAgLy8g5bey5Yik5YiG6K6w5b2V44CM57un57ut5a+56K+d44CN6L+95Yqg55qE57qv5o+Q6Zeu6L2u5rKh5pyJ5Yik5YiG5pWw5o2u77yM5LiN5riy5p+T56m65Yik5YiG6Z2i5p2/44CCXHJcbiAgY29uc3Qgc2hvd1ZlcmRpY3QgPSBydW4ubW9kZSA9PT0gJ0xFQVJOJyAmJiB0dXJuLmJ5Q29uY2VwdEpzb24gIT0gbnVsbDtcclxuICAvLyBSRUhFQVJTQUwg55qEIHJvdW5kIDAg5piv5Y6f6aKY5Y2g5L2NIHN0ZW3vvIzkuI3mmK/nlKjmiLfkvZznrZTova7vvIzkuI3og73mmL7npLpcIu+8iOacquS9nOetlO+8iVwiXHJcbiAgY29uc3Qgc2hvd0Fuc3dlciA9ICEocnVuLm1vZGUgPT09ICdSRUhFQVJTQUwnICYmIHR1cm4ucm91bmQgPT09IDApO1xyXG5cclxuICByZXR1cm4gKFxyXG4gICAgPD5cclxuICAgICAge3Nob3dBc2sgJiYgKFxyXG4gICAgICAgIDxDaGF0Um93IHNpZGU9XCJhaVwiPlxyXG4gICAgICAgICAgPEJ1YmJsZSBzaWRlPVwiYWlcIj5cclxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiY2hhdC1yb3VuZC10YWdcIj7ov73pl64gUnt0dXJuLnJvdW5kfTwvc3Bhbj5cclxuICAgICAgICAgICAgPE1hcmtkb3duPnt0dXJuLnN0ZW19PC9NYXJrZG93bj5cclxuICAgICAgICAgIDwvQnViYmxlPlxyXG4gICAgICAgIDwvQ2hhdFJvdz5cclxuICAgICAgKX1cclxuICAgICAge3Nob3dBbnN3ZXIgJiYgKFxyXG4gICAgICAgIDxDaGF0Um93IHNpZGU9XCJtZVwiPlxyXG4gICAgICAgICAgPEJ1YmJsZSBzaWRlPVwibWVcIj57dHVybi5yYXdBbnN3ZXIgPz8gJ++8iOacquS9nOetlO+8iSd9PC9CdWJibGU+XHJcbiAgICAgICAgPC9DaGF0Um93PlxyXG4gICAgICApfVxyXG4gICAgICB7c2hvd1ZlcmRpY3QgJiYgKFxyXG4gICAgICAgIDxDaGF0Um93IHNpZGU9XCJhaVwiPlxyXG4gICAgICAgICAgPEJ1YmJsZSBzaWRlPVwiYWlcIiBpc1ZlcmRpY3Q+XHJcbiAgICAgICAgICAgIDxWZXJkaWN0UGFuZWwgcnVuPXtydW59IHR1cm49e3R1cm59IC8+XHJcbiAgICAgICAgICA8L0J1YmJsZT5cclxuICAgICAgICA8L0NoYXRSb3c+XHJcbiAgICAgICl9XHJcbiAgICAgIHt0dXJuLnR1dG9yVGV4dCAmJiAoXHJcbiAgICAgICAgPENoYXRSb3cgc2lkZT1cImFpXCI+XHJcbiAgICAgICAgICA8QnViYmxlIHNpZGU9XCJhaVwiIGlzVHV0b3I+XHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidHV0b3ItdGV4dFwiPlxyXG4gICAgICAgICAgICAgIHsvKiBtYXJrZG93biDmuLLmn5PvvJrku6PnoIHlnZcgLyDliJfooaggLyDliqDnspfnrYnnu5PmnoTmraPluLjlkYjnjrAgKi99XHJcbiAgICAgICAgICAgICAgPE1hcmtkb3duPnt0dXJuLnR1dG9yVGV4dH08L01hcmtkb3duPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDwvQnViYmxlPlxyXG4gICAgICAgIDwvQ2hhdFJvdz5cclxuICAgICAgKX1cclxuICAgIDwvPlxyXG4gICk7XHJcbn1cclxuXHJcbmZ1bmN0aW9uIENoYXRSb3coe1xyXG4gIHNpZGUsXHJcbiAgY2hpbGRyZW4sXHJcbn06IHtcclxuICBzaWRlOiAnYWknIHwgJ21lJztcclxuICBjaGlsZHJlbjogUmVhY3QuUmVhY3ROb2RlO1xyXG59KSB7XHJcbiAgcmV0dXJuIChcclxuICAgIDxkaXYgY2xhc3NOYW1lPXtgY2hhdC1yb3cgY2hhdC1yb3ctJHtzaWRlfWB9PlxyXG4gICAgICB7c2lkZSA9PT0gJ2FpJyAmJiA8QXZhdGFyIHNpZGU9XCJhaVwiIC8+fVxyXG4gICAgICB7Y2hpbGRyZW59XHJcbiAgICAgIHtzaWRlID09PSAnbWUnICYmIDxBdmF0YXIgc2lkZT1cIm1lXCIgLz59XHJcbiAgICA8L2Rpdj5cclxuICApO1xyXG59XHJcblxyXG5mdW5jdGlvbiBBdmF0YXIoeyBzaWRlIH06IHsgc2lkZTogJ2FpJyB8ICdtZScgfSkge1xyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT17YGNoYXQtYXZhdGFyIGNoYXQtYXZhdGFyLSR7c2lkZX1gfT5cclxuICAgICAgPHNwYW4+e3NpZGUgPT09ICdhaScgPyAnQUknIDogJ+aIkSd9PC9zcGFuPlxyXG4gICAgPC9kaXY+XHJcbiAgKTtcclxufVxyXG5cclxuZnVuY3Rpb24gQnViYmxlKHtcclxuICBzaWRlLFxyXG4gIGlzU3RlbSxcclxuICBpc1ZlcmRpY3QsXHJcbiAgaXNUdXRvcixcclxuICBjaGlsZHJlbixcclxufToge1xyXG4gIHNpZGU6ICdhaScgfCAnbWUnO1xyXG4gIGlzU3RlbT86IGJvb2xlYW47XHJcbiAgaXNWZXJkaWN0PzogYm9vbGVhbjtcclxuICBpc1R1dG9yPzogYm9vbGVhbjtcclxuICBjaGlsZHJlbjogUmVhY3QuUmVhY3ROb2RlO1xyXG59KSB7XHJcbiAgcmV0dXJuIChcclxuICAgIDxkaXZcclxuICAgICAgY2xhc3NOYW1lPXtgY2hhdC1idWJibGUgY2hhdC1idWJibGUtJHtzaWRlfSR7aXNTdGVtID8gJyBpcy1zdGVtJyA6ICcnfSR7aXNWZXJkaWN0ID8gJyBpcy12ZXJkaWN0JyA6ICcnfSR7aXNUdXRvciA/ICcgaXMtdHV0b3InIDogJyd9YH1cclxuICAgID5cclxuICAgICAge2NoaWxkcmVufVxyXG4gICAgPC9kaXY+XHJcbiAgKTtcclxufVxyXG5cclxuZXhwb3J0IGZ1bmN0aW9uIFZlcmRpY3RQYW5lbCh7IHJ1biwgdHVybiB9OiB7IHJ1bjogQ29udmVyc2F0aW9uUnVuOyB0dXJuOiBDb252ZXJzYXRpb25UdXJuIH0pIHtcclxuICBjb25zdCBkYXRhID0gcGFyc2VCeUNvbmNlcHQodHVybi5ieUNvbmNlcHRKc29uKTtcclxuICAvLyDmnKrogIPlr5/vvIhOQe+8ieeahOivhOWIhueCuSA9IOayoeiiq+WunumZhemXruWIsOeahOi/vemXruWGheWuue+8muS4jeiuoeWIhu+8jOS5n+S4jeWIl+WFpeivhOWIhue7huWImeWxleekulxyXG4gIGNvbnN0IHZpc2libGUgPSBkYXRhXHJcbiAgICAubWFwKChjKSA9PiAoeyAuLi5jLCBwb2ludFJlc3VsdHM6IGMucG9pbnRSZXN1bHRzLmZpbHRlcigocCkgPT4gcC52ZXJkaWN0Py50b1VwcGVyQ2FzZSgpICE9PSAnTkEnKSB9KSlcclxuICAgIC5maWx0ZXIoKGMpID0+IGMucG9pbnRSZXN1bHRzLmxlbmd0aCA+IDApO1xyXG4gIGNvbnN0IHBvaW50Q291bnQgPSB2aXNpYmxlLnJlZHVjZSgobiwgYykgPT4gbiArIGMucG9pbnRSZXN1bHRzLmxlbmd0aCwgMCk7XHJcbiAgcmV0dXJuIChcclxuICAgIDxkaXYgY2xhc3NOYW1lPVwidmVyZGljdC1wYW5lbFwiPlxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cInZlcmRpY3Qtc3VtbWFyeVwiPlxyXG4gICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInZlcmRpY3Qtc2NvcmVcIj57dHVybi5yYXdTY29yZS50b0ZpeGVkKDApfTwvc3Bhbj5cclxuICAgICAgICA8c21hbGw+5YiGPC9zbWFsbD5cclxuICAgICAgICA8c3BhbiBjbGFzc05hbWU9e2B2ZXJkaWN0LWJhZGdlICR7cGFzc2VkQ2xhc3ModHVybi5wYXNzZWQpfWB9PlxyXG4gICAgICAgICAge3Bhc3NlZExhYmVsKHR1cm4ucGFzc2VkKX1cclxuICAgICAgICA8L3NwYW4+XHJcbiAgICAgICAge3J1bi50dXJucy5sZW5ndGggPiAwICYmXHJcbiAgICAgICAgICB0dXJuLnJvdW5kID09PSBNYXRoLm1heCguLi5ydW4udHVybnMubWFwKCh0KSA9PiB0LnJvdW5kKSkgJiZcclxuICAgICAgICAgIHJ1bi5yYXdTY29yZSAhPSBudWxsICYmIChcclxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidmVyZGljdC1ncmFkZVwiPnJ1biDmgLvor4Qgwrcge3J1bkdyYWRlTGFiZWwocnVuKX08L3NwYW4+XHJcbiAgICAgICAgICApfVxyXG4gICAgICA8L2Rpdj5cclxuICAgICAge3BvaW50Q291bnQgPiAwICYmIChcclxuICAgICAgICA8ZGV0YWlscyBjbGFzc05hbWU9XCJ2ZXJkaWN0LWRldGFpbHNcIj5cclxuICAgICAgICAgIDxzdW1tYXJ5IGNsYXNzTmFtZT1cInZlcmRpY3QtZGV0YWlscy1zdW1tYXJ5XCI+XHJcbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInZlcmRpY3QtZGV0YWlscy1pY29uXCI+4pa+PC9zcGFuPlxyXG4gICAgICAgICAgICDor4TliIbmoIflh4bvvIh7cG9pbnRDb3VudH0g5p2h77yJXHJcbiAgICAgICAgICA8L3N1bW1hcnk+XHJcbiAgICAgICAgICA8dWwgY2xhc3NOYW1lPVwidmVyZGljdC1wb2ludHNcIj5cclxuICAgICAgICAgICAge3Zpc2libGUuZmxhdE1hcCgoYykgPT5cclxuICAgICAgICAgICAgICBjLnBvaW50UmVzdWx0cy5tYXAoKHAsIGkpID0+IChcclxuICAgICAgICAgICAgICAgIDxsaSBrZXk9e2Ake2MuY29uY2VwdElkfS0ke2l9YH0+XHJcbiAgICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT17YHZlcmRpY3QtZG90ICR7dmVyZGljdENsYXNzKHAudmVyZGljdCl9YH0gLz5cclxuICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJwb2ludC1ib2R5XCI+XHJcbiAgICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPXtgdmVyZGljdC10YWcgJHt2ZXJkaWN0Q2xhc3MocC52ZXJkaWN0KX1gfT5cclxuICAgICAgICAgICAgICAgICAgICAgIHtWRVJESUNUX0xBQkVMW3AudmVyZGljdF0gPz8gcC52ZXJkaWN0fVxyXG4gICAgICAgICAgICAgICAgICAgIDwvc3Bhbj5cclxuICAgICAgICAgICAgICAgICAgICB7Lyog6K+E5YiG54K577yI6K6y6Kej77yJ5LiO5L2Q6K+B77yI6K+B5o2u77yJ5Z2H5Li6IEFJIOeUn+aIkO+8jOWPr+iDveWQq+WKoOeylyAvIOS7o+eggSAvIOWIl+ihqO+8jOe7n+S4gOi1sCBtYXJrZG93biDmuLLmn5MgKi99XHJcbiAgICAgICAgICAgICAgICAgICAgPE1hcmtkb3duIGNsYXNzTmFtZT1cInBvaW50LW1kXCI+e3AucG9pbnR9PC9NYXJrZG93bj5cclxuICAgICAgICAgICAgICAgICAgICB7cC5ldmlkZW5jZSAmJiA8TWFya2Rvd24gY2xhc3NOYW1lPVwiZXZpZGVuY2UtbWRcIj57cC5ldmlkZW5jZX08L01hcmtkb3duPn1cclxuICAgICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgICA8L2xpPlxyXG4gICAgICAgICAgICAgICkpLFxyXG4gICAgICAgICAgICApfVxyXG4gICAgICAgICAgPC91bD5cclxuICAgICAgICA8L2RldGFpbHM+XHJcbiAgICAgICl9XHJcbiAgICA8L2Rpdj5cclxuICApO1xyXG59XHJcblxyXG5mdW5jdGlvbiBwYXNzZWRDbGFzcyhwOiBib29sZWFuIHwgbnVsbCk6IHN0cmluZyB7XHJcbiAgaWYgKHAgPT09IHRydWUpIHJldHVybiAncGFzcyc7XHJcbiAgaWYgKHAgPT09IGZhbHNlKSByZXR1cm4gJ2ZhaWwnO1xyXG4gIHJldHVybiAnJztcclxufVxyXG5mdW5jdGlvbiBwYXNzZWRMYWJlbChwOiBib29sZWFuIHwgbnVsbCk6IHN0cmluZyB7XHJcbiAgaWYgKHAgPT09IHRydWUpIHJldHVybiAn6YCa6L+HJztcclxuICBpZiAocCA9PT0gZmFsc2UpIHJldHVybiAn5pyq5LitJztcclxuICByZXR1cm4gJ+KAlCc7XHJcbn1cclxuZnVuY3Rpb24gcnVuR3JhZGVMYWJlbChydW46IENvbnZlcnNhdGlvblJ1bik6IHN0cmluZyB7XHJcbiAgcmV0dXJuIEdSQURFX0xBQkVMW3J1bi5ncmFkZSA/PyAnJ10gPz8gcnVuLmdyYWRlID8/ICfigJQnO1xyXG59XHJcbiJdLCJmaWxlIjoiRDovMDEgZG9jdW1lbnRzLzAyQ29kZS9Qcm9qZWN0L1NwcmluZyBCb290IDQuMF9KYXZhIDIxX1NwcmluZyBBSSAyLjAvaW50ZXJ2aWV3LWhvbWVncm93bi9mcm9udGVuZC9zcmMvY29tcG9uZW50cy9Db252ZXJzYXRpb25TdHJlYW0udHN4In0=
