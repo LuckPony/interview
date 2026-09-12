@@ -59,3 +59,6 @@ pics_thumbs/
 
 ### 官网部署构建产物（本地组装，勿入库）###
 deploy/web-build/
+
+### 官网截图临时浏览器配置（只用于本地视觉验收，勿入库）###
+deploy/.site-preview/

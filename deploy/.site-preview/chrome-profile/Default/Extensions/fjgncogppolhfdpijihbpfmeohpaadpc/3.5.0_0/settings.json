@@ -1,6 +1,0 @@
-{
-  "CLICK_HOST": "https://click.endnote.com",
-  "ANALYTICS_ENABLED": true,
-  "MALCOLM_HOST": "https://malcolm.endnote.com",
-  "SNOWPLOW_URL": "https://snowplow-collector.userintel.prod.sp.aws.clarivate.net"
-}
