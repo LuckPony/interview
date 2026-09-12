@@ -1,17 +1,16 @@
 # 面霸生产环境：PostgreSQL、Redis、MinIO、Spring Boot 后端和 Web 前端。
-# PostgreSQL/Redis/MinIO 如需公网访问，请务必在云平台设置来源 IP 白名单。
-version: "3.8"
-
+# PostgreSQL、Redis、MinIO 只允许从服务器本机或 Compose 内网访问。
+# 管理端连接数据库请使用 SSH 隧道，不要把基础设施端口直接暴露到公网。
 services:
   postgres:
     image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}"
       POSTGRES_DB: ${POSTGRES_DB:-interview}
     ports:
-      - "${POSTGRES_BIND_ADDRESS:-0.0.0.0}:${POSTGRES_HOST_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,27 +22,32 @@ services:
   redis:
     image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}"
     ports:
-      - "${REDIS_BIND_ADDRESS:-0.0.0.0}:${REDIS_HOST_PORT:-6379}:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   minio:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?请在 .env 设置 MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?请在 .env 设置 MINIO_ROOT_PASSWORD}"
     ports:
-      - "${MINIO_BIND_ADDRESS:-0.0.0.0}:${MINIO_API_HOST_PORT:-9000}:9000"
-      - "${MINIO_BIND_ADDRESS:-0.0.0.0}:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+      - "${MINIO_BIND_ADDRESS:-127.0.0.1}:${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_BIND_ADDRESS:-127.0.0.1}:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -64,8 +68,8 @@ services:
         mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
         mc mb --ignore-existing "local/$${MINIO_BUCKET}"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?请在 .env 设置 MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?请在 .env 设置 MINIO_ROOT_PASSWORD}"
       MINIO_BUCKET: ${APP_STORAGE_BUCKET:-interview}
 
   backend:
@@ -80,17 +84,18 @@ services:
     environment:
       APP_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-interview}
       APP_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
-      APP_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+      APP_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}"
       APP_DATASOURCE_DRIVER: org.postgresql.Driver
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}"
       APP_STORAGE_ENDPOINT: http://minio:9000
       APP_STORAGE_MODE: ${APP_STORAGE_MODE:-minio}
       APP_STORAGE_LOCAL_DIR: /app/data/files
-      APP_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      APP_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      APP_STORAGE_ACCESS_KEY: "${MINIO_ROOT_USER:?请在 .env 设置 MINIO_ROOT_USER}"
+      APP_STORAGE_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?请在 .env 设置 MINIO_ROOT_PASSWORD}"
       APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
       APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}

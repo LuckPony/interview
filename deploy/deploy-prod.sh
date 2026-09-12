@@ -10,6 +10,15 @@ DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.prod.yml}"
 BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
 SKIP_BACKUP="${SKIP_BACKUP:-false}"
+backup_tmp=""
+
+cleanup_backup_tmp() {
+  if [[ -n "$backup_tmp" && -f "$backup_tmp" ]]; then
+    rm -f -- "$backup_tmp"
+  fi
+}
+
+trap cleanup_backup_tmp EXIT
 
 cd "$DEPLOY_DIR"
 
@@ -26,6 +35,8 @@ if [[ ! -f .env ]]; then
   echo "ERROR: $DEPLOY_DIR/.env does not exist" >&2
   exit 1
 fi
+
+chmod 600 .env
 
 # Keep this list aligned with the image fields in docker-compose.prod.yml.
 IMAGES=(
@@ -51,15 +62,41 @@ done
 
 "${COMPOSE[@]}" config >/dev/null
 
-if [[ "$SKIP_BACKUP" != "true" ]] && "${COMPOSE[@]}" ps -q postgres | grep -q .; then
+if [[ "$SKIP_BACKUP" != "true" ]]; then
+  if ! "${COMPOSE[@]}" ps -q postgres | grep -q .; then
+    echo "ERROR: PostgreSQL is not running; deployment aborted because no backup can be created" >&2
+    echo "Set SKIP_BACKUP=true only for an intentional first-time deployment" >&2
+    exit 1
+  fi
+
   mkdir -p "$BACKUP_DIR"
   chmod 700 "$BACKUP_DIR"
   timestamp="$(date +%Y%m%d-%H%M%S)"
   backup="$BACKUP_DIR/interview-before-deploy-$timestamp.dump"
+  backup_tmp="$backup.tmp"
   echo "[backup] $backup"
-  "${COMPOSE[@]}" exec -T postgres sh -c \
-    'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup"
+
+  rm -f -- "$backup_tmp"
+  if ! "${COMPOSE[@]}" exec -T postgres sh -c \
+      'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_tmp"; then
+    echo "ERROR: PostgreSQL backup failed; verify that POSTGRES_DB exists and credentials are valid" >&2
+    exit 1
+  fi
+
+  if [[ ! -s "$backup_tmp" ]]; then
+    echo "ERROR: PostgreSQL backup is empty; deployment aborted" >&2
+    exit 1
+  fi
+
+  if ! "${COMPOSE[@]}" exec -T postgres pg_restore --list < "$backup_tmp" >/dev/null; then
+    echo "ERROR: PostgreSQL backup cannot be read by pg_restore; deployment aborted" >&2
+    exit 1
+  fi
+
+  mv -- "$backup_tmp" "$backup"
+  backup_tmp=""
   chmod 600 "$backup"
+  echo "[backup verified] $backup ($(stat -c '%s' "$backup") bytes)"
 fi
 
 # Build only local application images. Docker reuses cached base images/layers and

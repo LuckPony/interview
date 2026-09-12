@@ -243,6 +243,28 @@ ssh -i "/c/Users/26680/.ssh/id_ed25519" -p 37777 root@103.236.92.40 \
 - 不要用仓库根目录的 `docker-compose.prod.yml` 覆盖服务器 `/opt/mianba/docker-compose.yml`。前者用于从完整源码构建，后者用于服务器上的产物式目录 `backend/` 和 `web-image/`。
 - 服务器 `.env` 或 Compose 修改后，需要重新创建相关容器才会生效。
 
+### 数据库与中间件安全配置
+
+生产环境必须在服务器 `.env` 中显式设置互不重复的 `POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`MINIO_ROOT_PASSWORD` 和 `APP_JWT_SECRET`，不要使用 `.env.example` 中的占位内容。PostgreSQL、Redis 和 MinIO 只能绑定服务器回环地址：
+
+```env
+POSTGRES_BIND_ADDRESS=127.0.0.1
+REDIS_BIND_ADDRESS=127.0.0.1
+MINIO_BIND_ADDRESS=127.0.0.1
+```
+
+执行 `docker compose -f docker-compose.yml config --quiet` 检查配置后，重新创建相关容器。Navicat 使用 SSH 隧道连接服务器的 `127.0.0.1:5432`，不要为了图方便将 PostgreSQL 改回 `0.0.0.0`。Redis 生产配置必须启用 `requirepass`，后端同时映射 `SPRING_DATA_REDIS_PASSWORD`；健康检查也必须携带该密码。
+
+```bash
+docker compose -f docker-compose.yml up -d --force-recreate postgres redis minio backend
+docker compose -f docker-compose.yml up --force-recreate --no-deps minio-init
+ss -lntp | grep -E ':(5432|6379|9000|9001)'
+```
+
+最后一条命令只能看到 `127.0.0.1`，不能看到 `0.0.0.0`。生产 Compose 现在也以 `127.0.0.1` 为默认绑定地址，并强制要求关键密码存在，避免 `.env` 漏配时退回弱密码或重新暴露公网。
+
+部署前数据库备份先写入 `.tmp` 文件；只有 `pg_dump` 成功、文件非空且能被 `pg_restore --list` 读取时，才会原子重命名为正式 `.dump`。任一步失败都会删除临时文件并中止部署，不再留下容易被误认为有效备份的 0 字节文件。PostgreSQL 未运行时也会默认中止部署；仅首次创建全新环境时才可显式设置 `SKIP_BACKUP=true`。数据库备份还应定期复制到另一台机器或私有对象存储，不能只留在同一台服务器。
+
 ### 知识库管理与工具库更新说明
 
 - 「知识库管理」统一展示已导入资料、主题标签和章节索引；右上角「导入资料」直接选择文件，也支持拖拽。单份不超过 20 MB，解析文字不超过 20 万字符。

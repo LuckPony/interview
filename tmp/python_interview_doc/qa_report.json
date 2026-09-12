@@ -1,0 +1,176 @@
+[
+  {
+    "page": 1,
+    "chars": 1070,
+    "start": "夯智交互 Python 后端实习生面试问答",
+    "bottom": 762.669
+  },
+  {
+    "page": 2,
+    "chars": 1049,
+    "start": "01 岗位信号与面试官视角",
+    "bottom": 762.669
+  },
+  {
+    "page": 3,
+    "chars": 1197,
+    "start": "02 简历匹配度与回答边界",
+    "bottom": 762.669
+  },
+  {
+    "page": 4,
+    "chars": 1079,
+    "start": "03 自我介绍与项目主线",
+    "bottom": 762.669
+  },
+  {
+    "page": 5,
+    "chars": 808,
+    "start": "04 Python 对象与资源管理",
+    "bottom": 762.669
+  },
+  {
+    "page": 6,
+    "chars": 841,
+    "start": "05 Python 数据结构与并发选择",
+    "bottom": 762.669
+  },
+  {
+    "page": 7,
+    "chars": 868,
+    "start": "06 类型系统与 Pydantic",
+    "bottom": 762.669
+  },
+  {
+    "page": 8,
+    "chars": 923,
+    "start": "07 Asyncio 与 FastAPI 异步边界",
+    "bottom": 762.669
+  },
+  {
+    "page": 9,
+    "chars": 865,
+    "start": "08 FastAPI Flask 与 Django",
+    "bottom": 762.669
+  },
+  {
+    "page": 10,
+    "chars": 770,
+    "start": "09 HTTP 与 REST API",
+    "bottom": 762.669
+  },
+  {
+    "page": 11,
+    "chars": 828,
+    "start": "10 PostgreSQL 与 SQLAlchemy",
+    "bottom": 762.669
+  },
+  {
+    "page": 12,
+    "chars": 840,
+    "start": "11 Redis 一致性与并发控制",
+    "bottom": 762.669
+  },
+  {
+    "page": 13,
+    "chars": 847,
+    "start": "12 Celery 与异步任务",
+    "bottom": 762.669
+  },
+  {
+    "page": 14,
+    "chars": 827,
+    "start": "13 Pytest 与自动化测试",
+    "bottom": 762.669
+  },
+  {
+    "page": 15,
+    "chars": 822,
+    "start": "14 Debug 与可观测性",
+    "bottom": 762.669
+  },
+  {
+    "page": 16,
+    "chars": 737,
+    "start": "15 性能 稳定性与第三方依赖",
+    "bottom": 762.669
+  },
+  {
+    "page": 17,
+    "chars": 784,
+    "start": "16 Docker 云平台与发布",
+    "bottom": 762.669
+  },
+  {
+    "page": 18,
+    "chars": 819,
+    "start": "17 Coding Harness 工作方式",
+    "bottom": 762.669
+  },
+  {
+    "page": 19,
+    "chars": 745,
+    "start": "18 AI 生成代码的验证与责任",
+    "bottom": 762.669
+  },
+  {
+    "page": 20,
+    "chars": 874,
+    "start": "19 LLM API 与结构化输出",
+    "bottom": 762.669
+  },
+  {
+    "page": 21,
+    "chars": 803,
+    "start": "20 Agent Tool Calling 与安全",
+    "bottom": 762.669
+  },
+  {
+    "page": 22,
+    "chars": 886,
+    "start": "21 RAG Context Engineering 与评测",
+    "bottom": 762.669
+  },
+  {
+    "page": 23,
+    "chars": 746,
+    "start": "22 Agent 实习项目深挖",
+    "bottom": 762.669
+  },
+  {
+    "page": 24,
+    "chars": 780,
+    "start": "23 慧学教育平台深挖",
+    "bottom": 762.669
+  },
+  {
+    "page": 25,
+    "chars": 914,
+    "start": "24 Homegrown 的可迁移能力",
+    "bottom": 762.669
+  },
+  {
+    "page": 26,
+    "chars": 1087,
+    "start": "25 现场 Python SQL 与代码题",
+    "bottom": 762.669
+  },
+  {
+    "page": 27,
+    "chars": 780,
+    "start": "26 系统设计 AI 代码问题处理服务",
+    "bottom": 762.669
+  },
+  {
+    "page": 28,
+    "chars": 1192,
+    "start": "27 行为面试 模拟流程与准备清单",
+    "bottom": 762.669
+  },
+  {
+    "page": 29,
+    "chars": 1800,
+    "start": "28 资料来源与证据定位",
+    "bottom": 762.669
+  }
+]

@@ -14,16 +14,17 @@ spring:
       enabled: true
   datasource:
     # PostgreSQL 是唯一运行时数据库；本地开发默认连接 docker-compose.dev.yml 中的 iv-postgres。
-    url: ${APP_DATASOURCE_URL:jdbc:postgresql://103.236.92.40:5454/interview}
+    url: ${APP_DATASOURCE_URL:jdbc:postgresql://localhost:5432/interview}
     username: ${APP_DATASOURCE_USERNAME:postgres}
     password: ${APP_DATASOURCE_PASSWORD:123456}
     driver-class-name: ${APP_DATASOURCE_DRIVER:org.postgresql.Driver}
   data:
     redis:
-      # 本地开发默认访问云端 Redis
+      # 本地开发默认访问 docker-compose.dev.yml 中的 Redis，生产环境由环境变量覆盖。
       # Docker 部署时由 SPRING_DATA_REDIS_HOST=redis 覆盖
-      host: ${SPRING_DATA_REDIS_HOST:103.236.92.40}
-      port: ${SPRING_DATA_REDIS_PORT:31442}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
       timeout: 3000ms
 
       lettuce:

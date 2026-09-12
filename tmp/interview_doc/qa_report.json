@@ -1,0 +1,164 @@
+[
+  {
+    "page": 1,
+    "chars": 987,
+    "start": "程多多 Java 与 Agent 应用工程师面试问答",
+    "bottom": 762.669
+  },
+  {
+    "page": 2,
+    "chars": 1068,
+    "start": "01 公司业务与岗位判断",
+    "bottom": 762.669
+  },
+  {
+    "page": 3,
+    "chars": 1303,
+    "start": "02 简历表述与当前代码核对",
+    "bottom": 762.669
+  },
+  {
+    "page": 4,
+    "chars": 1211,
+    "start": "03 自我介绍与项目总览",
+    "bottom": 762.669
+  },
+  {
+    "page": 5,
+    "chars": 1034,
+    "start": "04 学习流程与确定性控制",
+    "bottom": 762.669
+  },
+  {
+    "page": 6,
+    "chars": 1008,
+    "start": "05 选题去重与评分",
+    "bottom": 762.669
+  },
+  {
+    "page": 7,
+    "chars": 1087,
+    "start": "06 模型适配与输出校验",
+    "bottom": 762.669
+  },
+  {
+    "page": 8,
+    "chars": 1047,
+    "start": "07 重试预算与异步上下文",
+    "bottom": 762.669
+  },
+  {
+    "page": 9,
+    "chars": 1065,
+    "start": "08 SSE 与端到端流式通信",
+    "bottom": 762.669
+  },
+  {
+    "page": 10,
+    "chars": 992,
+    "start": "09 Redis 会话与并发提交",
+    "bottom": 762.669
+  },
+  {
+    "page": 11,
+    "chars": 1079,
+    "start": "10 文件知识库与项目安全",
+    "bottom": 762.669
+  },
+  {
+    "page": 12,
+    "chars": 1210,
+    "start": "11 Agent 框架与工具调用",
+    "bottom": 762.669
+  },
+  {
+    "page": 13,
+    "chars": 903,
+    "start": "12 记忆管理与 Prompt 设计",
+    "bottom": 762.669
+  },
+  {
+    "page": 14,
+    "chars": 867,
+    "start": "13 RAG 检索与知识更新",
+    "bottom": 762.669
+  },
+  {
+    "page": 15,
+    "chars": 1008,
+    "start": "14 商旅预订 Agent 系统设计",
+    "bottom": 762.669
+  },
+  {
+    "page": 16,
+    "chars": 954,
+    "start": "15 交易幂等与效果评测",
+    "bottom": 762.669
+  },
+  {
+    "page": 17,
+    "chars": 1150,
+    "start": "16 Java 并发与虚拟线程",
+    "bottom": 762.669
+  },
+  {
+    "page": 18,
+    "chars": 918,
+    "start": "17 JVM 与故障排查",
+    "bottom": 762.669
+  },
+  {
+    "page": 19,
+    "chars": 1142,
+    "start": "18 Spring 与接口设计",
+    "bottom": 762.669
+  },
+  {
+    "page": 20,
+    "chars": 1199,
+    "start": "19 MySQL 索引与事务",
+    "bottom": 762.669
+  },
+  {
+    "page": 21,
+    "chars": 984,
+    "start": "20 缓存 结算与部署",
+    "bottom": 762.669
+  },
+  {
+    "page": 22,
+    "chars": 1182,
+    "start": "21 文献 RAG 与教育平台追问",
+    "bottom": 762.669
+  },
+  {
+    "page": 23,
+    "chars": 1007,
+    "start": "22 实习与沟通能力",
+    "bottom": 762.669
+  },
+  {
+    "page": 24,
+    "chars": 1268,
+    "start": "23 现场 SQL 与代码题",
+    "bottom": 762.669
+  },
+  {
+    "page": 25,
+    "chars": 890,
+    "start": "24 模拟面试与准备清单",
+    "bottom": 762.669
+  },
+  {
+    "page": 26,
+    "chars": 1078,
+    "start": "25 大模型基础与优化选择",
+    "bottom": 762.669
+  },
+  {
+    "page": 27,
+    "chars": 1966,
+    "start": "26 来源与代码定位",
+    "bottom": 762.669
+  }
+]
