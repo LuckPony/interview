@@ -136,7 +136,9 @@ for ((i=1; i<=60; i++)); do
   sleep 2
 done
 curl -fsS http://127.0.0.1:23333/actuator/health >/dev/null
-curl -fsS http://127.0.0.1:18080/actuator/health >/dev/null
+curl -fsS \
+  -H "Host: mianba.vip" \
+  http://127.0.0.1:18080/actuator/health >/dev/null
 
 "${COMPOSE[@]}" ps
 echo "DEPLOY_OK"
