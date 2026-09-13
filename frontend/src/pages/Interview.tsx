@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CorpusPicker } from '../components/CorpusPicker';
 import {
   Mic, Type, FileText, BookOpen, ChevronRight, X,
@@ -73,6 +73,7 @@ function fmtTime(sec: number): string {
 const SESSION_KEY = 'yan.interview.sessionId';
 
 export function Interview() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialCorpus = Number(searchParams.get('corpus'));
   const [corpusId, setCorpusId] = useState<number | null>(Number.isSafeInteger(initialCorpus) && initialCorpus > 0 ? initialCorpus : null);
@@ -94,6 +95,7 @@ export function Interview() {
   const [question, setQuestion] = useState<CurrentQuestion | null>(null);
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
+  const [quitting, setQuitting] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
   const [recogText, setRecogText] = useState('');
   const [listening, setListening] = useState(false);
@@ -230,15 +232,21 @@ export function Interview() {
     }
   };
 
-  const quit = () => {
-    if (!window.confirm('退出后计时仍会继续，计时结束将自动结束面试并进入待评估。确定退出吗？')) return;
-    if (recRef.current) recRef.current.stop();
-    sessionStorage.removeItem(SESSION_KEY);
-    setPhase('config');
-    setSession(null);
-    setQuestion(null);
-    setAnswer('');
+  const quit = async () => {
+    if (!session || quitting) return;
+    if (!window.confirm('退出后将立即结束本场面试，但不会自动评估。你可以稍后在面试记录中评估，或取消这次记录。确定退出吗？')) return;
+    recRef.current?.stop();
+    window.speechSynthesis?.cancel();
+    setQuitting(true);
     setErr('');
+    try {
+      await interviewApi.finishWithoutEvaluation(session.id);
+      sessionStorage.removeItem(SESSION_KEY);
+      navigate('/rehearsal/history', { replace: true });
+    } catch (e) {
+      setErr('结束面试失败：' + msg(e));
+      setQuitting(false);
+    }
   };
 
   const toggleListening = () => {
@@ -295,7 +303,8 @@ export function Interview() {
           mode={mode}
           answer={answer}
           setAnswer={setAnswer}
-          busy={busy}
+          busy={busy || quitting}
+          quitting={quitting}
           onSubmit={submit}
           onComplete={() => completeNow(session.id)}
           onQuit={quit}
@@ -461,6 +470,7 @@ function InterviewConfig(props: {
 function InterviewRun(props: {
   session: InterviewSession; question: CurrentQuestion | null; mode: InterviewMode;
   answer: string; setAnswer: (s: string) => void; busy: boolean;
+  quitting: boolean;
   onSubmit: () => void; onComplete: () => void; onQuit: () => void;
   finished: boolean; left: number;
   listening: boolean; recogText: string;
@@ -493,8 +503,9 @@ function InterviewRun(props: {
             </button>
           )}
           {!finished && (
-            <button className="iv-quit" onClick={props.onQuit}>
-              <X size={14} strokeWidth={2} /> 退出
+            <button className="iv-quit" onClick={props.onQuit} disabled={props.quitting}>
+              {props.quitting ? <Loader2 size={14} className="spin" /> : <X size={14} strokeWidth={2} />}
+              {props.quitting ? '结束中…' : '退出'}
             </button>
           )}
         </div>
@@ -522,11 +533,13 @@ function InterviewRun(props: {
         <Card className="iv-question-card">
           <span className="eyebrow">面试官</span>
           <div className="iv-question-text">
-            {left <= 0 ? '面试时间已到，本场面试结束。' : '所有问题已作答完毕，本场面试结束。'}
+            {left <= 0 ? '面试时间已到，本场面试结束。' : '本场答题已结束，你可以现在评估，也可以稍后在面试记录中处理。'}
           </div>
           <div className="iv-answer-foot" style={{ marginTop: 'var(--s-4)' }}>
-            <span className="iv-answer-hint">评估后将生成总分与逐题反馈</span>
-            <Button onClick={props.onComplete} disabled={props.busy}>
+            <span className="iv-answer-hint">
+              {session.answers.length > 0 ? '评估后将生成总分与逐题反馈' : '尚未提交回答，可前往面试记录取消此次记录'}
+            </span>
+            <Button onClick={props.onComplete} disabled={props.busy || session.answers.length === 0}>
               {props.busy ? <><Loader2 size={15} className="spin" /> 评估中…</> : '完成评估'}
             </Button>
           </div>

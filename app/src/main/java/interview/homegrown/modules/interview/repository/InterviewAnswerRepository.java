@@ -16,4 +16,7 @@ public interface InterviewAnswerRepository extends JpaRepository<InterviewAnswer
 
     //按照会话 id 删除所有答案
     void deleteBySessionId(String sessionId);
+
+    // 判断会话答案是否已经落库，保证结束/评估重复调用时不会生成重复问答。
+    boolean existsBySessionId(String sessionId);
 }

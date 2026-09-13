@@ -588,6 +588,49 @@
   font-size: var(--fs-sm);
   color: var(--ink-faint);
 }
+.ih-pending-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ih-evaluate-btn,
+.ih-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 5px 11px;
+  border-radius: var(--r-md);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: color 0.18s, background 0.18s, border-color 0.18s, transform 0.18s var(--ease-out);
+}
+.ih-evaluate-btn {
+  color: var(--cinnabar-deep);
+  background: var(--cinnabar-wash);
+  border: 1px solid color-mix(in oklch, var(--cinnabar) 28%, transparent);
+}
+.ih-evaluate-btn:hover:not(:disabled) {
+  border-color: var(--cinnabar);
+  transform: translateY(-1px);
+}
+.ih-cancel-btn {
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+}
+.ih-cancel-btn:hover:not(:disabled) {
+  color: var(--bad);
+  background: var(--bad-wash);
+  border-color: color-mix(in oklch, var(--bad) 30%, transparent);
+}
+.ih-evaluate-btn:disabled,
+.ih-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .ih-arrow {
   color: var(--ink-faint);
   transition: color 0.18s, transform 0.18s var(--ease-out);
@@ -626,6 +669,11 @@
 .ih-delete-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.iv-quit:disabled {
+  opacity: 0.62;
+  cursor: wait;
 }
 
 .ih-back {

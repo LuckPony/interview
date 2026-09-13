@@ -21,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -153,7 +155,7 @@ public class InterviewSessionService {
         session.setPlanIds(hasPlans
                 ? request.planIds().stream().map(String::valueOf).distinct().collect(Collectors.joining(","))
                 : null);
-        session.setStartAt(LocalDateTime.now());
+        session.setStartAt(LocalDateTime.now(ZoneOffset.UTC));
         session.setDurationMin(DifficultyConfig.UNIFIED_DURATION_MINUTES);
         persistenceService.save(session);
 
@@ -246,10 +248,7 @@ public class InterviewSessionService {
 
         if (timeout || allDone) {
             // 批量落库 + 进入待评估
-            persistQa(session.getId(), qa);
-            redisService.set(FINISHED_KEY + session.getId(), "true");
-            session.setStatus(InterviewStatus.PENDING_EVALUATION);
-            persistenceService.save(session);
+            markPendingEvaluation(session, qa);
             log.info("面试答题结束: sessionId={}, 原因={}", sessionId, timeout ? "超时" : "全部答完");
             return toDetailDTO(session);
         }
@@ -306,11 +305,13 @@ public class InterviewSessionService {
 
         if (nextQuestion == null) {
             // 没有下一题（全部基础题答完）→ 待评估
-            persistQa(session.getId(), qa);
-            redisService.set(FINISHED_KEY + session.getId(), "true");
-            session.setStatus(InterviewStatus.PENDING_EVALUATION);
-            persistenceService.save(session);
+            markPendingEvaluation(session, qa);
             return toDetailDTO(session);
+        }
+
+        // 生成追问期间用户可能已点击退出；结束标记优先，禁止迟到的提交重新推进会话。
+        if (isFinished(sessionId)) {
+            return toDetailDTO(requireOwned(sessionId, userId));
         }
 
         qa.add(new QAItem(nextQuestion, null, nextIsFollowUp, nextBaseIndex, nextFuIndex));
@@ -334,9 +335,7 @@ public class InterviewSessionService {
 
         // 若 Redis 运行时还在且未落库，先落库
         List<QAItem> qa = readQa(sessionId);
-        if (!qa.isEmpty()) {
-            persistQa(sessionId, qa);
-        }
+        persistQaOnce(sessionId, qa);
 
         // 从数据库读取本轮全部问答（按时间顺序）
         List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderById(sessionId);
@@ -383,6 +382,32 @@ public class InterviewSessionService {
         return toDetailDTO(session);
     }
 
+    //================== 结束面试但不评估 ==================
+
+    /**
+     * 用户主动退出时立即结束答题，只保存已经提交的回答，不触发任何 LLM 评估。
+     * 重复调用保持幂等，待评估记录可在历史页继续评估或直接删除。
+     */
+    public InterviewSessionDTO finishWithoutEvaluation(String sessionId, Long userId) {
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
+        if (session.getStatus() == InterviewStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "该场面试已完成评估");
+        }
+        if (session.getStatus() == InterviewStatus.PENDING_EVALUATION) {
+            return toDetailDTO(session);
+        }
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "当前会话状态无法结束: " + session.getStatus());
+        }
+
+        // 尽早写结束标记，使正在生成追问的并发请求停止推进。
+        redisService.set(FINISHED_KEY + sessionId, "true");
+        List<QAItem> qa = readQa(sessionId);
+        markPendingEvaluation(session, qa);
+        log.info("用户主动结束面试（未评估）: sessionId={}, userId={}", sessionId, userId);
+        return toDetailDTO(session);
+    }
+
     //====================== 查询 ==================
 
     /**
@@ -392,10 +417,8 @@ public class InterviewSessionService {
     private void reconcileStatus(InterviewSessionEntity session) {
         if (session.getStatus() != InterviewStatus.IN_PROGRESS) return;
         if (!isTimeout(session)) return;
-        // 超时 → 设 Redis 完成标记 + DB 状态改为待评估
-        redisService.set(FINISHED_KEY + session.getId(), "true");
-        session.setStatus(InterviewStatus.PENDING_EVALUATION);
-        persistenceService.save(session);
+        // 超时也要先保存已提交答案，否则历史页会误显示 0 条且无法手动评估。
+        markPendingEvaluation(session, readQa(session.getId()));
         log.info("面试会话超时自动转为待评估: sessionId={}", session.getId());
     }
 
@@ -406,7 +429,7 @@ public class InterviewSessionService {
                     int answered = answerRepository.findBySessionIdOrderById(s.getId()).size();
                     return new InterviewListItemDTO(
                             s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
-                            s.getTotalQuestions(), answered, s.getTotalScore(), s.getCreatedAt(),
+                            s.getTotalQuestions(), answered, s.getTotalScore(), toUtcInstant(s.getCreatedAt()),
                             s.getMode() != null ? s.getMode() : "TEXT");
                 })
                 .toList();
@@ -488,7 +511,7 @@ public class InterviewSessionService {
     private long remainingSeconds(InterviewSessionEntity session) {
         if (session.getStartAt() == null || session.getDurationMin() == null) return 0;
         long deadline = session.getStartAt().plusMinutes(session.getDurationMin())
-                .atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond();
+                .toInstant(ZoneOffset.UTC).getEpochSecond();
         return deadline - System.currentTimeMillis() / 1000;
     }
 
@@ -516,19 +539,30 @@ public class InterviewSessionService {
     /** 已答问答（前端对话线展示用） */
     public record QaHistory(String question, String answer, boolean followUp) {}
 
-    /** 把问答流一次性落库（面试结束进入待评估时调用） */
-    private void persistQa(String sessionId, List<QAItem> qa) {
+    /** 把问答流一次性落库；重复结束或随后评估时保持幂等，避免生成重复问答。 */
+    private void persistQaOnce(String sessionId, List<QAItem> qa) {
+        if (qa.isEmpty() || answerRepository.existsBySessionId(sessionId)) return;
+        List<InterviewAnswerEntity> answers = new ArrayList<>();
         for (QAItem item : qa) {
-            if (item.answer() == null) continue; // 未答的当前题不落库
+            if (item.answer() == null) continue;
             InterviewAnswerEntity answer = new InterviewAnswerEntity();
             answer.setSessionId(sessionId);
             answer.setQuestionIndex(item.baseIndex());
             answer.setQuestionText(item.question());
             answer.setAnswerText(item.answer());
             answer.setIsFollowUp(item.followUp());
-            answerRepository.save(answer);
+            answers.add(answer);
         }
-        log.info("问答已落库: sessionId={}, 条数={}", sessionId, qa.size());
+        if (answers.isEmpty()) return;
+        answerRepository.saveAll(answers);
+        log.info("问答已落库: sessionId={}, 条数={}", sessionId, answers.size());
+    }
+
+    private void markPendingEvaluation(InterviewSessionEntity session, List<QAItem> qa) {
+        persistQaOnce(session.getId(), qa);
+        redisService.set(FINISHED_KEY + session.getId(), "true");
+        session.setStatus(InterviewStatus.PENDING_EVALUATION);
+        persistenceService.save(session);
     }
 
     private void cacheQuestions(String sessionId, InterviewQuestionResult questions) {
@@ -561,12 +595,17 @@ public class InterviewSessionService {
         return new InterviewSessionDTO(
                 s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
                 s.getTotalQuestions(), s.getCurrentQuestionIndex(), s.getTotalScore(),
-                s.getLlmProvider(), s.getCreatedAt(), answers,
+                s.getLlmProvider(), toUtcInstant(s.getCreatedAt()), answers,
                 s.getMode() != null ? s.getMode() : "TEXT",
                 s.getPlanIds(),
                 parseEvaluation(s.getEvaluationJson()),
                 s.getDurationMin(),
                 Math.max(0, remainingSeconds(s)));
+    }
+
+    /** 数据库存 UTC 的无时区时间，API 明确补成带 Z 的时间点，由浏览器转换为用户本地时区。 */
+    private Instant toUtcInstant(LocalDateTime value) {
+        return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }
 
     private InterviewEvaluationResult parseEvaluation(String json) {

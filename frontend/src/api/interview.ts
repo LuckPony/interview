@@ -125,6 +125,12 @@ export const interviewApi = {
     }));
   },
 
+  finishWithoutEvaluation(sessionId: string): Promise<InterviewSession> {
+    return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/sessions/${sessionId}/finish`, {
+      method: 'POST',
+    }));
+  },
+
   list(): Promise<InterviewListItem[]> {
     return unwrap(apiFetch<Envelope<InterviewListItem[]>>('/interviews/sessions'));
   },

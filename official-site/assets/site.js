@@ -8,14 +8,14 @@
   const releaseUrl = `${repoUrl}/releases`;
 
   const shots = [
-    { file: 'dashboard-latest.png', tab: '首页', title: '学习总览', subtitle: '真实进度与成长趋势' },
-    { file: 'capture-latest.png', tab: '对话沉淀', title: '上下文问答沉淀', subtitle: '逐问答存卡与代码复制' },
-    { file: 'knowledge-library-latest.png', tab: '知识库', title: '知识库管理', subtitle: '资料、标签与知识主题' },
-    { file: 'knowledge-detail-latest.png', tab: '知识库', title: '资料详情', subtitle: '章节索引、用途与原文件' },
-    { file: 'knowledge-tools-latest.png', tab: '知识库', title: '知识库工具库', subtitle: '翻译、提炼与术语解释' },
-    { file: 'interview-latest.png', tab: '面试', title: '模拟面试', subtitle: '简历、方向与资料联合出题' },
-    { file: 'settings-latest.png', tab: '设置', title: '模型与外观设置', subtitle: 'Provider 与模型快捷选择' },
-    { file: 'login-latest.png', tab: '登录', title: '账号登录', subtitle: '为下一份 Offer 做准备' },
+    { file: 'dashboard-latest.png', preview: 'dashboard-latest.webp', tab: '首页', title: '学习总览', subtitle: '真实进度与成长趋势' },
+    { file: 'capture-latest.png', preview: 'capture-latest.webp', tab: '对话沉淀', title: '上下文问答沉淀', subtitle: '逐问答存卡与代码复制' },
+    { file: 'knowledge-library-latest.png', preview: 'knowledge-library-latest.webp', tab: '知识库', title: '知识库管理', subtitle: '资料、标签与知识主题' },
+    { file: 'knowledge-detail-latest.png', preview: 'knowledge-detail-latest.webp', tab: '知识库', title: '资料详情', subtitle: '章节索引、用途与原文件' },
+    { file: 'knowledge-tools-latest.png', preview: 'knowledge-tools-latest.webp', tab: '知识库', title: '知识库工具库', subtitle: '翻译、提炼与术语解释' },
+    { file: 'interview-latest.png', preview: 'interview-latest.webp', tab: '面试', title: '模拟面试', subtitle: '简历、方向与资料联合出题' },
+    { file: 'settings-latest.png', preview: 'settings-latest.webp', tab: '设置', title: '模型与外观设置', subtitle: 'Provider 与模型快捷选择' },
+    { file: 'login-latest.png', preview: 'login-latest.webp', tab: '登录', title: '账号登录', subtitle: '为下一份 Offer 做准备' },
   ];
 
   function initNavigation() {
@@ -81,7 +81,7 @@
       <figure class="gallery-item" tabindex="0"
         data-lightbox="assets/screenshots/${shot.file}"
         data-caption="${shot.title} · ${shot.subtitle}">
-        <img src="assets/screenshots/${shot.file}" alt="${shot.title}：${shot.subtitle}" loading="lazy" />
+        <img src="assets/screenshots/${shot.preview}" alt="${shot.title}：${shot.subtitle}" width="2400" height="1350" loading="lazy" />
         <figcaption><span>${shot.title}<br /><small>${shot.subtitle}</small></span><small>VIEW ↗</small></figcaption>
       </figure>
     `).join('');

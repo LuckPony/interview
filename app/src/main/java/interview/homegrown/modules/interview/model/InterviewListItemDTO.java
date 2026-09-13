@@ -1,6 +1,6 @@
 package interview.homegrown.modules.interview.model;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 //面试历史列表项DTO
 public record InterviewListItemDTO(
@@ -12,7 +12,7 @@ public record InterviewListItemDTO(
         int totalQuestions,
         int answeredCount,
         Integer totalScore,
-        LocalDateTime createdAt,
+        Instant createdAt,
         //面试方式：TEXT 文字 / VOICE 语音
         String mode
 ) {

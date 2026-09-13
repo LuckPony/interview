@@ -68,6 +68,12 @@ class InterviewController {
         return Result.success(sessionService.completeInterview(sessionId, uid()));
     }
 
+    @PostMapping("/sessions/{sessionId}/finish")
+    @Operation(summary = "结束面试但暂不评估", description = "立即停止本场面试并保存已作答内容，稍后可在面试记录中评估或删除")
+    public Result<InterviewSessionDTO> finishWithoutEvaluation(@PathVariable String sessionId){
+        return Result.success(sessionService.finishWithoutEvaluation(sessionId, uid()));
+    }
+
     @GetMapping("/sessions")
     @Operation(summary = "面试历史列表",description = "返回所有面试会话")
     public Result<List<InterviewListItemDTO>> listSession(){

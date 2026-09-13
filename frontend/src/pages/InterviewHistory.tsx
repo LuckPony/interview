@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, Type, ArrowRight, Clock, CalendarDays, X } from 'lucide-react';
+import { Mic, Type, ArrowRight, Clock, CalendarDays, Loader2, Sparkles, X } from 'lucide-react';
 import { interviewApi, type InterviewListItem } from '../api/interview';
 import { Card, Badge, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
@@ -33,14 +33,18 @@ export function InterviewHistory() {
   const [list, setList] = useState<InterviewListItem[] | null>(null);
   const [err, setErr] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
 
   useEffect(() => {
     interviewApi.list().then(setList).catch((e) => setErr(msg(e)));
   }, []);
 
   /** 删除面试记录：二次确认后调用后端并乐观更新列表 */
-  const del = async (id: string) => {
-    if (!window.confirm('是否确认要删除这条面试记录？删除后不可恢复。')) return;
+  const del = async (id: string, pending = false) => {
+    const prompt = pending
+      ? '确定取消这次面试记录吗？已保存的回答也会一并删除，且无法恢复。'
+      : '是否确认要删除这条面试记录？删除后不可恢复。';
+    if (!window.confirm(prompt)) return;
     setDeletingId(id);
     setErr('');
     try {
@@ -50,6 +54,20 @@ export function InterviewHistory() {
       setErr(msg(e));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const evaluate = async (item: InterviewListItem) => {
+    if (evaluatingId || item.answeredCount === 0) return;
+    setEvaluatingId(item.id);
+    setErr('');
+    try {
+      await interviewApi.completeAndEvaluate(item.id);
+      navigate(`/rehearsal/history/${item.id}`);
+    } catch (e) {
+      setErr('评估失败：' + msg(e));
+    } finally {
+      setEvaluatingId(null);
     }
   };
 
@@ -82,14 +100,16 @@ export function InterviewHistory() {
                   ? navigate(`/rehearsal?resume=${it.id}`)
                   : navigate(`/rehearsal/history/${it.id}`)}
               >
-                <button
-                  className="ih-delete-btn"
-                  title="删除这条面试记录"
-                  disabled={deletingId === it.id}
-                  onClick={(e) => { e.stopPropagation(); del(it.id); }}
-                >
-                  <X size={14} strokeWidth={2} />
-                </button>
+                {it.status !== 'PENDING_EVALUATION' && (
+                  <button
+                    className="ih-delete-btn"
+                    title="删除这条面试记录"
+                    disabled={deletingId === it.id}
+                    onClick={(e) => { e.stopPropagation(); del(it.id); }}
+                  >
+                    <X size={14} strokeWidth={2} />
+                  </button>
+                )}
                 <div className="ih-left">
                   <div className="ih-title-row">
                     <span className="ih-title">{it.skillName}</span>
@@ -119,7 +139,26 @@ export function InterviewHistory() {
                 </div>
 
                 <div className="ih-right">
-                  {it.totalScore != null ? (
+                  {it.status === 'PENDING_EVALUATION' ? (
+                    <div className="ih-pending-actions">
+                      <button
+                        className="ih-evaluate-btn"
+                        disabled={evaluatingId === it.id || deletingId === it.id || it.answeredCount === 0}
+                        title={it.answeredCount === 0 ? '尚未提交任何回答，无法评估' : '生成本场面试评估'}
+                        onClick={(e) => { e.stopPropagation(); evaluate(it); }}
+                      >
+                        {evaluatingId === it.id ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                        {evaluatingId === it.id ? '评估中…' : '开始评估'}
+                      </button>
+                      <button
+                        className="ih-cancel-btn"
+                        disabled={deletingId === it.id || evaluatingId === it.id}
+                        onClick={(e) => { e.stopPropagation(); del(it.id, true); }}
+                      >
+                        <X size={14} /> {deletingId === it.id ? '取消中…' : '取消记录'}
+                      </button>
+                    </div>
+                  ) : it.totalScore != null ? (
                     <div className={'ih-score ' + tone}>
                       <span className="ih-score-num">{it.totalScore}</span>
                       <span className="ih-score-total">/100</span>
