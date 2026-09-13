@@ -495,6 +495,90 @@
   color: var(--ink-faint);
   margin-bottom: var(--s-1);
 }
+.iv-rubric {
+  margin-top: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in oklch, var(--paper-3) 76%, transparent);
+}
+.iv-rubric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-bottom: var(--s-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.iv-rubric-head span:last-child {
+  font-family: var(--font-mono);
+  color: var(--cinnabar-deep);
+}
+.iv-rubric-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.iv-rubric-item {
+  min-width: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+}
+.iv-rubric-item.achieved { border-left-color: var(--good); }
+.iv-rubric-item.missed { border-left-color: var(--bad); }
+.iv-rubric-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--fs-xs);
+}
+.iv-rubric-item-head strong {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+.iv-rubric-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warn);
+}
+.iv-rubric-item.achieved .iv-rubric-status { color: var(--good); }
+.iv-rubric-item.missed .iv-rubric-status { color: var(--bad); }
+.iv-rubric-criterion {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.iv-rubric-detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+.iv-rubric-detail span {
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.iv-rubric-detail p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+@media (max-width: 760px) {
+  .iv-rubric-list { grid-template-columns: 1fr; }
+}
 .iv-result-actions {
   display: flex;
   justify-content: center;

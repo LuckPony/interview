@@ -153,33 +153,32 @@ app:
     from: ${MAIL_FROM:}
 
 interview:
-  follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:2}
   # Skill 面试方向定义（key 为 skillId）
   skills:
     java-backend:
       name: Java 后端
       description: Java 核心、Spring 生态、并发、JVM、分布式、数据库等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
     frontend:
       name: 前端
       description: JavaScript/TypeScript、框架原理、浏览器、工程化等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
     python:
       name: Python
       description: Python 基础、常用框架、数据分析等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
     algorithm:
       name: 算法
       description: 数据结构、算法思想、复杂度分析等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
     system-design:
       name: 系统设计
       description: 高并发、高可用、缓存、消息队列、微服务等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
     database:
       name: 数据库
       description: MySQL、索引、事务、锁、Redis、分库分表等
-      default-question-count: ${DEFAULT_QUESTION_COUNT:5}
+      default-question-count: ${DEFAULT_QUESTION_COUNT:8}
 
 
 management:

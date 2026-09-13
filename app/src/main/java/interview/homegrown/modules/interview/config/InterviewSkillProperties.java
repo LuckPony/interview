@@ -8,25 +8,14 @@ import java.util.Map;
 
 /**
  * 面试 Skill 配置
- * 绑定 application.yml 中 app.interview.* 的配置项
+ * 绑定 application.yml 中 interview.* 的配置项
  * 每个 skill 定义了一个面试方向，由 LLM 依据 direction 生成题目。
  */
 @Configuration
-@ConfigurationProperties(prefix = "app.interview")
+@ConfigurationProperties(prefix = "interview")
 public class InterviewSkillProperties {
 
-    private int followUpCount = 1;
-
     private Map<String, SkillConfig> skills = new HashMap<>();
-
-
-    public int getFollowUpCount() {
-        return followUpCount;
-    }
-
-    public void setFollowUpCount(int followUpCount) {
-        this.followUpCount = followUpCount;
-    }
 
     public Map<String, SkillConfig> getSkills() {
         return skills;

@@ -4,6 +4,7 @@ import { Mic, Type, ArrowLeft } from 'lucide-react';
 import { interviewApi, type InterviewSession } from '../api/interview';
 import { Card, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { InterviewScoringBreakdown } from '../components/InterviewScoringBreakdown';
 import { ApiError } from '../api/client';
 import './Interview.css';
 
@@ -11,7 +12,7 @@ function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '加载失败';
 }
 
-const DIFF_LABEL: Record<string, string> = { JUNIOR: '初级', MIDDLE: '中级', SENIOR: '高级' };
+const DIFF_LABEL: Record<string, string> = { JUNIOR: '一面', MIDDLE: '二面', SENIOR: '三面' };
 
 export function InterviewDetail() {
   const { id } = useParams<{ id: string }>();
@@ -100,6 +101,7 @@ export function InterviewDetail() {
                 {a.feedback && (
                   <div className="iv-qa-f"><span className="iv-qa-a-label">反馈</span><Markdown>{a.feedback}</Markdown></div>
                 )}
+                <InterviewScoringBreakdown evaluation={ev?.questionEvaluations?.[i]} />
               </Card>
             ))}
           </div>

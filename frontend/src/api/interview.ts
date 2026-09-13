@@ -29,14 +29,26 @@ export interface InterviewAnswer {
   createdAt: string;
 }
 
-export interface QuestionEvalution {
+export type ScoringPointStatus = 'ACHIEVED' | 'PARTIAL' | 'MISSED';
+
+export interface InterviewScoringPoint {
+  criterion: string;
+  maxScore: number;
+  awardedScore: number;
+  status: ScoringPointStatus;
+  evidence: string;
+  reason: string;
+}
+
+export interface QuestionEvaluation {
   score: number;
   feedback: string;
+  scoringPoints?: InterviewScoringPoint[];
 }
 
 export interface InterviewEvaluation {
   totalScore: number;
-  questionEvaluations: QuestionEvalution[];
+  questionEvaluations: QuestionEvaluation[];
   strength: string[];
   improvements: string[];
 }
@@ -84,7 +96,7 @@ export interface CurrentQuestion {
   totalQuestions: number;
   baseIndex: number;
   followUpIndex: number;
-  totalFollowUps: number;
+  maxFollowUps: number;
   finished: boolean;
   remainingSeconds: number;
   question: string | null;

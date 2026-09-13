@@ -10,7 +10,7 @@ function msg(e: unknown): string {
   return e instanceof ApiError ? e.message : '加载失败';
 }
 
-const DIFF_LABEL: Record<string, string> = { JUNIOR: '初级', MIDDLE: '中级', SENIOR: '高级' };
+const DIFF_LABEL: Record<string, string> = { JUNIOR: '一面', MIDDLE: '二面', SENIOR: '三面' };
 
 /** 评分文字颜色：≥80 绿 / ≥60 黄 / <60 红 */
 function scoreTone(s: number | null): string {

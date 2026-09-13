@@ -41,7 +41,7 @@ class InterviewController {
     }
 
     @PostMapping("/sessions")
-    @Operation(summary = "创建面试会话", description = "指定方向/难度/题数，LLM生成题目并开始面试")
+    @Operation(summary = "创建面试会话", description = "按一面/二面/三面轮次生成 8 道覆盖式主问题并开始面试")
     public Result<InterviewSessionDTO> createSession(@RequestBody CreateSessionRequest request){
         return Result.success(sessionService.createSession(request, uid()));
     }

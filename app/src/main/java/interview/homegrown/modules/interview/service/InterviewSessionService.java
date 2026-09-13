@@ -25,17 +25,20 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
  * 面试会话服务 —— 面试业务核心（动态追问版）
  *
- * <p>流程：创建会话时按难度预出 {@link DifficultyConfig#BASE_QUESTION_COUNT} 道基础题
+ * <p>流程：创建会话时按面试轮次预出 {@link DifficultyConfig#BASE_QUESTION_COUNT} 道主问题
  * （第 1 题固定自我介绍，不追问）；答题过程中<b>根据用户回答动态生成追问</b>，
- * 追问数量与深度由难度决定；全部答完或<b>超时（难度时长）</b>后进入待评估，
+ * 只有回答确实需要澄清或深挖时才追问，每道主问题最多两次；全部答完或超时后进入待评估，
  * 届时把本轮问答一次性落库，用户点击评估后生成总分与逐题反馈。</p>
  *
  * <p>运行时数据存于 Redis（进程内缓存）：问答流 interview:qa:{sessionId}、完成标记 interview:finished:{sessionId}。</p>
@@ -135,7 +138,7 @@ public class InterviewSessionService {
                 ? skillService.getSkill(request.skillId()).getName()
                 : "";
 
-        // 出 6 道基础题（第 1 题自我介绍固定，追问动态生成）
+        // 出 8 道主问题（第 1 题自我介绍固定，追问根据每次回答动态决定）
         InterviewQuestionResult baseQuestions = questionService.generateBaseQuestions(
                 skillName, difficulty, resumeText, planConcepts, hasResume && hasPlans, request.llmProvider(), reference);
 
@@ -168,8 +171,8 @@ public class InterviewSessionService {
         saveQa(session.getId(), qa);
         redisService.set(FINISHED_KEY + session.getId(), "false");
 
-        log.info("面试会话创建成功: sessionId={}, 难度={}, 基础题数={}, 时长约{}分钟",
-                session.getId(), difficulty, baseQuestions.questions().size(), cfg.durationText());
+        log.info("面试会话创建成功: sessionId={}, 轮次={}, 主问题数={}, 时长约{}分钟",
+                session.getId(), cfg.roundName(), baseQuestions.questions().size(), cfg.durationText());
         return toDetailDTO(session);
     }
 
@@ -193,7 +196,7 @@ public class InterviewSessionService {
         // 完成/超时（且当前问题已答）→ 待评估
         if (finished) {
             return new CurrentQuestion(sessionId, session.getTotalQuestions(),
-                    0, 0, cfg.followUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
+                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
         }
 
         // 当前要答的问题 = 问答流中最后一个未答的问题
@@ -201,12 +204,12 @@ public class InterviewSessionService {
         if (current == null) {
             // 没有未答问题（理论上不会到这，兜底）
             return new CurrentQuestion(sessionId, session.getTotalQuestions(),
-                    0, 0, cfg.followUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
+                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
         }
 
         int followUpIndex = current.followUp() ? current.fuIndex() : 0;
         return new CurrentQuestion(sessionId, session.getTotalQuestions(),
-                current.baseIndex(), followUpIndex, cfg.followUpCount(), false,
+                current.baseIndex(), followUpIndex, cfg.maxFollowUpCount(), false,
                 Math.max(0, remaining), current.question(), toHistory(qa));
     }
 
@@ -244,12 +247,10 @@ public class InterviewSessionService {
 
         // 2. 判断是否超时 → 超时则结束（答完当前问题即止）
         boolean timeout = isTimeout(session);
-        boolean allDone = allBaseDone(qa, baseTexts.size());
-
-        if (timeout || allDone) {
+        if (timeout) {
             // 批量落库 + 进入待评估
             markPendingEvaluation(session, qa);
-            log.info("面试答题结束: sessionId={}, 原因={}", sessionId, timeout ? "超时" : "全部答完");
+            log.info("面试答题结束: sessionId={}, 原因=超时", sessionId);
             return toDetailDTO(session);
         }
 
@@ -266,36 +267,15 @@ public class InterviewSessionService {
             nextBaseIndex = 1;
             nextQuestion = baseTexts.get(1);
             nextIsFollowUp = false;
-        } else if (!last.followUp()) {
-            // 基础题答完 → 生成第 1 个追问；若回答表示“不清楚/不会”则改为最基础的概念确认问题
-            if (cfg.followUpCount() > 0) {
-                nextQuestion = followupService.generateFollowUp(
-                        session.getDifficulty(), skillName,
-                        baseTexts.get(last.baseIndex()), last.answer(),
-                        0, cfg.followUpCount(), session.getLlmProvider(),
-                        looksIgnorant(last.answer()));
-                nextIsFollowUp = true;
-                nextFuIndex = 1;
-            } else {
-                nextBaseIndex = last.baseIndex() + 1;
-                nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
-                nextIsFollowUp = false;
-            }
         } else {
-            // 追问答完：仍表示“不清楚/不会”（基础问题也答不上来）→ 停止追问，直接进入下一道基础题
-            if (looksIgnorant(last.answer())) {
-                log.info("候选人基础概念也未答上，停止追问并进入下一题: sessionId={}, baseIndex={}", sessionId, last.baseIndex());
-                nextBaseIndex = last.baseIndex() + 1;
-                nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
-                nextIsFollowUp = false;
-            } else if (last.fuIndex() < cfg.followUpCount()) {
-                // 答上来了 → 继续延伸追问
-                nextQuestion = followupService.generateFollowUp(
-                        session.getDifficulty(), skillName,
-                        baseTexts.get(last.baseIndex()), last.answer(),
-                        last.fuIndex(), cfg.followUpCount(), session.getLlmProvider());
+            int completedFollowUps = last.followUp() ? last.fuIndex() : 0;
+            FollowupGeneratorService.FollowUpDecision decision = decideFollowUp(
+                    session, skillName, baseTexts.get(last.baseIndex()), last,
+                    completedFollowUps, cfg.maxFollowUpCount());
+            if (decision.shouldFollowUp()) {
+                nextQuestion = decision.question();
                 nextIsFollowUp = true;
-                nextFuIndex = last.fuIndex() + 1;
+                nextFuIndex = completedFollowUps + 1;
             } else {
                 nextBaseIndex = last.baseIndex() + 1;
                 nextQuestion = nextBaseIndex < baseTexts.size() ? baseTexts.get(nextBaseIndex) : null;
@@ -338,7 +318,8 @@ public class InterviewSessionService {
         persistQaOnce(sessionId, qa);
 
         // 从数据库读取本轮全部问答（按时间顺序）
-        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderById(sessionId);
+        List<InterviewAnswerEntity> answers = distinctAnswers(
+                answerRepository.findBySessionIdOrderById(sessionId));
         if (answers.isEmpty()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "本场面试还没有作答记录");
         }
@@ -426,7 +407,10 @@ public class InterviewSessionService {
         return sessionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(s -> {
                     reconcileStatus(s);
-                    int answered = answerRepository.findBySessionIdOrderById(s.getId()).size();
+                    int answered = (int) distinctAnswers(
+                            answerRepository.findBySessionIdOrderById(s.getId())).stream()
+                            .filter(answer -> !Boolean.TRUE.equals(answer.getIsFollowUp()))
+                            .count();
                     return new InterviewListItemDTO(
                             s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
                             s.getTotalQuestions(), answered, s.getTotalScore(), toUtcInstant(s.getCreatedAt()),
@@ -463,11 +447,39 @@ public class InterviewSessionService {
         return session;
     }
 
-    /** 判断候选人回答是否表示“不清楚/不会”（回答过短也算没答上来） */
-    private boolean looksIgnorant(String answer) {
+    private FollowupGeneratorService.FollowUpDecision decideFollowUp(
+            InterviewSessionEntity session,
+            String skillName,
+            String baseQuestion,
+            QAItem answeredItem,
+            int completedFollowUps,
+            int maxFollowUps) {
+        if (completedFollowUps >= maxFollowUps || isExplicitlyUnable(answeredItem.answer())) {
+            return FollowupGeneratorService.FollowUpDecision.next(
+                    completedFollowUps >= maxFollowUps ? "已达到最大追问次数" : "候选人明确表示不了解");
+        }
+        try {
+            return followupService.decideFollowUp(
+                    session.getDifficulty(),
+                    skillName,
+                    baseQuestion,
+                    answeredItem.question(),
+                    answeredItem.answer(),
+                    completedFollowUps,
+                    maxFollowUps,
+                    session.getLlmProvider());
+        } catch (Exception e) {
+            // 追问决策失败不应卡死整场面试，降级进入下一道主问题以保证覆盖面。
+            log.warn("追问决策失败，降级进入下一道主问题: sessionId={}, baseIndex={}",
+                    session.getId(), answeredItem.baseIndex(), e);
+            return FollowupGeneratorService.FollowUpDecision.next("追问决策服务暂不可用");
+        }
+    }
+
+    /** 只识别明确的放弃表达；短回答交给模型判断是否需要澄清，不能直接当作不会。 */
+    private boolean isExplicitlyUnable(String answer) {
         if (answer == null || answer.isBlank()) return true;
         String t = answer.trim();
-        if (t.length() < 8) return true; // 太短 = 没答上来
         String lower = t.toLowerCase();
         String[] hints = {"不知道", "不清楚", "不会", "没学过", "没接触", "没了解", "不懂", "没做过",
                 "没听过", "忘了", "不了解", "讲不上", "说不出", "没深入"};
@@ -526,12 +538,6 @@ public class InterviewSessionService {
         return null;
     }
 
-    private boolean allBaseDone(List<QAItem> qa, int baseSize) {
-        return qa.stream().anyMatch(i -> i.baseIndex() >= baseSize - 1)
-                && qa.get(qa.size() - 1).answer() != null
-                && !qa.get(qa.size() - 1).followUp();
-    }
-
     private List<QaHistory> toHistory(List<QAItem> qa) {
         return qa.stream().map(i -> new QaHistory(i.question(), i.answer(), i.followUp())).toList();
     }
@@ -539,12 +545,21 @@ public class InterviewSessionService {
     /** 已答问答（前端对话线展示用） */
     public record QaHistory(String question, String answer, boolean followUp) {}
 
-    /** 把问答流一次性落库；重复结束或随后评估时保持幂等，避免生成重复问答。 */
+    /**
+     * 把问答流幂等落库。不能只判断“会话是否已有回答”，否则异常中断留下部分数据后，
+     * 剩余回答将永远无法补写；这里按题号、题目、答案和追问标识逐条识别。
+     */
     private void persistQaOnce(String sessionId, List<QAItem> qa) {
-        if (qa.isEmpty() || answerRepository.existsBySessionId(sessionId)) return;
+        if (qa.isEmpty()) return;
+        Set<AnswerKey> existingKeys = answerRepository.findBySessionIdOrderById(sessionId).stream()
+                .map(this::answerKey)
+                .collect(Collectors.toCollection(HashSet::new));
         List<InterviewAnswerEntity> answers = new ArrayList<>();
         for (QAItem item : qa) {
             if (item.answer() == null) continue;
+            AnswerKey key = new AnswerKey(
+                    item.baseIndex(), item.question(), item.answer(), item.followUp());
+            if (!existingKeys.add(key)) continue;
             InterviewAnswerEntity answer = new InterviewAnswerEntity();
             answer.setSessionId(sessionId);
             answer.setQuestionIndex(item.baseIndex());
@@ -591,7 +606,9 @@ public class InterviewSessionService {
     }
 
     private InterviewSessionDTO toDetailDTO(InterviewSessionEntity s) {
-        List<InterviewAnswerEntity> answers = answerRepository.findBySessionIdOrderById(s.getId());
+        // 防御性去重：即使服务器尚未执行清理迁移，历史记录也不会在页面重复展示。
+        List<InterviewAnswerEntity> answers = distinctAnswers(
+                answerRepository.findBySessionIdOrderById(s.getId()));
         return new InterviewSessionDTO(
                 s.getId(), s.getSkillId(), skillNameOf(s), s.getDifficulty(), s.getStatus(),
                 s.getTotalQuestions(), s.getCurrentQuestionIndex(), s.getTotalScore(),
@@ -602,6 +619,24 @@ public class InterviewSessionService {
                 s.getDurationMin(),
                 Math.max(0, remainingSeconds(s)));
     }
+
+    private List<InterviewAnswerEntity> distinctAnswers(List<InterviewAnswerEntity> answers) {
+        Map<AnswerKey, InterviewAnswerEntity> distinct = new LinkedHashMap<>();
+        for (InterviewAnswerEntity answer : answers) {
+            distinct.putIfAbsent(answerKey(answer), answer);
+        }
+        return List.copyOf(distinct.values());
+    }
+
+    private AnswerKey answerKey(InterviewAnswerEntity answer) {
+        return new AnswerKey(
+                answer.getQuestionIndex(),
+                answer.getQuestionText(),
+                answer.getAnswerText(),
+                Boolean.TRUE.equals(answer.getIsFollowUp()));
+    }
+
+    private record AnswerKey(int questionIndex, String question, String answer, boolean followUp) {}
 
     /** 数据库存 UTC 的无时区时间，API 明确补成带 Z 的时间点，由浏览器转换为用户本地时区。 */
     private Instant toUtcInstant(LocalDateTime value) {
@@ -635,7 +670,7 @@ public class InterviewSessionService {
             int totalQuestions,
             int baseIndex,
             int followUpIndex,
-            int totalFollowUps,
+            int maxFollowUps,
             boolean finished,
             long remainingSeconds,
             String question,

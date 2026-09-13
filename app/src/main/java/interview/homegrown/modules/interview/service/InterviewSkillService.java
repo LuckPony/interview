@@ -47,9 +47,4 @@ public class InterviewSkillService {
         return properties.getSkills().get(skillId).getDescription();
     }
 
-    //获取追问次数
-    public int getFollowUpCount(){
-        return properties.getFollowUpCount();
-    }
-
 }

@@ -11,9 +11,9 @@ import java.util.List;
 public record CreateSessionRequest(
         //面试方向（application.yml 的 skill，可空：方向由学习方向/简历决定）
         String skillId,
-        //难度
+        //面试轮次（兼容枚举：JUNIOR=一面、MIDDLE=二面、SENIOR=三面）
         InterviewDifficulty difficulty,
-        //主问题数量
+        //历史兼容字段；当前主问题数量固定为 8
         Integer questionCount,
         //关联简历ID（可选）
         Long resumeId,

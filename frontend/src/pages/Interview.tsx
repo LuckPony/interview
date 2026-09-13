@@ -9,6 +9,7 @@ import { interviewApi, resumeApi, type InterviewSession, type CurrentQuestion, t
 import { studyPlan } from '../api/drill';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
+import { InterviewScoringBreakdown } from '../components/InterviewScoringBreakdown';
 import { ApiError } from '../api/client';
 import type { PlanView } from '../api/types';
 import './Interview.css';
@@ -19,8 +20,12 @@ function msg(e: unknown): string {
   return '操作失败，请重试';
 }
 
-const DIFFICULTY_LABEL: Record<string, string> = { JUNIOR: '初级', MIDDLE: '中级', SENIOR: '高级' };
-const DIFFICULTY_TIME: Record<string, string> = { JUNIOR: '约 60 分钟', MIDDLE: '约 60 分钟', SENIOR: '约 60 分钟' };
+const DIFFICULTY_LABEL: Record<string, string> = { JUNIOR: '一面', MIDDLE: '二面', SENIOR: '三面' };
+const DIFFICULTY_TIME: Record<string, string> = {
+  JUNIOR: '项目实现与真实贡献',
+  MIDDLE: '技术原理与方案权衡',
+  SENIOR: '架构治理与系统演进',
+};
 
 type Phase = 'config' | 'interview' | 'result';
 
@@ -85,7 +90,7 @@ export function Interview() {
   const [resumes, setResumes] = useState<Awaited<ReturnType<typeof resumeApi.list>>>([]);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [planIds, setPlanIds] = useState<number[]>([]);
-  const [difficulty, setDifficulty] = useState<'JUNIOR' | 'MIDDLE' | 'SENIOR'>('MIDDLE');
+  const [difficulty, setDifficulty] = useState<'JUNIOR' | 'MIDDLE' | 'SENIOR'>('JUNIOR');
   const [configErr, setConfigErr] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -273,7 +278,7 @@ export function Interview() {
       <header className="page-head">
         <span className="eyebrow">模拟面试 · INTERVIEW</span>
         <h1>模拟面试</h1>
-        <p>基于简历与学习方向出题，时长与追问深度由难度决定，结束后 AI 评估打分。</p>
+        <p>按一面、二面、三面的真实侧重点，围绕简历与学习资料进行覆盖式提问，结束后可由 AI 统一评估。</p>
       </header>
 
       <div className="iv-header-actions">
@@ -431,9 +436,9 @@ function InterviewConfig(props: {
         </Card>
       </section>
 
-      {/* 难度 */}
+      {/* 面试轮次 */}
       <section className="iv-block">
-        <h2 className="iv-block-title">③ 面试难度（决定时长与追问深度）</h2>
+        <h2 className="iv-block-title">③ 选择面试轮次</h2>
         <div className="iv-diff-row">
           {(['JUNIOR', 'MIDDLE', 'SENIOR'] as const).map(d => (
             <button
@@ -447,7 +452,7 @@ function InterviewConfig(props: {
           ))}
         </div>
         <p className="iv-ratio-hint">
-          时长统一约 60 分钟；难度决定追问深度：初级浅显·数量少，中级有深度，高级深入考察真实掌握度。超时自动结束进入待评估。
+          每场固定 8 道主问题、最长约 60 分钟。AI 会根据每次回答判断是否值得追问，不机械追问；每道主问题最多追问 2 次。
         </p>
       </section>
 
@@ -548,7 +553,7 @@ function InterviewRun(props: {
         <>
           {/* 当前题目 */}
           <Card className="iv-question-card">
-            <span className="eyebrow">面试官 · {question.followUpIndex > 0 ? `追问 ${question.followUpIndex}/${question.totalFollowUps}` : '主问题'}</span>
+            <span className="eyebrow">面试官 · {question.followUpIndex > 0 ? `追问 ${question.followUpIndex}（最多 ${question.maxFollowUps} 次）` : '主问题'}</span>
             <div className="iv-question-text">
               <Markdown>{question.question}</Markdown>
             </div>
@@ -581,7 +586,7 @@ function InterviewRun(props: {
             />
             <div className="iv-answer-foot">
               <span className="iv-answer-hint">
-                {urgent ? '时间快到了，提交后将结束面试' : '提交后 AI 会根据你的回答继续追问'}
+                {urgent ? '时间快到了，提交后将结束面试' : '提交后 AI 会判断是否需要追问，否则进入下一道主问题'}
               </span>
               <Button onClick={props.onSubmit} disabled={props.busy || (!props.answer.trim() && !props.recogText.trim())}>
                 {props.busy ? <><Loader2 size={15} className="spin" /> 处理中…</> : (
@@ -647,7 +652,7 @@ function InterviewResult({ session, onRestart }: { session: InterviewSession; on
         <section className="iv-block">
           <h2 className="iv-block-title">问答回顾</h2>
           <div className="iv-qa-list">
-            {session.answers.map((a) => (
+            {session.answers.map((a, index) => (
               <Card key={a.id} className="iv-qa">
                 <div className="iv-qa-head">
                   <span className="iv-qa-no">{a.isFollowUp ? '追问' : 'Q'}</span>
@@ -660,6 +665,7 @@ function InterviewResult({ session, onRestart }: { session: InterviewSession; on
                 <div className="iv-qa-q"><Markdown>{a.questionText}</Markdown></div>
                 {a.answerText && <div className="iv-qa-a"><span className="iv-qa-a-label">你的回答</span><Markdown>{a.answerText}</Markdown></div>}
                 {a.feedback && <div className="iv-qa-f"><span className="iv-qa-a-label">反馈</span><Markdown>{a.feedback}</Markdown></div>}
+                <InterviewScoringBreakdown evaluation={ev?.questionEvaluations?.[index]} />
               </Card>
             ))}
           </div>

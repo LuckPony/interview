@@ -69,7 +69,7 @@ public class InterviewSessionEntity {
     @Column(name = "start_at")
     private LocalDateTime startAt;
 
-    /** 计划时长（分钟，由难度决定） */
+    /** 计划时长（分钟） */
     @Column(name = "duration_min")
     private Integer durationMin;
 
