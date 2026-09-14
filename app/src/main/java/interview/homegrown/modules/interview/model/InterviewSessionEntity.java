@@ -73,6 +73,14 @@ public class InterviewSessionEntity {
     @Column(name = "duration_min")
     private Integer durationMin;
 
+    /** 当前暂停开始时间；非空表示倒计时处于暂停状态。 */
+    @Column(name = "paused_at")
+    private LocalDateTime pausedAt;
+
+    /** 历次已结束暂停累计秒数，不包含当前尚未恢复的暂停。 */
+    @Column(name = "total_paused_seconds", nullable = false)
+    private long totalPausedSeconds;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

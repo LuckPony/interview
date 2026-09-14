@@ -70,6 +70,7 @@ export interface InterviewSession {
   evaluation: InterviewEvaluation | null;
   durationMin: number | null;
   remainingSeconds: number;
+  paused: boolean;
 }
 
 export interface InterviewListItem {
@@ -101,6 +102,7 @@ export interface CurrentQuestion {
   remainingSeconds: number;
   question: string | null;
   history: QaHistory[];
+  paused: boolean;
 }
 
 export const interviewApi = {
@@ -139,6 +141,18 @@ export const interviewApi = {
 
   finishWithoutEvaluation(sessionId: string): Promise<InterviewSession> {
     return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/sessions/${sessionId}/finish`, {
+      method: 'POST',
+    }));
+  },
+
+  pause(sessionId: string): Promise<InterviewSession> {
+    return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/sessions/${sessionId}/pause`, {
+      method: 'POST',
+    }));
+  },
+
+  resume(sessionId: string): Promise<InterviewSession> {
+    return unwrap(apiFetch<Envelope<InterviewSession>>(`/interviews/sessions/${sessionId}/resume`, {
       method: 'POST',
     }));
   },

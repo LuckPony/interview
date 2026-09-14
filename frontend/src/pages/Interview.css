@@ -244,7 +244,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
+  margin-left: 0;
   font-family: var(--font-sans);
   font-size: var(--fs-xs);
   color: var(--bad);
@@ -256,6 +256,31 @@
   transition: background 0.18s, color 0.18s;
 }
 .iv-quit:hover { background: var(--bad-wash); }
+.iv-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  padding: 3px 12px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+.iv-pause:hover:not(:disabled),
+.iv-pause.paused {
+  color: var(--good);
+  border-color: color-mix(in oklch, var(--good) 42%, transparent);
+  background: color-mix(in oklch, var(--good) 10%, transparent);
+}
+.iv-pause:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
 
 .iv-question-card {
   padding: var(--s-6);
@@ -811,6 +836,12 @@
   border-color: color-mix(in oklch, var(--bad) 40%, transparent);
   background: var(--bad-wash);
   animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.iv-timer.paused {
+  color: var(--good);
+  border-color: color-mix(in oklch, var(--good) 38%, transparent);
+  background: color-mix(in oklch, var(--good) 9%, var(--paper-3));
+  animation: none;
 }
 
 /* —— 难度卡片时间标注 —— */

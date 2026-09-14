@@ -74,6 +74,18 @@ class InterviewController {
         return Result.success(sessionService.finishWithoutEvaluation(sessionId, uid()));
     }
 
+    @PostMapping("/sessions/{sessionId}/pause")
+    @Operation(summary = "暂停面试", description = "暂停服务端倒计时；刷新页面后仍保持暂停")
+    public Result<InterviewSessionDTO> pause(@PathVariable String sessionId) {
+        return Result.success(sessionService.pauseInterview(sessionId, uid()));
+    }
+
+    @PostMapping("/sessions/{sessionId}/resume")
+    @Operation(summary = "继续面试", description = "累计本次暂停时长并恢复服务端倒计时")
+    public Result<InterviewSessionDTO> resume(@PathVariable String sessionId) {
+        return Result.success(sessionService.resumeInterview(sessionId, uid()));
+    }
+
     @GetMapping("/sessions")
     @Operation(summary = "面试历史列表",description = "返回所有面试会话")
     public Result<List<InterviewListItemDTO>> listSession(){

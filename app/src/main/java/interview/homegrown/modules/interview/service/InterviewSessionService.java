@@ -160,6 +160,7 @@ public class InterviewSessionService {
                 : null);
         session.setStartAt(LocalDateTime.now(ZoneOffset.UTC));
         session.setDurationMin(DifficultyConfig.UNIFIED_DURATION_MINUTES);
+        session.setTotalPausedSeconds(0);
         persistenceService.save(session);
 
         // 题目持久化到数据库（进程重启可恢复）
@@ -196,7 +197,7 @@ public class InterviewSessionService {
         // 完成/超时（且当前问题已答）→ 待评估
         if (finished) {
             return new CurrentQuestion(sessionId, session.getTotalQuestions(),
-                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
+                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa), false);
         }
 
         // 当前要答的问题 = 问答流中最后一个未答的问题
@@ -204,13 +205,13 @@ public class InterviewSessionService {
         if (current == null) {
             // 没有未答问题（理论上不会到这，兜底）
             return new CurrentQuestion(sessionId, session.getTotalQuestions(),
-                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa));
+                    0, 0, cfg.maxFollowUpCount(), true, Math.max(0, remaining), null, toHistory(qa), false);
         }
 
         int followUpIndex = current.followUp() ? current.fuIndex() : 0;
         return new CurrentQuestion(sessionId, session.getTotalQuestions(),
                 current.baseIndex(), followUpIndex, cfg.maxFollowUpCount(), false,
-                Math.max(0, remaining), current.question(), toHistory(qa));
+                Math.max(0, remaining), current.question(), toHistory(qa), isPaused(session));
     }
 
     //===================== 提交答案 ===================
@@ -220,6 +221,9 @@ public class InterviewSessionService {
 
         if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "当前会话状态: " + session.getStatus());
+        }
+        if (isPaused(session)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "面试已暂停，请先点击继续再提交回答");
         }
 
         List<QAItem> qa = readQa(sessionId);
@@ -389,6 +393,38 @@ public class InterviewSessionService {
         return toDetailDTO(session);
     }
 
+    //================== 暂停 / 继续面试 ==================
+
+    /** 暂停倒计时；重复点击保持幂等。 */
+    public InterviewSessionDTO pauseInterview(String sessionId, Long userId) {
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
+        requireInProgress(session);
+        if (isPaused(session)) return toDetailDTO(session);
+        if (isTimeout(session)) {
+            reconcileStatus(session);
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED, "面试时间已到，无法暂停");
+        }
+        session.setPausedAt(LocalDateTime.now(ZoneOffset.UTC));
+        persistenceService.save(session);
+        log.info("面试计时已暂停: sessionId={}, remainingSeconds={}", sessionId, remainingSeconds(session));
+        return toDetailDTO(session);
+    }
+
+    /** 继续倒计时；把本次暂停时长累计进补偿时间，重复点击保持幂等。 */
+    public InterviewSessionDTO resumeInterview(String sessionId, Long userId) {
+        InterviewSessionEntity session = requireOwned(sessionId, userId);
+        requireInProgress(session);
+        if (!isPaused(session)) return toDetailDTO(session);
+
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        long pausedSeconds = Math.max(0, Duration.between(session.getPausedAt(), now).getSeconds());
+        session.setTotalPausedSeconds(session.getTotalPausedSeconds() + pausedSeconds);
+        session.setPausedAt(null);
+        persistenceService.save(session);
+        log.info("面试计时已继续: sessionId={}, 本次暂停={}秒", sessionId, pausedSeconds);
+        return toDetailDTO(session);
+    }
+
     //====================== 查询 ==================
 
     /**
@@ -445,6 +481,13 @@ public class InterviewSessionService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该面试会话");
         }
         return session;
+    }
+
+    private void requireInProgress(InterviewSessionEntity session) {
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED,
+                    "当前会话无法暂停或继续: " + session.getStatus());
+        }
     }
 
     private FollowupGeneratorService.FollowUpDecision decideFollowUp(
@@ -522,9 +565,12 @@ public class InterviewSessionService {
 
     private long remainingSeconds(InterviewSessionEntity session) {
         if (session.getStartAt() == null || session.getDurationMin() == null) return 0;
-        long deadline = session.getStartAt().plusMinutes(session.getDurationMin())
-                .toInstant(ZoneOffset.UTC).getEpochSecond();
-        return deadline - System.currentTimeMillis() / 1000;
+        LocalDateTime effectiveNow = isPaused(session)
+                ? session.getPausedAt()
+                : LocalDateTime.now(ZoneOffset.UTC);
+        long elapsedSeconds = Math.max(0, Duration.between(session.getStartAt(), effectiveNow).getSeconds());
+        long activeSeconds = Math.max(0, elapsedSeconds - session.getTotalPausedSeconds());
+        return session.getDurationMin() * 60L - activeSeconds;
     }
 
     private boolean isTimeout(InterviewSessionEntity session) {
@@ -576,6 +622,7 @@ public class InterviewSessionService {
     private void markPendingEvaluation(InterviewSessionEntity session, List<QAItem> qa) {
         persistQaOnce(session.getId(), qa);
         redisService.set(FINISHED_KEY + session.getId(), "true");
+        session.setPausedAt(null);
         session.setStatus(InterviewStatus.PENDING_EVALUATION);
         persistenceService.save(session);
     }
@@ -617,7 +664,8 @@ public class InterviewSessionService {
                 s.getPlanIds(),
                 parseEvaluation(s.getEvaluationJson()),
                 s.getDurationMin(),
-                Math.max(0, remainingSeconds(s)));
+                Math.max(0, remainingSeconds(s)),
+                s.getStatus() == InterviewStatus.IN_PROGRESS && isPaused(s));
     }
 
     private List<InterviewAnswerEntity> distinctAnswers(List<InterviewAnswerEntity> answers) {
@@ -637,6 +685,10 @@ public class InterviewSessionService {
     }
 
     private record AnswerKey(int questionIndex, String question, String answer, boolean followUp) {}
+
+    private boolean isPaused(InterviewSessionEntity session) {
+        return session.getPausedAt() != null;
+    }
 
     /** 数据库存 UTC 的无时区时间，API 明确补成带 Z 的时间点，由浏览器转换为用户本地时区。 */
     private Instant toUtcInstant(LocalDateTime value) {
@@ -674,7 +726,8 @@ public class InterviewSessionService {
             boolean finished,
             long remainingSeconds,
             String question,
-            List<QaHistory> history
+            List<QaHistory> history,
+            boolean paused
     ) {
     }
 }

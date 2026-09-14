@@ -153,6 +153,56 @@ class InterviewSessionServiceTest {
     }
 
     @Test
+    @DisplayName("暂停后倒计时冻结并持久化暂停状态")
+    void shouldPauseInterviewTimer() {
+        InterviewSessionEntity session = session("session-pause");
+        session.setStartAt(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5));
+        when(persistenceService.getById("session-pause")).thenReturn(session);
+        when(answerRepository.findBySessionIdOrderById("session-pause")).thenReturn(List.of());
+
+        var result = service.pauseInterview("session-pause", 7L);
+
+        assertThat(result.paused()).isTrue();
+        assertThat(session.getPausedAt()).isNotNull();
+        assertThat(result.remainingSeconds()).isBetween(3298L, 3300L);
+        verify(persistenceService).save(session);
+    }
+
+    @Test
+    @DisplayName("继续后累计暂停时间且剩余时间不发生跳变")
+    void shouldResumeInterviewTimerWithoutLosingTime() {
+        InterviewSessionEntity session = session("session-resume");
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        session.setStartAt(now.minusMinutes(10));
+        session.setPausedAt(now.minusMinutes(2));
+        session.setTotalPausedSeconds(30);
+        when(persistenceService.getById("session-resume")).thenReturn(session);
+        when(answerRepository.findBySessionIdOrderById("session-resume")).thenReturn(List.of());
+
+        long frozenSeconds = service.getSession("session-resume", 7L).remainingSeconds();
+        var result = service.resumeInterview("session-resume", 7L);
+
+        assertThat(result.paused()).isFalse();
+        assertThat(session.getPausedAt()).isNull();
+        assertThat(session.getTotalPausedSeconds()).isBetween(149L, 151L);
+        assertThat(result.remainingSeconds()).isBetween(frozenSeconds - 1, frozenSeconds + 1);
+        verify(persistenceService).save(session);
+    }
+
+    @Test
+    @DisplayName("暂停期间不能提交回答")
+    void shouldRejectAnswerWhilePaused() {
+        InterviewSessionEntity session = session("session-paused-answer");
+        session.setPausedAt(LocalDateTime.now(ZoneOffset.UTC));
+        when(persistenceService.getById("session-paused-answer")).thenReturn(session);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        service.submitAnswer("session-paused-answer", 1, "回答", 7L))
+                .isInstanceOf(interview.homegrown.common.exception.BusinessException.class)
+                .hasMessageContaining("请先点击继续");
+    }
+
+    @Test
     @DisplayName("模型判断无需追问时直接进入下一道主问题")
     void shouldMoveToNextMainQuestionWhenFollowUpIsUnnecessary() throws Exception {
         InterviewSessionEntity session = session("session-2");

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CorpusPicker } from '../components/CorpusPicker';
 import {
   Mic, Type, FileText, BookOpen, ChevronRight, X,
-  CheckCircle2, XCircle, Send, Volume2, Square, Loader2, Timer,
+  CheckCircle2, XCircle, Send, Volume2, Square, Loader2, Timer, Pause, Play,
 } from 'lucide-react';
 import { interviewApi, resumeApi, type InterviewSession, type CurrentQuestion, type InterviewMode } from '../api/interview';
 import { studyPlan } from '../api/drill';
@@ -101,6 +101,7 @@ export function Interview() {
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const [pauseBusy, setPauseBusy] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
   const [recogText, setRecogText] = useState('');
   const [listening, setListening] = useState(false);
@@ -116,12 +117,12 @@ export function Interview() {
   // 倒计时
   useEffect(() => {
     setLeft(question?.remainingSeconds ?? 0);
-    if (!question || question.finished) return;
+    if (!question || question.finished || session?.paused) return;
     const iv = window.setInterval(() => {
       setLeft(prev => Math.max(0, prev - 1));
     }, 1000);
     return () => window.clearInterval(iv);
-  }, [question?.sessionId, question?.question, question?.finished]);
+  }, [question?.sessionId, question?.question, question?.finished, session?.paused]);
 
   // 恢复进行中的面试
   useEffect(() => {
@@ -254,6 +255,31 @@ export function Interview() {
     }
   };
 
+  const togglePause = async () => {
+    if (!session || pauseBusy || busy || quitting) return;
+    recRef.current?.stop();
+    setListening(false);
+    window.speechSynthesis?.cancel();
+    setPauseBusy(true);
+    setErr('');
+    try {
+      const updated = session.paused
+        ? await interviewApi.resume(session.id)
+        : await interviewApi.pause(session.id);
+      setSession(updated);
+      setLeft(updated.remainingSeconds);
+      setQuestion(current => current ? {
+        ...current,
+        remainingSeconds: updated.remainingSeconds,
+        paused: updated.paused,
+      } : current);
+    } catch (e) {
+      setErr((session.paused ? '继续面试失败：' : '暂停面试失败：') + msg(e));
+    } finally {
+      setPauseBusy(false);
+    }
+  };
+
   const toggleListening = () => {
     if (listening) {
       recRef.current?.stop();
@@ -310,8 +336,11 @@ export function Interview() {
           setAnswer={setAnswer}
           busy={busy || quitting}
           quitting={quitting}
+          pauseBusy={pauseBusy}
+          paused={session.paused}
           onSubmit={submit}
           onComplete={() => completeNow(session.id)}
+          onTogglePause={togglePause}
           onQuit={quit}
           finished={!!finished}
           left={left}
@@ -475,14 +504,15 @@ function InterviewConfig(props: {
 function InterviewRun(props: {
   session: InterviewSession; question: CurrentQuestion | null; mode: InterviewMode;
   answer: string; setAnswer: (s: string) => void; busy: boolean;
-  quitting: boolean;
-  onSubmit: () => void; onComplete: () => void; onQuit: () => void;
+  quitting: boolean; pauseBusy: boolean; paused: boolean;
+  onSubmit: () => void; onComplete: () => void; onTogglePause: () => void; onQuit: () => void;
   finished: boolean; left: number;
   listening: boolean; recogText: string;
   voiceOn: boolean; onToggleVoice: () => void; onToggleListening: () => void;
 }) {
   const { session, question, mode, finished, left } = props;
-  const urgent = left <= 60 && !finished;
+  const urgent = left <= 60 && !finished && !props.paused;
+  const interactionDisabled = props.busy || props.paused;
   const totalBase = session.totalQuestions;
   const answeredBase = question ? Math.min(question.baseIndex + 1, totalBase) : totalBase;
 
@@ -498,7 +528,7 @@ function InterviewRun(props: {
           <Badge kind="soft">{mode === 'VOICE' ? '语音面试' : '文字面试'}</Badge>
           {/* 倒计时 */}
           {!finished && (
-            <span className={'iv-timer' + (urgent ? ' urgent' : '')}>
+            <span className={'iv-timer' + (urgent ? ' urgent' : '') + (props.paused ? ' paused' : '')}>
               <Timer size={14} strokeWidth={1.8} /> {fmtTime(left)}
             </span>
           )}
@@ -508,7 +538,19 @@ function InterviewRun(props: {
             </button>
           )}
           {!finished && (
-            <button className="iv-quit" onClick={props.onQuit} disabled={props.quitting}>
+            <button
+              className={'iv-pause' + (props.paused ? ' paused' : '')}
+              onClick={props.onTogglePause}
+              disabled={props.busy || props.pauseBusy}
+            >
+              {props.pauseBusy
+                ? <Loader2 size={14} className="spin" />
+                : props.paused ? <Play size={14} strokeWidth={2} /> : <Pause size={14} strokeWidth={2} />}
+              {props.pauseBusy ? '处理中…' : props.paused ? '继续' : '暂停'}
+            </button>
+          )}
+          {!finished && (
+            <button className="iv-quit" onClick={props.onQuit} disabled={props.quitting || props.pauseBusy}>
               {props.quitting ? <Loader2 size={14} className="spin" /> : <X size={14} strokeWidth={2} />}
               {props.quitting ? '结束中…' : '退出'}
             </button>
@@ -567,7 +609,7 @@ function InterviewRun(props: {
                 <button
                   className={'iv-mic' + (props.listening ? ' on' : '')}
                   onClick={props.onToggleListening}
-                  disabled={props.busy}
+                  disabled={interactionDisabled}
                 >
                   {props.listening ? <Square size={20} strokeWidth={2} /> : <Mic size={22} strokeWidth={1.8} />}
                 </button>
@@ -582,13 +624,15 @@ function InterviewRun(props: {
               value={props.answer || props.recogText}
               onChange={(e) => props.setAnswer(e.target.value)}
               rows={7}
-              disabled={props.busy}
+              disabled={interactionDisabled}
             />
             <div className="iv-answer-foot">
               <span className="iv-answer-hint">
-                {urgent ? '时间快到了，提交后将结束面试' : '提交后 AI 会判断是否需要追问，否则进入下一道主问题'}
+                {props.paused
+                  ? '计时已暂停，点击“继续”后即可恢复作答'
+                  : urgent ? '时间快到了，提交后将结束面试' : '提交后 AI 会判断是否需要追问，否则进入下一道主问题'}
               </span>
-              <Button onClick={props.onSubmit} disabled={props.busy || (!props.answer.trim() && !props.recogText.trim())}>
+              <Button onClick={props.onSubmit} disabled={interactionDisabled || (!props.answer.trim() && !props.recogText.trim())}>
                 {props.busy ? <><Loader2 size={15} className="spin" /> 处理中…</> : (
                   <><Send size={15} strokeWidth={1.8} /> 提交回答</>
                 )}

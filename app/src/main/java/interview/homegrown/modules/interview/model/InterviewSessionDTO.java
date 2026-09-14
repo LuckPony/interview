@@ -26,6 +26,8 @@ public record InterviewSessionDTO(
         //计划时长（分钟）
         Integer durationMin,
         //剩余秒数（计时展示）
-        long remainingSeconds
+        long remainingSeconds,
+        //是否正在暂停（只对进行中的面试有效）
+        boolean paused
 ) {
 }
