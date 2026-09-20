@@ -108,8 +108,7 @@ export function KnowledgeBasePage() {
     {dragging && <div className="kb-drop-overlay"><FolderUp size={36} /><h2>让新知识，有处安放</h2><p>松开鼠标导入资料 · 每份最大 20 MB</p></div>}
     <input ref={fileRef} type="file" accept={LIBRARY_ACCEPT} multiple hidden onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; void upload(files); }} />
     <header className="kb-header">
-      <div><span className="eyebrow">KNOWLEDGE LIBRARY · {id ? '资料详情' : '知识库管理'}</span>
-        <h1>{id ? detail?.document.name ?? '资料详情' : '让积累，成为你的底气。'}</h1>
+      <div><h1>{id ? detail?.document.name ?? '资料详情' : '让积累，成为你的底气。'}</h1>
         <p>{id ? '读懂资料的结构，看见它如何参与学习与面试。' : '整理自己的资料，让每一次规划与练习，都有据可循。'}</p></div>
       {id ? <Link className="kb-text-link" to="/knowledge-base"><ArrowLeft size={15} />返回知识库</Link>
         : <div className="kb-header-actions"><Link className="kb-secondary-link" to="/knowledge-base/tools"><Wrench size={16} />工具库</Link>

@@ -210,7 +210,6 @@ export function AccountPage() {
   return (
     <div className="page account-page">
       <header className="page-head account-head">
-        <span className="eyebrow">个人中心 · ACCOUNT</span>
         <h1>你的个人空间</h1>
         <p>管理公开称呼、基础资料与账号安全。资料仅用于优化你的学习与面试体验。</p>
       </header>

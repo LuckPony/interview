@@ -248,7 +248,6 @@ export function IntakeChat() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">练习 · 新建方向</span>
         <h1>聊聊你想学什么</h1>
         <p>告诉我方向、你的基础和目标，我会帮你拆成一份层级学习规划。</p>
       </header>

@@ -176,7 +176,6 @@ export function Notes() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">内化复盘 · NOTE</span>
         <h1>内化复盘</h1>
         <p>
           判分低于达标线（{PASS_LINE} 分）的题会留在这里。点「复盘」看 AI 生成的

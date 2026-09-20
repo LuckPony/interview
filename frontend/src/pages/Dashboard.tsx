@@ -12,7 +12,6 @@ import {
   Compass,
   GraduationCap,
   Layers3,
-  LayoutDashboard,
   MessagesSquare,
   NotebookPen,
   Plus,
@@ -348,11 +347,6 @@ export function Dashboard() {
     <div className="dashboard-page">
       <div className="dashboard-content">
         <div className="dashboard-topbar">
-          <span className="dashboard-breadcrumb">
-            <LayoutDashboard size={16} strokeWidth={1.6} />
-            我的工作台<span>/</span>
-            <b>学习总览</b>
-          </span>
           <div className="dashboard-topbar-actions">
             <span className="dashboard-date">
               <CalendarDays size={14} />

@@ -109,7 +109,6 @@ export function Rehearsal() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">模拟面试 · REHEARSAL</span>
         <h1>模拟面试</h1>
         <p>闭卷、计时、多轮追问。把上一轮答出的东西讲透，达标才算这一层真的会。</p>
       </header>

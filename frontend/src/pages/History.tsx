@@ -69,7 +69,6 @@ export function HistoryPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">练习 · 档案</span>
         <h1>问答记录</h1>
         <p>
           按题归成对话线：原答、重答、追问都串在同一道题下。点卡片直接回到那道题的对话框，接着聊。

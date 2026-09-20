@@ -74,7 +74,6 @@ export function InterviewHistory() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">面试准备 · RECORDS</span>
         <h1>面试记录</h1>
         <p>每一次模拟面试的评分与评估，点击查看完整问答回顾。</p>
       </header>

@@ -96,7 +96,6 @@ export function ReviewPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">内化复盘</span>
         <h1>复盘</h1>
         <button className="head-back" onClick={() => navigate('/notes')}>
           <ArrowLeft size={14} strokeWidth={1.6} /> 返回内化复盘

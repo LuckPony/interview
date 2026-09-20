@@ -126,7 +126,6 @@ export function ResumeManagement() {
       {dragging && <div className="resume-drop-overlay"><Upload size={30} />松开鼠标，上传并分析这份简历</div>}
       <header className="resume-head">
         <div>
-          <span className="eyebrow">面试准备 · RESUME</span>
           <h1>简历管理</h1>
           <p>集中管理你的简历和 AI 分析结果，模拟面试可直接使用这里的简历。</p>
         </div>

@@ -404,10 +404,11 @@ export function CapturePage() {
     return (
         <div className={`page capture${dragging ? ' is-file-dragging' : ''}`} {...dropProps}>
             {dragging && <div className="capture-drop-overlay"><Upload size={28} />松开鼠标，将文件添加到本轮提问</div>}
-            <header className="page-head">
-                <span className="eyebrow">对话沉淀 · CAPTURE</span>
-                <h1>随手记</h1>
-                <p>随便问，AI 答。有价值的对话一键存成知识卡片，进入内化复盘。</p>
+            <header className="page-head capture-head">
+                <div>
+                    <h1>随手记</h1>
+                    <p>随便问，AI 答。有价值的对话一键存成知识卡片，进入内化复盘。</p>
+                </div>
                 <label className="capture-auto">
                     <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} />
                     停顿 10 秒自动成卡

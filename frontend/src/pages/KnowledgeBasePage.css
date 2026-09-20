@@ -1,6 +1,6 @@
 .knowledge-page { max-width:1280px; margin:0 auto; }
 .kb-header { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:32px; }
-.kb-header h1 { margin:12px 0; font-size:clamp(25px,2.5vw,34px); font-weight:550; overflow-wrap:anywhere; }
+.kb-header h1 { margin:0 0 12px; font-size:clamp(25px,2.5vw,34px); font-weight:550; overflow-wrap:anywhere; }
 .kb-header p, .kb-muted { color:var(--ink-faint); font-size:13px; line-height:1.8; }
 .kb-header-actions { display:flex; align-items:center; gap:12px; flex-shrink:0; }
 .kb-text-link, .kb-secondary-link { display:inline-flex; align-items:center; gap:7px; color:var(--cinnabar-deep); font-size:12px; }

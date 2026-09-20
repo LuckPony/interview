@@ -302,7 +302,6 @@ export function Interview() {
   return (
     <div className="page interview-page">
       <header className="page-head">
-        <span className="eyebrow">模拟面试 · INTERVIEW</span>
         <h1>模拟面试</h1>
         <p>按一面、二面、三面的真实侧重点，围绕简历与学习资料进行覆盖式提问，结束后可由 AI 统一评估。</p>
       </header>

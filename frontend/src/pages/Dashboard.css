@@ -46,6 +46,7 @@
 }
 .dashboard-topbar-actions {
   gap: 18px;
+  margin-left: auto;
 }
 .dashboard-date {
   gap: 8px;

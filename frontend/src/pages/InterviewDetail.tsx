@@ -39,7 +39,6 @@ export function InterviewDetail() {
         <button className="ih-back" onClick={() => navigate('/rehearsal/history')}>
           <ArrowLeft size={15} strokeWidth={2} /> 返回历史
         </button>
-        <span className="eyebrow">模拟面试 · DETAIL</span>
         <h1>{session.skillName}</h1>
         <p>
           {new Date(session.createdAt).toLocaleString('zh-CN')} · {DIFF_LABEL[session.difficulty]} ·

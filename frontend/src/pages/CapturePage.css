@@ -17,6 +17,21 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* 标题和自动成卡同排，把顶部空间更多地留给对话。 */
+.capture-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  margin-bottom: var(--s-4);
+}
+.capture-head h1 { margin-top: 0; }
+.capture-head .capture-auto {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-bottom: 2px;
+}
+
 /* —— 自动成卡开关 —— */
 .capture-auto {
   display: inline-flex;
@@ -48,8 +63,8 @@
   flex-direction: column;
   gap: var(--s-3);
   padding: var(--s-5);
-  min-height: 240px;
-  max-height: 46vh;
+  min-height: clamp(430px, 58vh, 720px);
+  max-height: 68vh;
   overflow-y: auto;
   margin-bottom: var(--s-4);
 }
@@ -140,7 +155,8 @@
 }
 
 .msg {
-  max-width: min(720px, 80%);
+  /* 原上限 720px；长回答、代码和图片可自然增长，但不会无限横向铺开。 */
+  max-width: min(1440px, 92%);
   padding: var(--s-3) var(--s-4);
   border-radius: 16px;
   line-height: 1.65;
@@ -261,6 +277,7 @@
   line-height: 1.65;
   color: var(--ink);
   resize: vertical;
+  min-height: 82px;
   max-height: 24vh;
   transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
@@ -729,4 +746,18 @@
   color: var(--ink-faint);
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
+}
+
+@media (max-width: 760px) {
+  .capture-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+  .capture-chat {
+    min-height: 52vh;
+    max-height: 70vh;
+    padding: var(--s-4);
+  }
+  .msg { max-width: 96%; }
 }

@@ -105,7 +105,6 @@ export function Profile() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">掌握画像 · PROFILE</span>
         <h1>掌握画像</h1>
         <p>按学习方向切换，看每个认知层里你到底掌握了多少。</p>
       </header>

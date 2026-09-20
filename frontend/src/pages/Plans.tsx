@@ -107,7 +107,6 @@ export function Plans({
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">练习 · 快速开始</span>
         <h1>今日学习</h1>
         <p>按今天安排的复习和新学逐项完成；“继续学习”会自动进入当前 L 层的下一个子知识点。</p>
         <label className="teach-toggle">

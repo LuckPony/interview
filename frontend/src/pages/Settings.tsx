@@ -665,7 +665,6 @@ export function Settings() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">设置 · SETTINGS</span>
         <h1>设置</h1>
         <p>
           调整界面主题与字号，以及 AI 模型与密钥。外观改动即时生效；模型改动保存后即时生效，无需重启。

@@ -160,7 +160,7 @@ dialog::backdrop {
 }
 .page-head h1 {
   font-size: var(--fs-2xl);
-  margin-top: var(--s-2);
+  margin-top: 0;
 }
 .page-head p {
   color: var(--ink-soft);

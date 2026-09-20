@@ -26,7 +26,7 @@
   margin-bottom: var(--s-6);
 }
 .resume-head h1 {
-  margin-top: var(--s-2);
+  margin-top: 0;
   font-size: var(--fs-2xl);
 }
 .resume-head p {

@@ -78,7 +78,7 @@ export function KnowledgeToolsPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div ref={pageRef} className="page knowledge-page knowledge-tools">
-    <header className="kb-header"><div><span className="eyebrow">KNOWLEDGE STUDIO · READ & UNDERSTAND</span><h1>知识库工具库</h1><p>让资料更好读，让知识更容易被理解。</p></div>
+    <header className="kb-header"><div><h1>知识库工具库</h1><p>让资料更好读，让知识更容易被理解。</p></div>
       <Link className="kb-text-link" to="/knowledge-base"><ArrowLeft size={15} />回到我的资料</Link></header>
     <div className="kt-tool-grid" role="group" aria-label="选择知识库工具">{TOOLS.map(t => <button key={t.id} disabled={busy} className={`kt-tool ${tool === t.id ? 'selected' : ''}`} onClick={() => setTool(t.id)}>
       <span className="kt-tool-icon"><t.icon size={23} strokeWidth={1.5} /></span><span><strong>{t.title}</strong><small>{t.subtitle}</small></span>{tool === t.id && <Check size={16} className="kt-tool-check" />}</button>)}</div>

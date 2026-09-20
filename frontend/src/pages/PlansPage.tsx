@@ -164,7 +164,6 @@ export function PlansPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <span className="eyebrow">学习计划</span>
         <h1>学习大纲</h1>
         <p>这里是你的知识蓝图。点「编辑」可以自行调整方向，或增改删知识点。</p>
       </header>
