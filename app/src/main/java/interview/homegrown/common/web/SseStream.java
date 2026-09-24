@@ -4,6 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.concurrent.ExecutorService;
@@ -62,7 +66,16 @@ public final class SseStream {
      */
     public static ResponseEntity<SseEmitter> start(Handler handler) {
         SseEmitter emitter = new SseEmitter();
+        // 在 servlet 线程上捕获安全/请求上下文并带进 handler 线程：两者都是 ThreadLocal，
+        // LLM key 解析依赖它们（SecurityContextHolder 定位登录用户的库配置、
+        // RequestContextHolder 读桌面端 X-LLM-Key 头），不复制会误报"尚未配置 API Key"。
+        SecurityContext security = SecurityContextHolder.getContext();
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
         HANDLERS.execute(() -> {
+            SecurityContextHolder.setContext(security);
+            if (requestAttributes != null) {
+                RequestContextHolder.setRequestAttributes(requestAttributes);
+            }
             Sink sink = new Sink(emitter);
             try {
                 handler.handle(sink);
@@ -71,6 +84,8 @@ public final class SseStream {
                 sink.error(e.getMessage() == null ? "服务器内部错误" : e.getMessage());
             } finally {
                 sink.finish();
+                SecurityContextHolder.clearContext();
+                RequestContextHolder.resetRequestAttributes();
             }
         });
         return ResponseEntity.ok()
