@@ -227,88 +227,104 @@ public class LlmRawClient {
             notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
         }
-        try {
-            Map<String, Object> body = new java.util.HashMap<>();
-            body.put("model", cfg().model());
-            Object content;
-            if (images == null || images.isEmpty()) {
-                content = user;
-            } else {
-                List<Map<String, Object>> parts = new java.util.ArrayList<>();
-                parts.add(Map.of("type", "text", "text", user));
-                for (String img : images) {
-                    parts.add(Map.of("type", "image_url", "image_url", Map.of("url", img)));
+        boolean enableThinking = true;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                Map<String, Object> body = buildStreamBody(system, user, images, enableThinking);
+                HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
+                if (response == null) return;
+                if (response.statusCode() / 100 != 2) {
+                    response.body().close();
+                    notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                            "LLM stream HTTP " + response.statusCode()));
+                    return;
                 }
-                content = parts;
-            }
-            body.put("messages", List.of(
-                    Map.of("role", "system", "content", system),
-                    Map.of("role", "user", "content", content)));
-            body.put("temperature", 0.7);
-            // 思考模式：保持开启（模型更聪明），但 max_tokens 和超时要给足，
-            // 否则 reasoning_content 会吃掉额度截断回答 / 思考+回答超时。
-            applyDefaultTokens(body);
-            // 长思考（reasoning）与正文共享输出预算：深挖性内容容易把 8192 吃光，
-            // 导致正文被截断甚至为空（表现为「讲解生成失败」）。这里给足到 16384；
-            // 若某 provider 不认该上限，由 400 去参重试兜底。非思考 provider 仅作上限，无副作用。
-            applyGenerousBudget(body);
-            // 按 provider 适配思考开关（deepseek/glm/doubao→thinking，qwen→enable_thinking），
-            // 其余 provider 不加该参数 —— 让非 DeepSeek 的思考模型也能流式返回 reasoning_content/reasoning。
-            applyThinkingStream(body);
-            body.put("stream", true);
-
-            // 显式管理响应流生命周期：逐行读取，回调失败或客户端断开时及时关闭上游。
-            HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
-            if (response == null) return;
-            if (response.statusCode() / 100 != 2) {
-                response.body().close();
-                notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                        "LLM stream HTTP " + response.statusCode()));
+                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning);
+                if (!thinkingTimeout) return;
+                log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
+                enableThinking = false;
+            } catch (Exception t) {
+                if (t instanceof InterruptedException) Thread.currentThread().interrupt();
+                notifyError(onError, t);
                 return;
             }
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
-                String line;
-                boolean completed = false;
-                while ((line = reader.readLine()) != null) {
-                    // SSE 一条 event 可能跨多行："data: ..." 一行；空行表示事件边界
-                    if (line.isEmpty()) continue;
-                    if (!line.startsWith("data:")) continue;
-                    String payload = line.substring(5).trim();
-                    if ("[DONE]".equals(payload)) { completed = true; break; }
-                    if (payload.isEmpty()) continue;
-                    try {
-                        JsonNode node = objectMapper.readTree(payload);
-                        JsonNode choice = node.path("choices").path(0);
-                        if (textOrNull(choice.path("finish_reason")) != null) completed = true;
-                        JsonNode delta = choice.path("delta");
-                        // 推理内容独立推送（onReasoning 非空时走它，正文走 onToken，互不混用）。
-                        // 思考字段可能出现在 delta（流式）、choice 或 message（部分网关/模型在收尾帧才给），都兼容。
-                        // 注意：不能用 textOrNull 过滤"纯空白"的 delta —— 流式模型常把单独的换行
-                        // （"\n"）作为独立 token 下发，isBlank() 会把它当空丢掉，导致代码/段落换行丢失、
-                        // markdown 代码块缺行。这里只判缺失/空，纯空白 token 原样保留。
-                        String reasoning = firstReasoningToken(delta);
-                        if (reasoning == null) reasoning = firstReasoningToken(choice);
-                        if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
-                        if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
-                            onReasoning.accept(reasoning);
-                        }
-                        String text = streamText(delta.path("content"));
-                        if (text == null && fallbackToReasoning) {
-                            text = reasoning;
-                        }
-                        if (text != null && !text.isEmpty() && onToken != null) onToken.accept(text);
-                    } catch (JsonProcessingException e) {
-                        log.debug("解析 SSE chunk 失败，跳过: {}", e.getMessage());
-                    }
-                }
-                if (!completed) throw new EOFException("模型连接在回答完成前断开");
-            }
-        } catch (Exception t) {
-            if (t instanceof InterruptedException) Thread.currentThread().interrupt();
-            notifyError(onError, t);
         }
+    }
+
+    private Map<String, Object> buildStreamBody(String system, String user, List<String> images, boolean enableThinking) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("model", cfg().model());
+        Object content;
+        if (images == null || images.isEmpty()) {
+            content = user;
+        } else {
+            List<Map<String, Object>> parts = new java.util.ArrayList<>();
+            parts.add(Map.of("type", "text", "text", user));
+            for (String img : images) {
+                parts.add(Map.of("type", "image_url", "image_url", Map.of("url", img)));
+            }
+            content = parts;
+        }
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", system),
+                Map.of("role", "user", "content", content)));
+        body.put("temperature", 0.7);
+        applyDefaultTokens(body);
+        applyGenerousBudget(body);
+        if (enableThinking) {
+            applyThinkingStream(body);
+        } else {
+            applyThinkingDiscard(body);
+        }
+        body.put("stream", true);
+        return body;
+    }
+
+    /** 读取 SSE 流并分发 token。返回 true 表示思考超时需要降级重试。 */
+    private boolean readStreamLoop(HttpResponse<InputStream> response,
+                                   Consumer<String> onToken, Consumer<Throwable> onError,
+                                   boolean fallbackToReasoning, Consumer<String> onReasoning) throws Exception {
+        long firstTokenAt = -1;
+        boolean hasContent = false;
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            String line;
+            boolean completed = false;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty()) continue;
+                if (!line.startsWith("data:")) continue;
+                String payload = line.substring(5).trim();
+                if ("[DONE]".equals(payload)) { completed = true; break; }
+                if (payload.isEmpty()) continue;
+                try {
+                    JsonNode node = objectMapper.readTree(payload);
+                    JsonNode choice = node.path("choices").path(0);
+                    if (textOrNull(choice.path("finish_reason")) != null) completed = true;
+                    JsonNode delta = choice.path("delta");
+                    String reasoning = firstReasoningToken(delta);
+                    if (reasoning == null) reasoning = firstReasoningToken(choice);
+                    if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
+                    if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
+                        if (firstTokenAt < 0) firstTokenAt = System.currentTimeMillis();
+                        onReasoning.accept(reasoning);
+                    }
+                    String text = streamText(delta.path("content"));
+                    if (text == null && fallbackToReasoning) text = reasoning;
+                    if (text != null && !text.isEmpty()) {
+                        hasContent = true;
+                        if (onToken != null) onToken.accept(text);
+                    }
+                    if (!hasContent && firstTokenAt > 0
+                            && System.currentTimeMillis() - firstTokenAt > MAX_THINKING_SECONDS * 1000L) {
+                        return true;
+                    }
+                } catch (JsonProcessingException e) {
+                    log.debug("解析 SSE chunk 失败，跳过: {}", e.getMessage());
+                }
+            }
+            if (!completed) throw new EOFException("模型连接在回答完成前断开");
+        }
+        return false;
     }
 
     /**
@@ -371,6 +387,9 @@ public class LlmRawClient {
      *  DeepSeek V4/GLM 默认 high、OpenAI 默认中高；这个默认用 low，让讲解更快。
      *  用户可在「设置 → 思考强度」改为 medium/high/auto。 */
     private static final String STREAM_REASONING_EFFORT = "low";
+
+    /** 思考超时（秒）：流式讲解/问答时，若模型思考超过该时长仍未输出正文，降级为非思考模式重试。 */
+    private static final int MAX_THINKING_SECONDS = 30;
 
     private String modelLower() {
         return cfg().model() == null ? "" : cfg().model().toLowerCase();
