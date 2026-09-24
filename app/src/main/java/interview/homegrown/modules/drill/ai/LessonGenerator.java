@@ -104,6 +104,20 @@ public class LessonGenerator {
                覆盖整个大概念、与其他子点重迭的泛泛综述
             """;
 
+    /**
+     * 取概念的完整子知识点清单：缓存优先，无缓存现场拆解并写回 concept.lessonOutline（调用方负责 save）。
+     * 拆解失败降级为概念名本身（保证至少有一个子点）。
+     */
+    public List<String> ensureOutline(Concept concept, String context) {
+        List<String> subs = outlineFromJson(concept.getLessonOutline());
+        if (!subs.isEmpty()) return subs;
+        subs = decompose(concept, context);
+        if (subs.isEmpty()) subs = List.of(concept.getName());
+        String json = outlineToJson(subs);
+        if (json != null) concept.setLessonOutline(json);
+        return subs;
+    }
+
     /** 拆解概念为子知识点清单；失败返回空列表（调用方降级为「整概念讲解」）。 */
     public List<String> decompose(Concept concept, String context) {
         try {
@@ -207,24 +221,6 @@ public class LessonGenerator {
         } catch (Exception e) {
             return List.of();
         }
-    }
-
-    /**
-     * 流式讲解单个子知识点：逐 token 回调 onToken，最终累积完整文本返回（失败/空为 null）。
-     * onReasoning 可选：收到模型思考内容时独立回调，供前端展示「思考过程」。
-     */
-    public String streamLesson(Concept concept, String subPoint, String context,
-                               Consumer<String> onToken, Consumer<String> onReasoning) {
-        return streamLesson(concept, subPoint, context, null, List.of(), onToken, onReasoning);
-    }
-
-    /**
-     * 「换种描述」重讲：previousText 非空时，在 prompt 里附上旧讲解并要求换角度/换描述重新讲，
-     * 避免生成与上次几乎相同的文本；生成逻辑与普通讲解完全一致。
-     */
-    public String streamLesson(Concept concept, String subPoint, String context, String previousText,
-                               Consumer<String> onToken, Consumer<String> onReasoning) {
-        return streamLesson(concept, subPoint, context, previousText, List.of(), onToken, onReasoning);
     }
 
     /** 同概念下一个兄弟子知识点的已生成讲解摘要（用于让新讲解避重）。 */

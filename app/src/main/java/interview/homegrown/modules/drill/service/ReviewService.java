@@ -10,6 +10,7 @@ import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.GradeResult;
 import interview.homegrown.modules.drill.domain.QuestionBank;
+import interview.homegrown.modules.drill.grader.ByConceptJson;
 import interview.homegrown.modules.drill.repository.DrillNoteRepository;
 import interview.homegrown.modules.drill.repository.DrillReviewRepository;
 import interview.homegrown.modules.drill.repository.DrillRunRepository;
@@ -116,25 +117,6 @@ public class ReviewService {
 
     /** 判分结果里没打中的评分点（MISS/PARTIAL），复盘页直接展示"哪里薄弱"。 */
     private List<String> extractWeakPoints(String byConceptJson) {
-        if (byConceptJson == null || byConceptJson.isBlank()) return List.of();
-        try {
-            JsonNode root = objectMapper.readTree(byConceptJson);
-            if (!root.isArray()) return List.of();
-            List<String> weak = new ArrayList<>();
-            for (JsonNode concept : root) {
-                JsonNode prs = concept.path("pointResults");
-                if (!prs.isArray()) continue;
-                for (JsonNode p : prs) {
-                    String verdict = p.path("verdict").asText("").toUpperCase();
-                    if ("MISS".equals(verdict) || "PARTIAL".equals(verdict)) {
-                        String point = p.path("point").asText("");
-                        if (!point.isBlank()) weak.add(point);
-                    }
-                }
-            }
-            return weak;
-        } catch (Exception e) {
-            return List.of();
-        }
+        return ByConceptJson.extractWeakPoints(byConceptJson);
     }
 }

@@ -13,10 +13,6 @@ import java.time.temporal.ChronoUnit;
 @Service
 public class ScheduleService {
 
-    public Instant nextDue(Grade grade, boolean timed) {
-        return nextDue(grade, timed, false, 0, false);
-    }
-
     /**
      * 基于苏格拉底两级评分的动态到期时间。
      * <p>规则（已与用户确认）：

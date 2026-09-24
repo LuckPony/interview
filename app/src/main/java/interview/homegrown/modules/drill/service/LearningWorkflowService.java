@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -40,13 +41,15 @@ public class LearningWorkflowService {
     private final LessonGenerator lessonGenerator;
     private final ProgressContextService progressContext;
     private final SubPointPassRepository subPointPassRepo;
+    private final SubPointPassService subPointPassService;
 
     public LearningWorkflowService(StudyPlanRepository planRepo, ConceptRepository conceptRepo,
                                    DrillRunRepository runRepo, GradeResultRepository gradeRepo,
                                    QuestionBankRepository questionRepo,
                                    LessonGenerator lessonGenerator,
                                    ProgressContextService progressContext,
-                                   SubPointPassRepository subPointPassRepo) {
+                                   SubPointPassRepository subPointPassRepo,
+                                   SubPointPassService subPointPassService) {
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.runRepo = runRepo;
@@ -55,6 +58,7 @@ public class LearningWorkflowService {
         this.lessonGenerator = lessonGenerator;
         this.progressContext = progressContext;
         this.subPointPassRepo = subPointPassRepo;
+        this.subPointPassService = subPointPassService;
     }
 
     @Transactional
@@ -108,15 +112,8 @@ public class LearningWorkflowService {
     }
 
     private List<String> ensureOutline(Long userId, Concept concept) {
-        List<String> subs = lessonGenerator.outlineFromJson(concept.getLessonOutline());
-        if (!subs.isEmpty()) return subs;
-        subs = lessonGenerator.decompose(concept, progressContext.contextFor(userId, concept.getId()));
-        if (subs.isEmpty()) subs = List.of(concept.getName());
-        String json = lessonGenerator.outlineToJson(subs);
-        if (json != null) {
-            concept.setLessonOutline(json);
-            conceptRepo.save(concept);
-        }
+        List<String> subs = lessonGenerator.ensureOutline(concept, progressContext.contextFor(userId, concept.getId()));
+        conceptRepo.save(concept);
         return subs;
     }
 

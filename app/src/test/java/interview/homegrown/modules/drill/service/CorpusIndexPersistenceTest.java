@@ -75,7 +75,7 @@ class CorpusIndexPersistenceTest {
       assertThat(saved.getFirst().getTopic()).isEqualTo("线程池"); assertThat(inTransaction[0]).isTrue(); return saved;
     }).when(chunks).saveAll(any());
     var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(AiSettingsService.class), tx);
-    try { indexer.index(1L); } finally { indexer.shutdown(); }
+    try { indexer.index(1L, false); } finally { indexer.shutdown(); }
     assertThat(c.getOverview()).isEqualTo("理解线程池机制"); assertThat(c.getIndexState()).isEqualTo("READY");
   }
 }

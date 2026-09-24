@@ -14,9 +14,6 @@ import java.util.Optional;
 
 public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
-    // 物理闸门读取：同一用户未闭环的作答（READY/ANSWERING）
-    List<DrillRun> findByUserIdAndStatusIn(Long userId, List<DrillRunStatus> statuses);
-
     // 物理闸门读取（按 mode 区分主线）：避免把活跃 REHEARSAL 当 LEARN 新题返回
     List<DrillRun> findByUserIdAndStatusInAndMode(Long userId, List<DrillRunStatus> statuses, DrillMode mode);
 
@@ -91,44 +88,6 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
 
         Instant getAnsweredAt();
     }
-
-    /**
-     * 问答记录：当前用户已判分的 LEARN 作答，按判分时间倒排。
-     * 关联 grade_result 拿分数/档位/判分时间，left join drill_note 判断是否有笔记。
-     * questionId 一起带回来，供服务层按题聚合（一道题一条对话线）。
-     */
-    @Query("""
-            select r.id as runId, r.questionId as questionId, q.stem as stem, g.rawScore as rawScore, g.grade as grade,
-                   g.createdAt as answeredAt, n.id as noteId
-            from DrillRun r
-            join GradeResult g on g.runId = r.id
-            join QuestionBank q on q.id = r.questionId
-            left join DrillNote n on n.runId = r.id
-            where r.userId = :userId
-              and r.status = :graded
-            order by g.createdAt desc
-            """)
-    List<HistoryRow> findHistory(@Param("userId") Long userId, @Param("graded") DrillRunStatus graded);
-
-    interface HistoryRow {
-        Long getRunId();
-
-        Long getQuestionId();
-
-        String getStem();
-
-        BigDecimal getRawScore();
-
-        interview.homegrown.modules.drill.domain.Grade getGrade();
-
-        Instant getAnsweredAt();
-
-        Long getNoteId();
-    }
-
-    /** 对话线：某道题下所有已判分 run（LEARN 原答 + 重答 + REHEARSAL 追问场），按创建时间升序 */
-    List<DrillRun> findByUserIdAndQuestionIdAndStatusOrderByIdAsc(
-            Long userId, Long questionId, DrillRunStatus status);
 
     /** 对话线（全状态）：某道题下所有 run（含进行中 READY/ANSWERING），按创建时间升序 */
     List<DrillRun> findByUserIdAndQuestionIdOrderByIdAsc(Long userId, Long questionId);

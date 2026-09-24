@@ -370,12 +370,4 @@ public class RehearsalService {
             return "[]";
         }
     }
-
-    private List<String> conceptNames(QuestionBank q) {
-        List<Long> ids = new ArrayList<>();
-        for (Integer i : q.getConceptIds()) {
-            ids.add(i.longValue());
-        }
-        return conceptRepo.findAllById(ids).stream().map(Concept::getName).toList();
-    }
 }

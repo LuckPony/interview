@@ -94,6 +94,14 @@ public class ProgressContextService {
         return contextFor(userId, List.of(conceptId));
     }
 
+    /** 按题目取学习上下文（conceptIds 来自 QuestionBank）。 */
+    public String contextFor(Long userId, interview.homegrown.modules.drill.domain.QuestionBank q) {
+        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
+        List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
+                .map(Integer::longValue).toList();
+        return contextFor(userId, ids);
+    }
+
     // ------------------------------------------------------------ 画像
 
     private String profile(Long userId, List<Concept> concepts) {

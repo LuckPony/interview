@@ -11,6 +11,7 @@ import interview.homegrown.modules.drill.domain.DrillRunStatus;
 import interview.homegrown.modules.drill.domain.DrillTurn;
 import interview.homegrown.modules.drill.domain.GradeResult;
 import interview.homegrown.modules.drill.domain.QuestionBank;
+import interview.homegrown.modules.drill.grader.ByConceptJson;
 import interview.homegrown.modules.drill.grader.GradeScale;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.DrillNoteRepository;
@@ -191,32 +192,8 @@ public class NoteService {
     /** 判分结果里没打中的评分点（MISS/PARTIAL），作为"薄弱点"给复盘页 */
     private List<String> weakPointsOf(Long runId) {
         return gradeRepo.findByRunId(runId)
-                .map(gr -> extractWeakPoints(gr.getByConceptJson()))
+                .map(gr -> ByConceptJson.extractWeakPoints(gr.getByConceptJson()))
                 .orElse(List.of());
-    }
-
-    private List<String> extractWeakPoints(String byConceptJson) {
-        if (byConceptJson == null || byConceptJson.isBlank()) return List.of();
-        try {
-            JsonNode root = objectMapper.readTree(byConceptJson);
-            if (!root.isArray()) return List.of();
-            List<String> weak = new ArrayList<>();
-            for (JsonNode concept : root) {
-                JsonNode prs = concept.path("pointResults");
-                if (!prs.isArray()) continue;
-                for (JsonNode p : prs) {
-                    String verdict = p.path("verdict").asText("").toUpperCase();
-                    if ("MISS".equals(verdict) || "PARTIAL".equals(verdict)) {
-                        String point = p.path("point").asText("");
-                        if (!point.isBlank()) weak.add(point);
-                    }
-                }
-            }
-            return weak;
-        } catch (Exception e) {
-            log.warn("薄弱点解析失败，忽略: {}", e.getMessage());
-            return List.of();
-        }
     }
 
     // ----------------------------------------------------------- 内部

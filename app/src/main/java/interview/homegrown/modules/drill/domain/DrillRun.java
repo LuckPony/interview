@@ -45,12 +45,6 @@ public class DrillRun {
 
     private Integer activeSeconds;  // 有效作答时长（心跳累计）
 
-    @Column(columnDefinition = "text")
-    private String transcript;       // SPEAK 预留
-
-    /** 答案揭示边界：首次明确索要答案/提示的轮次（drill_turn.round）。模拟面试 REHEARSAL 仍在用。 */
-    private Integer answerRevealedRound;
-
     @Column(nullable = false)
     private int currentRound = 0;    // REHEARSAL 当前轮（0=主问）
 

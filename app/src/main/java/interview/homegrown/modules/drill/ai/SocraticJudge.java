@@ -21,14 +21,4 @@ public record SocraticJudge(
         String praise,          // done 时的表扬语；其他态留空
         boolean wantsAnswerNow  // 用户是否明确索要完整答案 / 放弃独立作答
 ) {
-    public enum State {
-        ANSWERING, NEEDS_GUIDE, DONE;
-        public static State of(String s) {
-            return switch (s == null ? "" : s.toLowerCase()) {
-                case "needs_guide", "needs-guide", "needsguide" -> NEEDS_GUIDE;
-                case "done" -> DONE;
-                default -> ANSWERING;
-            };
-        }
-    }
 }

@@ -21,22 +21,6 @@ public final class GradeScale {
     private GradeScale() {
     }
 
-    /** 等权命中率：HIT=1，PARTIAL=0.5，MISS=0，映射到 0-100；NA（未考察）不计入分子分母 */
-    public static BigDecimal score(List<PointVerdict> results) {
-        if (results == null || results.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        double sum = 0;
-        int scored = 0;
-        for (PointVerdict r : results) {
-            if (isNotApplicable(r.verdict())) continue; // 未考察：不参与计分
-            sum += weightOf(r.verdict());
-            scored++;
-        }
-        if (scored == 0) return BigDecimal.ZERO; // 全部未考察（理论不会：主问必考）
-        return BigDecimal.valueOf(sum / scored * 100).setScale(2, RoundingMode.HALF_UP);
-    }
-
     /**
      * 加权命中率：每个评分点按出题时给的 weight（1-3，越核心越大）加权。
      * HIT=weight，PARTIAL=0.5*weight，MISS=0，再除以总权重 — 核心大点占比更大，

@@ -49,9 +49,4 @@ public class QuestionBank {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "mcq_options", columnDefinition = "jsonb")
     private String mcqOptionsJson;
-
-    private String codeRef;
-
-    @Column(nullable = false)
-    private int usedCount = 0;
 }

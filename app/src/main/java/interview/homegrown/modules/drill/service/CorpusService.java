@@ -89,11 +89,6 @@ public class CorpusService {
         this.documentParser = documentParser; this.settings = settings;
     }
 
-    @Transactional(readOnly = true)
-    public List<Corpus> list(Long userId) {
-        return corpusRepo.findByUserIdOrderByCreatedAtDesc(userId);
-    }
-
     @Transactional
     public void delete(Long corpusId, Long userId) {
         Corpus corpus = corpusRepo.findLockedById(corpusId)

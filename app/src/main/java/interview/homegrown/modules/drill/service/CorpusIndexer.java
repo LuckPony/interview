@@ -109,11 +109,6 @@ public class CorpusIndexer {
         }));
     }
 
-    /** 同步索引：切块 + LLM 标注 + 存库。幂等：已有块跳过。 */
-    public synchronized void index(Long corpusId) {
-        index(corpusId, false);
-    }
-
     void index(Long corpusId, boolean refresh) {
         if (corpusId == null) return;
         if (!refresh && chunkRepo.countByCorpusId(corpusId) > 0) return;

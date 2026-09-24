@@ -41,11 +41,13 @@ public class SelectionService {
     private final LessonGenerator lessonGenerator;
     private final DrillRunRepository runRepo;
     private final SubPointPassRepository subPointPassRepo;
+    private final SubPointPassService subPointPassService;
     private final QuestionBankRepository qbRepo;
 
     public SelectionService(ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             CombinationPolicy combinationPolicy, LessonGenerator lessonGenerator,
                             DrillRunRepository runRepo, SubPointPassRepository subPointPassRepo,
+                            SubPointPassService subPointPassService,
                             QuestionBankRepository qbRepo) {
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
@@ -53,6 +55,7 @@ public class SelectionService {
         this.lessonGenerator = lessonGenerator;
         this.runRepo = runRepo;
         this.subPointPassRepo = subPointPassRepo;
+        this.subPointPassService = subPointPassService;
         this.qbRepo = qbRepo;
     }
 
@@ -155,17 +158,9 @@ public class SelectionService {
         if (concept == null) return null;
         List<String> subs = lessonGenerator.outlineFromJson(concept.getLessonOutline());
         if (subs.isEmpty()) return null;
-        Set<String> passedKeys = runRepo
-                .findPassedFocusedRuns(userId, DrillRunStatus.GRADED, PASS_LINE).stream()
-                .filter(r -> questionContainsConcept(r.getQuestionId(), conceptId))
-                .map(DrillRun::getFocusSubPoint)
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toSet());
-        subPointPassRepo.findByUserId(userId).stream()
-                .filter(p -> conceptId.equals(p.getConceptId()))
-                .map(SubPointPass::getSubPoint)
-                .forEach(passedKeys::add);
-        return subs.stream().filter(s -> !passedKeys.contains(s)).findFirst().orElse(null);
+        Set<String> passed = subPointPassService.passedSubPoints(userId)
+                .getOrDefault(conceptId, Set.of());
+        return subs.stream().filter(s -> !passed.contains(s)).findFirst().orElse(null);
     }
 
     private boolean questionContainsConcept(Long questionId, Long conceptId) {

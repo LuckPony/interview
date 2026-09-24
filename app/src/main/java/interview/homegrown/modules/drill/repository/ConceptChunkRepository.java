@@ -17,20 +17,6 @@ public class ConceptChunkRepository {
         this.jdbc = jdbc;
     }
 
-    public void save(Long conceptId, Long chunkId) {
-        jdbc.update("INSERT INTO concept_chunk (concept_id, chunk_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                conceptId, chunkId);
-    }
-
-    public void deleteByConceptId(Long conceptId) {
-        jdbc.update("DELETE FROM concept_chunk WHERE concept_id = ?", conceptId);
-    }
-
-    public List<Long> chunkIdsOfConcept(Long conceptId) {
-        return jdbc.queryForList("SELECT chunk_id FROM concept_chunk WHERE concept_id = ? ORDER BY chunk_id",
-                Long.class, conceptId);
-    }
-
     /** 一个概念命中哪些资料块（join 取块实体字段）。 */
     public List<Long> chunkIdsOfConcepts(List<Long> conceptIds) {
         if (conceptIds == null || conceptIds.isEmpty()) return List.of();

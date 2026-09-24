@@ -7,11 +7,18 @@ import interview.homegrown.modules.drill.domain.QuestionBank;
 import interview.homegrown.modules.drill.domain.SubPointPass;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.drill.repository.QuestionBankRepository;
+import interview.homegrown.modules.drill.repository.DrillRunRepository;
 import interview.homegrown.modules.drill.repository.SubPointPassRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static interview.homegrown.modules.drill.grader.GradeScale.PASS_LINE;
 
 /**
  * 「答对自动通过子知识点」：答对达标（最终分 GOOD/EASY）后，把通过记录写入 sub_point_pass，
@@ -35,15 +42,18 @@ public class SubPointPassService {
     private final QuestionBankRepository qbRepo;
     private final ConceptRepository conceptRepo;
     private final SubPointPassRepository passRepo;
+    private final DrillRunRepository runRepo;
     private final LessonGenerator lessonGenerator;
     private final ProgressContextService progressContext;
 
     public SubPointPassService(QuestionBankRepository qbRepo, ConceptRepository conceptRepo,
-                               SubPointPassRepository passRepo, LessonGenerator lessonGenerator,
+                               SubPointPassRepository passRepo, DrillRunRepository runRepo,
+                               LessonGenerator lessonGenerator,
                                ProgressContextService progressContext) {
         this.qbRepo = qbRepo;
         this.conceptRepo = conceptRepo;
         this.passRepo = passRepo;
+        this.runRepo = runRepo;
         this.lessonGenerator = lessonGenerator;
         this.progressContext = progressContext;
     }
@@ -106,20 +116,32 @@ public class SubPointPassService {
 
     /** 取概念的完整子知识点清单：缓存优先，无缓存现场拆解并写回（失败降级为概念名）。 */
     private List<String> ensureSubPoints(Long userId, Concept c) {
-        List<String> cached = lessonGenerator.outlineFromJson(c.getLessonOutline());
-        if (!cached.isEmpty()) return cached;
+        List<String> subs = lessonGenerator.ensureOutline(c, progressContext.contextFor(userId, c.getId()));
+        conceptRepo.save(c);
+        return subs;
+    }
 
-        // 无缓存：现场拆解（与讲解页 outline 端点一致），成功写回缓存
-        String ctx = progressContext.contextFor(userId, c.getId());
-        List<String> subPoints = lessonGenerator.decompose(c, ctx);
-        if (subPoints.isEmpty()) {
-            return List.of(c.getName());   // 降级：概念本身作为一个子点
-        }
-        String json = lessonGenerator.outlineToJson(subPoints);
-        if (json != null) {
-            c.setLessonOutline(json);
-            conceptRepo.save(c);
-        }
-        return subPoints;
+    /**
+     * 计算用户已通过的子知识点：判分通过（≥及格线的聚焦 run）∪ 手动直通。
+     * 返回 conceptId → 已通过子点集合。供计划页 / outline / 复习选点共用。
+     */
+    public Map<Long, Set<String>> passedSubPoints(Long userId) {
+        Map<Long, Set<String>> result = new HashMap<>();
+        runRepo.findPassedFocusedRuns(userId,
+                        interview.homegrown.modules.drill.domain.DrillRunStatus.GRADED, PASS_LINE)
+                .forEach(run -> {
+                    if (run.getFocusSubPoint() == null) return;
+                    qbRepo.findById(run.getQuestionId()).ifPresent(q -> {
+                        if (q.getConceptIds() == null || q.getConceptIds().length == 0) return;
+                        Integer cid = q.getConceptIds()[0];
+                        if (cid != null) {
+                            result.computeIfAbsent(cid.longValue(), k -> new HashSet<>())
+                                    .add(run.getFocusSubPoint());
+                        }
+                    });
+                });
+        passRepo.findByUserId(userId).forEach(p ->
+                result.computeIfAbsent(p.getConceptId(), k -> new HashSet<>()).add(p.getSubPoint()));
+        return result;
     }
 }

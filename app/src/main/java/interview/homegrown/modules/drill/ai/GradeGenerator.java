@@ -28,11 +28,6 @@ public class GradeGenerator {
     public record ConceptPointGroup(int conceptIndex, String conceptName, List<String> points) {
     }
 
-    public GradeOutput grade(String stem, String rawAnswer, List<ConceptPointGroup> groups,
-                             String context) {
-        return grade(stem, rawAnswer, groups, context, null);
-    }
-
     /**
      * @param conversation 对话实录（老师实际问过的问题 + 学生回答），可为 null。
      */

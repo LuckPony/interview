@@ -90,29 +90,10 @@ public class TutorGenerator {
             """;
 
     /**
-     * 同步版讲解：调 LLM 一次性拿完整文本。失败返回 null。
-     * 当前已不再被 GradingService/RehearsalService 调用——保留供单测或批量补写场景。
-     */
-    public String explain(String stem, String pointsJson, String byConceptJson, String rawAnswer) {
-        return streamExplain(stem, pointsJson, byConceptJson, rawAnswer, token -> {});
-    }
-
-    /**
      * 流式版讲解：逐 token 回调 onToken；最终累积完整文本返回（失败/空为 null）。
      * onReasoning 可选：收到模型思考内容（reasoning_content）时独立回调，供前端展示"思考过程"。
      * context 可选：学习上下文（学生进度/概念要点/资料块/互联网补充），讲解时作为依据。
      */
-    public String streamExplain(String stem, String pointsJson, String byConceptJson,
-                                String rawAnswer, java.util.function.Consumer<String> onToken) {
-        return streamExplain(stem, pointsJson, byConceptJson, rawAnswer, onToken, null);
-    }
-
-    public String streamExplain(String stem, String pointsJson, String byConceptJson,
-                                String rawAnswer, java.util.function.Consumer<String> onToken,
-                                java.util.function.Consumer<String> onReasoning) {
-        return streamExplain(stem, pointsJson, byConceptJson, rawAnswer, null, onToken, onReasoning);
-    }
-
     public String streamExplain(String stem, String pointsJson, String byConceptJson,
                                 String rawAnswer, String context,
                                 java.util.function.Consumer<String> onToken,
@@ -182,48 +163,6 @@ public class TutorGenerator {
      * @param onToken     逐 token 回调
      * @return 完整回复文本（失败/空为 null）
      */
-    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
-                             java.util.function.Consumer<String> onToken) {
-        return streamChat(stem, pointsJson, turns, null, null, null, onToken, null, false);
-    }
-
-    /**
-     * 对话式辅导流式生成：判分前的多轮对话，AI 扮演辅导老师与学生交流。
-     * <p>
-     * 与 {@link #streamExplain} 的区别：
-     * <ul>
-     *   <li>无判分结果（byConceptJson）—— 此时尚未判分</li>
-     *   <li>包含完整对话历史（之前几轮的问答）</li>
-     *   <li>默认<b>引导思考而非直接讲解答案</b>；reveal=true 时才给出完整答案（揭示边界）</li>
-     * </ul>
-     *
-     * @param stem        题干
-     * @param pointsJson  评分点 JSON（给 AI 知道"应该答什么"，不暴露给学生）
-     * @param turns       全部对话轮次（按 round 升序），最后一轮的 rawAnswer 是学生最新消息，
-     *                    tutorText 为 null（尚未生成）
-     * @param onToken     逐 token 回调
-     * @param onReasoning 思考内容回调（可空）
-     * @param reveal      学生已明确索要答案 → 用揭示答案 prompt 给出完整讲解（默认 false）
-     * @return 完整回复文本（失败/空为 null）
-     */
-    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns,
-                             java.util.function.Consumer<String> onToken,
-                             java.util.function.Consumer<String> onReasoning,
-                             boolean reveal) {
-        return streamChat(stem, pointsJson, turns, null, null, null, onToken, onReasoning, reveal);
-    }
-
-    /**
-     * 带学习上下文（学生进度/概念要点/资料块/互联网补充）的完整版。
-     * 上下文仅作参考素材：追问可结合资料细节，也可用通用知识；引用资料内容时注明出处（C3）。
-     */
-    public String streamChat(String stem, String pointsJson, List<DrillTurn> turns, String context,
-                             java.util.function.Consumer<String> onToken,
-                             java.util.function.Consumer<String> onReasoning,
-                             boolean reveal) {
-        return streamChat(stem, pointsJson, turns, context, null, null, onToken, onReasoning, reveal);
-    }
-
     /**
      * 带学习上下文 + 学生消息附带的图片（data URL 列表；仅视觉模型，null/空则纯文本）。
      *
@@ -371,11 +310,5 @@ public class TutorGenerator {
         } catch (Exception e) {
             return byConceptJson;
         }
-    }
-
-    /** 超长文本截断（保留开头），避免单条消息把对话上下文撑爆 */
-    private static String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s;
-        return s.substring(0, max) + "…（截断）";
     }
 }

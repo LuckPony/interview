@@ -97,14 +97,7 @@ public class GradingService {
         };
         Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);
 
-        GradeResult gr = new GradeResult();
-        gr.setRunId(runId);
-        gr.setQuestionId(q.getId());
-        gr.setAnswerHash(Integer.toHexString(rawAnswer.hashCode()));
-        gr.setByConceptJson(out.byConceptJson());
-        gr.setRawScore(out.rawScore());
-        gr.setGrade(out.grade());
-        gradeRepo.save(gr);
+        saveResult(runId, q, rawAnswer, out);
 
         // LEARN 模式把题干、评分点、用户原答案、判分结果落到 drill_turn，
         // 供「问答记录」回看自己的作答；REHEARSAL 已在 RehearsalService 自行维护 turns。
@@ -122,29 +115,7 @@ public class GradingService {
             turnRepo.save(turn);
         }
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
-                run.isGuided(), run.getGuideRounds(), run.isRevealed());
-
-        // 苏格拉底 G1 预引导分：达标（GOOD/EASY）→ DONE + finalGrade；未达标 → GUIDED + preGrade（待引导/再考查）
-        Grade g1 = out.grade();
-        run.setPreGrade(g1.name());
-        if (run.isRevealed()) {
-            run.setFinalGrade(Grade.AGAIN.name());
-            run.setSocraticState(DrillPhase.DONE);
-        } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
-            run.setFinalGrade(g1.name());
-            run.setSocraticState(DrillPhase.DONE);
-            // 答对达标：聚焦子点只通过该子点；综合题通过题涉概念的全部子点
-            subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
-        } else {
-            run.setSocraticState(DrillPhase.GUIDED);
-        }
-        run.setStatus(DrillRunStatus.GRADED);
-        runRepo.save(run);
-
-        return new GradeView(runId, q.getId(),
-                out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
-                out.grade().name(), out.byConceptJson());
+        return finalizeAndBuildView(userId, run, q, out, timed);
     }
 
     /**
@@ -227,14 +198,7 @@ public class GradingService {
         }
 
         // 落 GradeResult
-        GradeResult gr = new GradeResult();
-        gr.setRunId(runId);
-        gr.setQuestionId(q.getId());
-        gr.setAnswerHash(Integer.toHexString(rawAnswer.hashCode()));
-        gr.setByConceptJson(out.byConceptJson());
-        gr.setRawScore(out.rawScore());
-        gr.setGrade(out.grade());
-        gradeRepo.save(gr);
+        saveResult(runId, q, rawAnswer, out);
 
         // 把判分结果写回 round=0 的 turn（不新建 turn，turns 已由 /chat 创建）
         DrillTurn turn0 = turns.stream()
@@ -246,30 +210,7 @@ public class GradingService {
         turn0.setRawScore(out.rawScore());
         turnRepo.save(turn0);
 
-        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
-                run.isGuided(), run.getGuideRounds(), run.isRevealed());
-
-        // 苏格拉底 G1 预引导分（延迟评分路径同 grade）
-        Grade g1 = out.grade();
-        run.setPreGrade(g1.name());
-        if (revealed) {
-            // 看过答案 → 封 AGAIN
-            run.setFinalGrade(Grade.AGAIN.name());
-            run.setSocraticState(DrillPhase.DONE);
-        } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
-            run.setFinalGrade(g1.name());
-            run.setSocraticState(DrillPhase.DONE);
-            // 答对达标：聚焦子点只通过该子点；综合题通过题涉概念的全部子点
-            subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
-        } else {
-            run.setSocraticState(DrillPhase.GUIDED);
-        }
-        run.setStatus(DrillRunStatus.GRADED);
-        runRepo.save(run);
-
-        return new GradeView(runId, q.getId(),
-                out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
-                out.grade().name(), out.byConceptJson());
+        return finalizeAndBuildView(userId, run, q, out, timed);
     }
 
     /**
@@ -374,9 +315,7 @@ public class GradingService {
 
     /** 供对话实录用的裁剪：代码作答（含 ``` 围栏）完整保留；其余宽松截断到 1200 字符。 */
     private static String trimForGrading(String s) {
-        if (s == null || s.length() <= 1200) return s == null ? "" : s;
-        if (s.contains("```")) return s;
-        return s.substring(0, 1200) + "…";
+        return interview.homegrown.common.util.TextUtil.truncateCodeAware(s, 1200);
     }
 
     /**
@@ -405,6 +344,43 @@ public class GradingService {
             }
         }
         return null;   // 全程无 needs_guide → 调用方回退
+    }
+
+    private void saveResult(Long runId, QuestionBank q, String rawAnswer, Grader.GraderOutput out) {
+        GradeResult gr = new GradeResult();
+        gr.setRunId(runId);
+        gr.setQuestionId(q.getId());
+        gr.setAnswerHash(Integer.toHexString(rawAnswer.hashCode()));
+        gr.setByConceptJson(out.byConceptJson());
+        gr.setRawScore(out.rawScore());
+        gr.setGrade(out.grade());
+        gradeRepo.save(gr);
+    }
+
+    /** 苏格拉底 G1 预引导分结算 + 构建 GradeView（grade/finish 共用） */
+    private GradeView finalizeAndBuildView(Long userId, DrillRun run, QuestionBank q,
+                                           Grader.GraderOutput out, boolean timed) {
+        applyMastery(userId, out.conceptScores(), run.getMode(), timed,
+                run.isGuided(), run.getGuideRounds(), run.isRevealed());
+
+        Grade g1 = out.grade();
+        run.setPreGrade(g1.name());
+        if (run.isRevealed()) {
+            run.setFinalGrade(Grade.AGAIN.name());
+            run.setSocraticState(DrillPhase.DONE);
+        } else if (g1 == Grade.GOOD || g1 == Grade.EASY) {
+            run.setFinalGrade(g1.name());
+            run.setSocraticState(DrillPhase.DONE);
+            subPointPassService.markAllSubPointsPassed(userId, run, q.getId());
+        } else {
+            run.setSocraticState(DrillPhase.GUIDED);
+        }
+        run.setStatus(DrillRunStatus.GRADED);
+        runRepo.save(run);
+
+        return new GradeView(run.getId(), q.getId(),
+                out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
+                out.grade().name(), out.byConceptJson());
     }
 
     /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */

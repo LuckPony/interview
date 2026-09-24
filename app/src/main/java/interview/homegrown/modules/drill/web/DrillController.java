@@ -390,16 +390,8 @@ public class DrillController {
         List<String> subPoints = lessonGenerator.outlineFromJson(concept.getLessonOutline());
         boolean cached = !subPoints.isEmpty();
         if (!cached) {
-            String context = progressContext.contextFor(uid, conceptId);
-            subPoints = lessonGenerator.decompose(concept, context);
-            if (subPoints.isEmpty()) {
-                subPoints = List.of(concept.getName());   // 降级：概念本身作为一个子点
-            }
-            String json = lessonGenerator.outlineToJson(subPoints);
-            if (json != null) {
-                concept.setLessonOutline(json);
-                conceptRepo.save(concept);
-            }
+            subPoints = lessonGenerator.ensureOutline(concept, progressContext.contextFor(uid, conceptId));
+            conceptRepo.save(concept);
         }
         return outlineView(uid, conceptId, concept, subPoints, cached);
     }
@@ -523,91 +515,45 @@ public class DrillController {
         final String previousText = (refresh && cachedLesson != null) ? cachedLesson.getLessonText() : null;
         final String context = progressContext.contextFor(uid, conceptId);
 
-        StreamingResponseBody body = out -> {
-            boolean[] broken = {false};
-            try (SseWriter sw = new SseWriter(out)) {
-                sw.write("event: start\ndata: {}\n\n");
-
-                if (useCache) {
-                    String cachedText = cachedLesson.getLessonText();
-                    String normalized = lessonGenerator.normalizeLesson(cachedText);
-                    if (!normalized.equals(cachedText == null ? "" : cachedText.trim())) {
-                        // 旧缓存可能保存了模型“讲完后从第 1 节重新开始”的重复尾段，读取时自动修复。
-                        cachedLesson.setLessonText(normalized);
-                        cachedLesson.setCharCount(normalized.length());
-                        conceptLessonRepo.save(cachedLesson);
-                    }
-                    sw.write("data: {\"text\":\"" + jsonEscape(normalized) + "\"}\n\n");
-                } else {
-                    // 讲解避重：把同概念下其他子点已生成讲解的摘要注入 prompt，让本讲解只讲自己独有的部分、
-                    // 避免与兄弟子点重复（含例子/结构）。这是本轮生成时才需要，缓存命中直接读缓存。
-                    final List<LessonGenerator.SiblingLesson> siblings =
-                            lessonGenerator.siblingSummaries(conceptLessonRepo.findByConceptId(conceptId), sub);
-                    final StringBuilder buf = new StringBuilder();
-                    String full = lessonGenerator.streamLesson(concept, sub, context, previousText, siblings,
-                            token -> {
-                                buf.append(token);
-                                try {
-                                    sw.write("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n");
-                                } catch (Exception e) {
-                                    broken[0] = true;
-                                    log.debug("lesson token 推送异常（已吞）: {}", e.getMessage());
-                                }
-                            },
-                            r -> {
-                                try {
-                                    sw.write("event: reasoning\ndata: {\"text\":\"" + jsonEscape(r) + "\"}\n\n");
-                                } catch (Exception e) {
-                                    broken[0] = true;
-                                    log.debug("lesson reasoning 推送异常（已吞）: {}", e.getMessage());
-                                }
-                            });
-
-                    if (full != null && !full.isBlank()) {
-                        // refresh 时覆盖旧缓存；否则插入新缓存（并发撞唯一索引则忽略）。
-                        // 连接已断时跳过写回：异步完成后 EntityManager/Session 已关闭，写回会抛异常。
-                        if (!broken[0]) {
-                            try {
-                                conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
-                                        .ifPresentOrElse(exist -> {
-                                            exist.setLessonText(full);
-                                            exist.setCharCount(full.length());
-                                            conceptLessonRepo.save(exist);
-                                        }, () -> {
-                                            ConceptLesson cl = new ConceptLesson();
-                                            cl.setConceptId(conceptId);
-                                            cl.setSubPoint(sub);
-                                            cl.setLessonText(full);
-                                            cl.setCharCount(full.length());
-                                            conceptLessonRepo.save(cl);
-                                        });
-                            } catch (Exception e) {
-                                // 并发/重复插入撞唯一索引、或异步完成后 Session 已关闭：忽略，已有缓存即可
-                                log.debug("子知识点讲解缓存写回失败（忽略）: {}", e.getMessage());
-                            }
-                        }
-                    } else {
-                        sw.write("data: {\"text\":\"" + jsonEscape("（讲解生成失败，可先点「开始做题」，之后再看判分讲解）") + "\"}\n\n");
-                    }
+        return sse(sink -> {
+            sink.start();
+            if (useCache) {
+                String cachedText = cachedLesson.getLessonText();
+                String normalized = lessonGenerator.normalizeLesson(cachedText);
+                String trimmed = cachedText == null ? "" : cachedText.trim();
+                if (!normalized.equals(trimmed)) {
+                    cachedLesson.setLessonText(normalized);
+                    cachedLesson.setCharCount(normalized.length());
+                    conceptLessonRepo.save(cachedLesson);
                 }
+                sink.token(normalized);
+            } else {
+                List<LessonGenerator.SiblingLesson> siblings =
+                        lessonGenerator.siblingSummaries(conceptLessonRepo.findByConceptId(conceptId), sub);
+                String full = lessonGenerator.streamLesson(concept, sub, context, previousText, siblings,
+                        sink::token, sink::reasoning);
 
-                sw.write("event: done\ndata: {}\n\n");
-            } catch (Exception e) {
-                log.warn("lesson-stream 推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
+                if (full != null && !full.isBlank() && !sink.isBroken()) {
+                    try {
+                        conceptLessonRepo.findByConceptIdAndSubPoint(conceptId, sub)
+                                .ifPresentOrElse(exist -> {
+                                    exist.setLessonText(full); exist.setCharCount(full.length());
+                                    conceptLessonRepo.save(exist);
+                                }, () -> {
+                                    ConceptLesson cl = new ConceptLesson();
+                                    cl.setConceptId(conceptId); cl.setSubPoint(sub);
+                                    cl.setLessonText(full); cl.setCharCount(full.length());
+                                    conceptLessonRepo.save(cl);
+                                });
+                    } catch (Exception e) {
+                        log.debug("lesson cache write failed (ignored): {}", e.getMessage());
+                    }
+                } else if (full == null || full.isBlank()) {
+                    sink.token("(lesson generation failed, you can start practicing first)");
                 }
             }
-        };
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+            sink.done();
+        });
     }
 
     // ------------------------------------------------------------ 子知识点讲解答疑（仅当前用户私有）
@@ -677,62 +623,20 @@ public class DrillController {
         userMsg = lessonQaRepo.save(userMsg);
         final long userMsgId = userMsg.getId();
 
-        StreamingResponseBody body = out -> {
-            try {
-                out.write(("event: start\ndata: {\"userMessageId\":" + userMsgId + "}\n\n").getBytes(StandardCharsets.UTF_8));
-                out.flush();
-
-                final StringBuilder buf = new StringBuilder();
-                String full = lessonQaGenerator.streamAnswer(
-                        concept.getName(), concept.getTopic(), concept.getLayer(),
-                        sub, lesson == null ? null : lesson.getLessonText(), anchor, context, history, question,
-                        token -> {
-                            buf.append(token);
-                            try {
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                log.debug("lesson-qa token 推送异常（已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r));
-
-                // AI 回答写库（与提问配对；失败不阻塞流）
-                if (full != null && !full.isBlank()) {
-                    LessonQaMessage aiMsg = new LessonQaMessage();
-                    aiMsg.setUserId(uid);
-                    aiMsg.setConceptId(conceptId);
-                    aiMsg.setSubPoint(sub);
-                    aiMsg.setRole("assistant");
-                    aiMsg.setText(full);
-                    try {
-                        lessonQaRepo.save(aiMsg);
-                    } catch (Exception e) {
-                        log.debug("lesson-qa AI 回答写库失败（忽略）: {}", e.getMessage());
-                    }
-                }
-
-                String donePayload = full == null ? "" : jsonEscape(full);
-                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (Exception e) {
-                log.warn("lesson-qa 流推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
+        return sse(sink -> {
+            sink.event("start", "{\"userMessageId\":" + userMsgId + "}");
+            String full = lessonQaGenerator.streamAnswer(
+                    concept.getName(), concept.getTopic(), concept.getLayer(),
+                    sub, lesson == null ? null : lesson.getLessonText(), anchor, context, history, question,
+                    sink::token, sink::reasoning);
+            if (full != null && !full.isBlank()) {
+                LessonQaMessage aiMsg = new LessonQaMessage();
+                aiMsg.setUserId(uid); aiMsg.setConceptId(conceptId); aiMsg.setSubPoint(sub);
+                aiMsg.setRole("assistant"); aiMsg.setText(full);
+                try { lessonQaRepo.save(aiMsg); } catch (Exception e) { log.debug("lesson-qa 写库失败（忽略）: {}", e.getMessage()); }
             }
-        };
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+            sink.doneWithText(full);
+        });
     }
 
     /** 删除当前用户在某个子知识点下的若干条答疑（仅自己的记录，前端多选 + 二次确认后调用）。 */
@@ -1008,55 +912,13 @@ public class DrillController {
         DrillRun submitRun = runRepo.findById(runId).orElse(null);
         final String context = submitRun == null ? null : contextOf(uid, submitRun.getQuestionId());
 
-        StreamingResponseBody body = out -> {
-            try {
-                // 1) grade 事件：先让前端渲染评分面板（verdict），与讲解解耦
-                out.write(("event: grade\ndata: " + objectMapper.writeValueAsString(grade) + "\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                out.flush();
-
-                // 2) 逐 token 推讲解
-                final StringBuilder buf = new StringBuilder();
-                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
-                        context,
-                        token -> {
-                            buf.append(token);
-                            try {
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r));;
-
-                // 完整文本写库（让对话线下次刷新也能拿到）
-                if (full != null) {
-                    fTurn.setTutorText(full);
-                    turnRepo.save(fTurn);
-                }
-
-                String donePayload = full == null ? "" : jsonEscape(full);
-                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (Exception e) {
-                log.warn("submit SSE 推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
-            }
-        };
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+        return sse(sink -> {
+            sink.event("grade", objectMapper.writeValueAsString(grade));
+            String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
+                    sink::token, sink::reasoning);
+            if (full != null) { fTurn.setTutorText(full); turnRepo.save(fTurn); }
+            sink.doneWithText(full);
+        });
     }
 
     // ---------------------------------------------------- 对话式作答（chat + finish）
@@ -1190,88 +1052,31 @@ public class DrillController {
             }
         }
 
-        StreamingResponseBody body = out -> {
-            java.util.concurrent.atomic.AtomicBoolean clientGone =
-                    new java.util.concurrent.atomic.AtomicBoolean(false);
-            try {
-                // 揭示边界触发：先推 event:reveal
-                if (fReveal && notFinished) {
-                    out.write("event: reveal\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                }
+        return sse(sink -> {
+            if (fReveal && notFinished) sink.event("reveal", "{}");
 
-                // 苏格拉底判定驱动的回复：
-                // - needs_guide → 也走 streamChat：让 AI 结合对话历史先指出错处/给原因，再引导追问
-                //   （不再直接推送 judge.guideQuestion——那只有一句反问，没有解释，体验差）
-                // - done → 推送 praise + 提示结束
-                // - answering / null（未判定）→ 走 streamChat 让 AI 正常回应（含看答案 reveal 模式）
-                // - wantsAnswerNow=true → 用户要答案，走 reveal 讲解（fReveal=true），
-                //   judge 的 praise/guideQuestion 一律不生效（除非按钮手动 reveal，judge 为 null）
-                boolean wantAnswer = judge != null && judge.wantsAnswerNow();
-                String judgeReply = null;
-                if (judge != null && !wantAnswer && "done".equalsIgnoreCase(judge.state())
-                        && judge.praise() != null && !judge.praise().isBlank()) {
-                    judgeReply = judge.praise();
-                }
-                // needs_guide 也走 streamChat；但把 judge 的引导问题注入 streamChat 的 user prompt，
-                // 让 AI 以它为「本轮该引导的点」展开（先解释原因，再抛引导）。——通过 pointsJson 上下文已含评分点，
-                // 这里把 guideQuestion 作为附加指令传给 streamChat：用 fGuide 标记
-                final String fGuide = (!wantAnswer && judge != null
-                        && "needs_guide".equalsIgnoreCase(judge.state())
-                        && judge.guideQuestion() != null && !judge.guideQuestion().isBlank())
-                        ? judge.guideQuestion()
-                        : null;
+            boolean wantAnswer = judge != null && judge.wantsAnswerNow();
+            String judgeReply = (!wantAnswer && judge != null && "done".equalsIgnoreCase(judge.state())
+                    && judge.praise() != null && !judge.praise().isBlank()) ? judge.praise() : null;
+            final String fGuide = (!wantAnswer && judge != null
+                    && "needs_guide".equalsIgnoreCase(judge.state())
+                    && judge.guideQuestion() != null && !judge.guideQuestion().isBlank())
+                    ? judge.guideQuestion() : null;
 
-                String full;
-                if (judgeReply != null) {
-                    // 直接推送判定生成的引导/表扬文本
-                    for (String token : judgeReply.split("(?<=。|？|！|\\n)")) {
-                        if (token.isBlank()) continue;
-                        out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                .getBytes(StandardCharsets.UTF_8));
-                        out.flush();
-                    }
-                    full = judgeReply;
-                } else {
-                    full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
-                            fImages, fGuide,
-                            token -> {
-                                try {
-                                    out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                            .getBytes(StandardCharsets.UTF_8));
-                                    out.flush();
-                                } catch (Exception e) {
-                                    clientGone.set(true);
-                                    log.debug("chat SSE token 推送异常（客户端已断开，已吞）: {}", e.getMessage());
-                                }
-                            },
-                            r -> sseReasoning(out, r),
-                            fReveal);
+            String full;
+            if (judgeReply != null) {
+                for (String token : judgeReply.split("(?<=。|？|！|\\n)")) {
+                    if (!token.isBlank()) sink.token(token);
                 }
-
-                if (full != null && !clientGone.get()) {
-                    fTurn.setTutorText(full.trim());
-                    turnRepo.save(fTurn);
-                }
-
-                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (Exception e) {
-                log.warn("chat SSE 推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
+                full = judgeReply;
+            } else {
+                full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
+                        fImages, fGuide, sink::token, sink::reasoning, fReveal);
             }
-        };
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+            if (full != null && !sink.isBroken()) { fTurn.setTutorText(full.trim()); turnRepo.save(fTurn); }
+            sink.done();
+        });
     }
 
     /**
@@ -1369,58 +1174,13 @@ public class DrillController {
         DrillRun reheRun = runRepo.findById(runId).orElse(null);
         final String context = reheRun == null ? null : contextOf(uid, reheRun.getQuestionId());
 
-        StreamingResponseBody body = out -> {
-            try {
-                // 1) result 事件：先让前端渲染下一问 / 结算卡
-                out.write(("event: result\ndata: " + objectMapper.writeValueAsString(fView) + "\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                out.flush();
-
-                // 2) 逐 token 推讲解
-                final StringBuilder buf = new StringBuilder();
-                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
-                        context,
-                        token -> {
-                            buf.append(token);
-                            try {
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r));;
-
-                // 完整文本写库（让对话线下次刷新也能拿到）
-                if (full != null) {
-                    fTurn.setTutorText(full);
-                    turnRepo.save(fTurn);
-                }
-
-                // done 带回完整文本：前端用它兜底覆盖本地累积，修复偶发末尾截断。
-                // 注意：这是安全网而非"重复消息"——前端 onDone 是替换累积文本，UI 不会重复出现气泡；
-                // 之前 raw curl 看到的整段只是 SSE 原始帧，属正常兜底机制。
-                String donePayload = full == null ? "" : jsonEscape(full);
-                out.write(("event: done\ndata: {\"text\":\"" + donePayload + "\"}\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (Exception e) {
-                log.warn("rehearsal answer SSE 推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
-            }
-        };
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+        return sse(sink -> {
+            sink.event("result", objectMapper.writeValueAsString(fView));
+            String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
+                    sink::token, sink::reasoning);
+            if (full != null) { fTurn.setTutorText(full); turnRepo.save(fTurn); }
+            sink.doneWithText(full);
+        });
     }
 
     /** 追问/模拟面试主动结束：用户点"下一题（结束追问）"或"结算本场"时调用 */
@@ -1468,52 +1228,13 @@ public class DrillController {
         final DrillTurn fTurn = turn;       // mutable turn 在 lambda 内被 setTutorText 写库
         final String context = contextOf(uid, run.getQuestionId());
 
-        StreamingResponseBody body = out -> {
-            try {
-                out.write("event: start\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
-
-                final StringBuilder buf = new StringBuilder();
-                String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer,
-                        context,
-                        token -> {
-                            buf.append(token);
-                            try {
-                                // token 帧统一包成 JSON：前端 JSON.parse 取 .text，天然处理转义
-                                out.write(("data: {\"text\":\"" + jsonEscape(token) + "\"}\n\n")
-                                        .getBytes(StandardCharsets.UTF_8));
-                                out.flush();
-                            } catch (Exception e) {
-                                log.debug("SSE token 推送异常（已吞）: {}", e.getMessage());
-                            }
-                        },
-                        r -> sseReasoning(out, r));;
-
-                // 完整文本写库（让对话线下次刷新也能拿到）
-                if (full != null) {
-                    fTurn.setTutorText(full);
-                    turnRepo.save(fTurn);
-                }
-
-                // done 不再回带完整文本：前端以逐 token 累积为准，避免末尾整段重复
-                out.write("event: done\ndata: {}\n\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (Exception e) {
-                log.warn("tutor-stream 推送异常", e);
-                try {
-                    out.write(("event: error\ndata: " + jsonEscape(e.getMessage()) + "\n\n")
-                            .getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (Exception ignored) {
-                }
-            }
-        };
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
+        return sse(sink -> {
+            sink.start();
+            String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
+                    sink::token, sink::reasoning);
+            if (full != null) { fTurn.setTutorText(full); turnRepo.save(fTurn); }
+            sink.done();
+        });
     }
 
     /**
@@ -1673,18 +1394,13 @@ public class DrillController {
 
     /** 判定用对话实录裁剪：代码（含 ``` 围栏）完整保留；其余 1200 字符截断。 */
     private static String trimForJudge(String s) {
-        if (s == null || s.length() <= 1200) return s == null ? "" : s;
-        if (s.contains("```")) return s;
-        return s.substring(0, 1200) + "…";
+        return interview.homegrown.common.util.TextUtil.truncateCodeAware(s, 1200);
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */
     private String contextOf(Long uid, Long questionId) {
         QuestionBank q = questionBankRepo.findById(questionId).orElse(null);
-        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
-        java.util.List<Long> ids = java.util.Arrays.stream(q.getConceptIds())
-                .map(Integer::longValue).toList();
-        return progressContext.contextFor(uid, ids);
+        return progressContext.contextFor(uid, q);
     }
 
     private boolean questionContainsConcept(Long questionId, Long conceptId) {
@@ -1702,6 +1418,76 @@ public class DrillController {
             out.flush();
         } catch (Exception ignored) {
         }
+    }
+
+    // ============================================================ SSE 流式基础设施
+
+    /** SSE 写入器：统一封装 token / reasoning / 事件帧，消除 6 处 SSE 端点的 30 行样板代码。 */
+    static class SseSink {
+        private final java.io.OutputStream out;
+        private boolean broken = false;
+
+        SseSink(java.io.OutputStream out) { this.out = out; }
+
+        /** 客户端是否已断开（token 推送失败后置 true，调用方据此跳过写库）。 */
+        boolean isBroken() { return broken; }
+
+        void start() throws Exception { write("event: start\ndata: {}\n\n"); }
+
+        /** 逐 token 推正文（失败标记 broken，不抛异常）。 */
+        void token(String text) {
+            try { write("data: {\"text\":\"" + jsonEscape(text) + "\"}\n\n"); }
+            catch (Exception e) { broken = true; log.debug("token 推送异常（已吞）: {}", e.getMessage()); }
+        }
+
+        /** 逐 token 推思考过程（失败静默）。 */
+        void reasoning(String text) {
+            try { write("event: reasoning\ndata: {\"text\":\"" + jsonEscape(text) + "\"}\n\n"); }
+            catch (Exception ignored) { broken = true; }
+        }
+
+        void done() throws Exception { write("event: done\ndata: {}\n\n"); }
+
+        void doneWithText(String text) throws Exception {
+            write("event: done\ndata: {\"text\":\"" + jsonEscape(text == null ? "" : text) + "\"}\n\n");
+        }
+
+        /** 自定义事件帧（如 event:grade / event:result / event:reveal）。 */
+        void event(String name, String json) throws Exception {
+            write("event: " + name + "\ndata: " + json + "\n\n");
+        }
+
+        void error(String msg) {
+            try { write("event: error\ndata: " + jsonEscape(msg) + "\"}\n\n"); }
+            catch (Exception ignored) {}
+        }
+
+        private void write(String s) throws Exception {
+            out.write(s.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+
+    /** SSE 流式处理器：在 handler 里写 token / 事件，异常由 sse() 统一兜底为 event:error。 */
+    @FunctionalInterface
+    interface SseHandler { void handle(SseSink sink) throws Exception; }
+
+    /** 把流式逻辑包装成标准 SSE 响应（自动错误兜底 + 统一响应头）。 */
+    private ResponseEntity<StreamingResponseBody> sse(SseHandler handler) {
+        StreamingResponseBody body = out -> {
+            SseSink sink = new SseSink(out);
+            try {
+                handler.handle(sink);
+            } catch (Exception e) {
+                log.warn("SSE 推送异常", e);
+                sink.error(e.getMessage());
+            }
+        };
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body);
     }
 
     /** 把图片 data URL 列表序列化为 JSON 字符串（存 drill_turn.image_json）。 */

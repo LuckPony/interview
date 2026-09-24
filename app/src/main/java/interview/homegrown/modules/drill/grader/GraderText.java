@@ -184,9 +184,4 @@ public class GraderText implements Grader {
             throw new IllegalStateException("判分结果序列化失败", e);
         }
     }
-
-    /** 供 REHEARSAL 复用：把一轮追问的评分点包成 question_bank 相同的存储形态 */
-    public String wrapPoints(GeneratedQuestion gq) {
-        return serialize(gq);
-    }
 }
