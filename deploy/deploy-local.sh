@@ -27,7 +27,13 @@ cd "$ROOT"
 SSH_HOST="${SSH_HOST:-103.236.92.40}"
 SSH_PORT="${SSH_PORT:-37777}"
 SSH_USER="${SSH_USER:-root}"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+# SSH 私钥：优先环境变量 SSH_KEY；否则自动探测（兼容 Git Bash / WSL；WSL 里 Windows 路径要走 /mnt/c）
+if [ -z "${SSH_KEY:-}" ]; then
+  for _k in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa" "/mnt/c/Users/31136/.ssh/id_rsa"; do
+    if [ -f "$_k" ]; then SSH_KEY="$_k"; break; fi
+  done
+fi
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
 JAR="app/build/libs/app-0.0.1-SNAPSHOT.jar"
 
@@ -36,8 +42,25 @@ step() { echo; echo "==> $1"; }
 # Git Bash 下混用其它发行版的 rsync.exe 与 ssh.exe 会触发
 # "dup() in/out/err failed"。统一使用 Git 自带的 ssh/scp，并用 tar
 # 传输目录，避免 Windows 上的 rsync 运行时兼容问题。
-SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$SSH_PORT")
-SCP=(scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -P "$SSH_PORT")
+# ssh/scp 解析：个别 Git Bash 自带的 ssh/scp 是坏的（缺 DLL / 传输层失效），
+# 成对优先用 Windows 自带 OpenSSH；WSL/Linux 下该路径不存在，走系统自带 ssh/scp。
+resolve_pair() {
+  local d="${WINDIR:-/c/Windows}/System32/OpenSSH"
+  [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] || d="/c/Windows/System32/OpenSSH"
+  if [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] && "$d/ssh.exe" -V 2>&1 | grep -qi ssh; then
+    SSH_BIN="$d/ssh.exe"; SCP_BIN="$d/scp.exe"; return 0
+  fi
+  SSH_BIN="$(command -v ssh 2>/dev/null || true)"
+  SCP_BIN="$(command -v scp 2>/dev/null || true)"
+  if [ -n "$SSH_BIN" ] && [ -n "$SCP_BIN" ] && "$SSH_BIN" -V 2>&1 | grep -qi ssh; then
+    return 0
+  fi
+  echo "❌ 缺少可用的 ssh/scp（Git Bash 自带的损坏且未找到 Windows OpenSSH）" >&2; exit 1
+}
+resolve_pair
+
+SSH=("$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$SSH_PORT")
+SCP=("$SCP_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -P "$SSH_PORT")
 REMOTE="$SSH_USER@$SSH_HOST"
 
 upload_tree() {
@@ -64,8 +87,6 @@ upload_tree() {
   echo "❌ DEPLOY_DIR 必须是安全的绝对路径且不能为根目录：$DEPLOY_DIR"
   exit 1
 }
-command -v ssh >/dev/null || { echo "❌ 缺少 ssh"; exit 1; }
-command -v scp >/dev/null || { echo "❌ 缺少 scp"; exit 1; }
 command -v tar >/dev/null || { echo "❌ 缺少 tar"; exit 1; }
 
 step "0/5 预检服务器 SSH 连通性（${SSH_USER}@${SSH_HOST}:${SSH_PORT}）"
@@ -128,7 +149,7 @@ echo "   ✓ deploy-prod.sh"
 
 # ---------- 4/5 服务器执行部署 ----------
 step "4/5 服务器执行部署（PG 备份 → docker 构建/重启 → 健康检查，约 1~3 分钟）"
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+"$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
     -o ServerAliveInterval=30 -p "$SSH_PORT" "$REMOTE" \
   "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml'; \
    chmod +x '$DEPLOY_DIR/deploy-prod.sh'; bash '$DEPLOY_DIR/deploy-prod.sh'"
