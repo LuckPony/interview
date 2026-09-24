@@ -4,7 +4,7 @@ server:
 spring:
   mvc:
     async:
-      # StreamingResponseBody 的超时由 Spring MVC 管理；server.tomcat.async-timeout 不生效。
+      # SSE（SseEmitter）的超时由 Spring MVC 管理；server.tomcat.async-timeout 不生效。
       # 与现有 LLM/Nginx 流式上限对齐，客户端断开时通过 SSE 心跳及时中止上游。
       request-timeout: ${APP_ASYNC_REQUEST_TIMEOUT:60m}
   application:

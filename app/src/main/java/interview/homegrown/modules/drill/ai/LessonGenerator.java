@@ -284,7 +284,9 @@ public class LessonGenerator {
 
         StringBuilder buf = new StringBuilder();
         boolean[] stopped = {false};
-        rawClient.stream(LESSON_SYSTEM, userPrompt,
+        // 关闭思考：讲解是逐 token 展示的正文，思考阶段不产出正文会让前端长时间空白，
+        // 且思考超 30s 会触发降级重试导致内容作废重来。
+        rawClient.stream(LESSON_SYSTEM, userPrompt, /* images */ null, /* enableThinking */ false,
                 token -> {
                     if (stopped[0]) return;
                     String candidate = buf + token;

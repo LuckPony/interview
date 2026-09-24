@@ -3,10 +3,11 @@ package interview.homegrown.modules.knowledge.web;
 import interview.homegrown.common.ai.LlmRawClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,9 +27,9 @@ class KnowledgeStreamTest {
       return null;
     }).when(client).stream(anyString(), anyString(), any(), any(), eq(false), any());
     var controller = new KnowledgeController(null, null, client, null);
-    var out = new ByteArrayOutputStream();
-    controller.ask(new KnowledgeController.AskRequest("翻译这一段", null, List.of(), "library")).getBody().writeTo(out);
-    assertThat(out.toString(StandardCharsets.UTF_8)).contains("译文", "event: done");
+    var frames = awaitFrames(controller.ask(
+        new KnowledgeController.AskRequest("翻译这一段", null, List.of(), "library")).getBody());
+    assertThat(frames).contains("译文").containsPattern("event:\\s*done");
   }
 
   @Test
@@ -41,10 +42,10 @@ class KnowledgeStreamTest {
       return null;
     }).when(client).stream(anyString(), anyString(), any(), any(), eq(false), any());
     var controller = new KnowledgeController(null, null, client, null);
-    var out = new ByteArrayOutputStream();
-    controller.ask(new KnowledgeController.AskRequest("分析代码", null, List.of())).getBody().writeTo(out);
-    assertThat(out.toString(StandardCharsets.UTF_8)).contains("event: status", "event: done", "return value")
-        .doesNotContain("private reasoning", "event: error");
+    var frames = awaitFrames(controller.ask(
+        new KnowledgeController.AskRequest("分析代码", null, List.of())).getBody());
+    assertThat(frames).containsPattern("event:\\s*status").contains("return value")
+        .doesNotContain("private reasoning").doesNotContainPattern("event:\\s*error");
   }
 
   @Test
@@ -57,9 +58,36 @@ class KnowledgeStreamTest {
       return null;
     }).when(client).stream(anyString(), anyString(), any(), any(), eq(false), any());
     var controller = new KnowledgeController(null, null, client, null);
-    var out = new ByteArrayOutputStream();
-    controller.ask(new KnowledgeController.AskRequest("继续", null, List.of())).getBody().writeTo(out);
-    assertThat(out.toString(StandardCharsets.UTF_8)).contains("已有内容", "event: error", "已保留")
-        .doesNotContain("event: done", "java.lang.InterruptedException");
+    var frames = awaitFrames(controller.ask(
+        new KnowledgeController.AskRequest("继续", null, List.of())).getBody());
+    assertThat(frames).contains("已有内容").containsPattern("event:\\s*error").contains("已保留")
+        .doesNotContainPattern("event:\\s*done").doesNotContain("java.lang.InterruptedException");
+  }
+
+  /**
+   * 控制器返回后 handler 在虚拟线程上异步执行；测试不起 async 分发，emitter 始终未 attach，
+   * send 出的帧全部缓冲在 ResponseBodyEmitter.earlySendAttempts。轮询把缓冲帧按序拼成 SSE
+   * 文本，见到 event:done / event:error 即结束（最多等 5 秒，防 handler 异常时死等）。
+   */
+  private static String awaitFrames(SseEmitter emitter) throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 5000;
+    while (true) {
+      String text = bufferedText(emitter);
+      if (text.matches("(?s).*event:\\s*(done|error).*") || System.currentTimeMillis() > deadline) {
+        return text;
+      }
+      Thread.sleep(10);
+    }
+  }
+
+  private static String bufferedText(SseEmitter emitter) {
+    Set<?> attempts = (Set<?>) ReflectionTestUtils.getField(emitter, "earlySendAttempts");
+    if (attempts == null) return "";
+    StringBuilder text = new StringBuilder();
+    for (Object item : attempts) {
+      Object data = ReflectionTestUtils.invokeMethod(item, "getData");
+      if (data != null) text.append(data);
+    }
+    return text.toString();
   }
 }

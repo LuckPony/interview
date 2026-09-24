@@ -2,7 +2,7 @@ package interview.homegrown.modules.drill.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.common.web.SseWriter;
+import interview.homegrown.common.web.SseStream;
 import interview.homegrown.modules.drill.ai.LessonGenerator;
 import interview.homegrown.modules.drill.ai.LessonQaGenerator;
 import interview.homegrown.modules.drill.ai.TutorGenerator;
@@ -21,9 +21,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -306,7 +305,7 @@ public class DrillController {
             active.setStatus(DrillRunStatus.PARKED);
             runRepo.save(active);
         }
-        // 前端可能不传 planId（从知识点页进入）：用概念反推所属方向
+        // 前端可能不传 planId（从知识点页进入）
         if (planId == null && conceptId != null) {
             Concept byId = conceptRepo.findById(conceptId).orElse(null);
             if (byId != null) planId = byId.getStudyPlanId();
@@ -496,7 +495,7 @@ public class DrillController {
      *  {@code refresh=true}（「换种描述」按钮）：跳过缓存强制重新生成，并把旧讲解文本
      *  传给生成器作参考，让新讲解换角度/换描述、不照搬；生成后覆盖缓存。 */
     @PostMapping(value = "/{conceptId}/lesson", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> lesson(@PathVariable Long conceptId,
+    public ResponseEntity<SseEmitter> lesson(@PathVariable Long conceptId,
                                                         @RequestParam String subPoint,
                                                         @RequestParam(defaultValue = "false") boolean refresh) {
         Long uid = currentUserId();
@@ -515,7 +514,7 @@ public class DrillController {
         final String previousText = (refresh && cachedLesson != null) ? cachedLesson.getLessonText() : null;
         final String context = progressContext.contextFor(uid, conceptId);
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             sink.start();
             if (useCache) {
                 String cachedText = cachedLesson.getLessonText();
@@ -581,7 +580,7 @@ public class DrillController {
      * 答疑与 run/判分/mastery 完全解耦：只存于讲解页自己的表，仅当前用户可见。
      */
     @PostMapping(value = "/{conceptId}/lesson/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> lessonChat(
+    public ResponseEntity<SseEmitter> lessonChat(
             @PathVariable Long conceptId,
             @RequestParam String subPoint,
             @RequestBody LessonChatRequest req) {
@@ -623,7 +622,7 @@ public class DrillController {
         userMsg = lessonQaRepo.save(userMsg);
         final long userMsgId = userMsg.getId();
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             sink.event("start", "{\"userMessageId\":" + userMsgId + "}");
             String full = lessonQaGenerator.streamAnswer(
                     concept.getName(), concept.getTopic(), concept.getLayer(),
@@ -893,7 +892,7 @@ public class DrillController {
      * 机制直接返回，不会进 SSE 体；只有讲解流式阶段的中断才走 {@code event: error}。
      */
     @PostMapping(value = "/{runId}/submit", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> submit(
+    public ResponseEntity<SseEmitter> submit(
             @PathVariable Long runId, @RequestBody SubmitRequest req) {
         Long uid = currentUserId();
         GradeView grade = answerService.submit(uid, runId, req.rawAnswer(), req.timing(), req.activeSeconds());
@@ -912,7 +911,7 @@ public class DrillController {
         DrillRun submitRun = runRepo.findById(runId).orElse(null);
         final String context = submitRun == null ? null : contextOf(uid, submitRun.getQuestionId());
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             sink.event("grade", objectMapper.writeValueAsString(grade));
             String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
                     sink::token, sink::reasoning);
@@ -942,7 +941,7 @@ public class DrillController {
      * 「继续对话」= 用户向 AI 提问（追问是用户问 AI），不重新评分，GRADED 状态保持不变。
      */
     @PostMapping(value = "/{runId}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> chat(
+    public ResponseEntity<SseEmitter> chat(
             @PathVariable Long runId, @RequestBody ChatRequest req) {
         Long uid = currentUserId();
 
@@ -1052,7 +1051,7 @@ public class DrillController {
             }
         }
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             if (fReveal && notFinished) sink.event("reveal", "{}");
 
             boolean wantAnswer = judge != null && judge.wantsAnswerNow();
@@ -1153,7 +1152,7 @@ public class DrillController {
      */
 
     @PostMapping(value = "/rehearsal/{runId}/answer", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> rehearsalAnswer(
+    public ResponseEntity<SseEmitter> rehearsalAnswer(
             @PathVariable Long runId, @RequestBody RehearsalAnswerRequest req) {
         // 同步段取 uid（SecurityContext 不跨 async 线程）
         Long uid = currentUserId();
@@ -1174,7 +1173,7 @@ public class DrillController {
         DrillRun reheRun = runRepo.findById(runId).orElse(null);
         final String context = reheRun == null ? null : contextOf(uid, reheRun.getQuestionId());
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             sink.event("result", objectMapper.writeValueAsString(fView));
             String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
                     sink::token, sink::reasoning);
@@ -1202,7 +1201,7 @@ public class DrillController {
      * 按"具体路径优先于路径变量"，先匹配本端点的子串。
      */
     @GetMapping(value = "/{runId}/tutor-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> tutorStream(
+    public ResponseEntity<SseEmitter> tutorStream(
             @PathVariable Long runId,
             @RequestParam(defaultValue = "0") int round) {
         // 同步段取 uid（SecurityContext 不跨 async 线程，uid 必须现在拿到）
@@ -1228,41 +1227,13 @@ public class DrillController {
         final DrillTurn fTurn = turn;       // mutable turn 在 lambda 内被 setTutorText 写库
         final String context = contextOf(uid, run.getQuestionId());
 
-        return sse(sink -> {
+        return SseStream.start(sink -> {
             sink.start();
             String full = tutorGenerator.streamExplain(stem, pointsJson, byConceptJson, rawAnswer, context,
                     sink::token, sink::reasoning);
             if (full != null) { fTurn.setTutorText(full); turnRepo.save(fTurn); }
             sink.done();
         });
-    }
-
-    /**
-     * SSE 行内 JSON 字符串转义：不仅转义引号/反斜杠/换行/回车，还转义全部 C0 控制字符
-     * （含制表符 \t，Go 代码缩进常用）与 U+2028/U+2029，保证 {@code {"text":"..."}} 帧是合法 JSON。
-     * 否则前端 JSON.parse 会失败、把原始帧当文本注入气泡，表现为代码块里出现 {"text":"..."} 乱码。
-     */
-    private static String jsonEscape(String s) {
-        if (s == null) return "";
-        StringBuilder b = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> b.append("\\\"");
-                case '\\' -> b.append("\\\\");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> {
-                    if (c < 0x20 || c == 0x2028 || c == 0x2029) {
-                        b.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        b.append(c);
-                    }
-                }
-            }
-        }
-        return b.toString();
     }
 
     // ------------------------------------------------------------- 内化
@@ -1408,86 +1379,6 @@ public class DrillController {
         if (q == null || q.getConceptIds() == null) return false;
         return java.util.Arrays.stream(q.getConceptIds())
                 .anyMatch(id -> id != null && id.longValue() == conceptId.longValue());
-    }
-
-    /** 把一段模型思考（reasoning_content）推给前端（event: reasoning），供"思考过程"面板展示。 */
-    private void sseReasoning(java.io.OutputStream out, String reasoning) {
-        try {
-            out.write(("event: reasoning\ndata: {\"text\":\"" + jsonEscape(reasoning) + "\"}\n\n")
-                    .getBytes(StandardCharsets.UTF_8));
-            out.flush();
-        } catch (Exception ignored) {
-        }
-    }
-
-    // ============================================================ SSE 流式基础设施
-
-    /** SSE 写入器：统一封装 token / reasoning / 事件帧，消除 6 处 SSE 端点的 30 行样板代码。 */
-    static class SseSink {
-        private final java.io.OutputStream out;
-        private boolean broken = false;
-
-        SseSink(java.io.OutputStream out) { this.out = out; }
-
-        /** 客户端是否已断开（token 推送失败后置 true，调用方据此跳过写库）。 */
-        boolean isBroken() { return broken; }
-
-        void start() throws Exception { write("event: start\ndata: {}\n\n"); }
-
-        /** 逐 token 推正文（失败标记 broken，不抛异常）。 */
-        void token(String text) {
-            try { write("data: {\"text\":\"" + jsonEscape(text) + "\"}\n\n"); }
-            catch (Exception e) { broken = true; log.debug("token 推送异常（已吞）: {}", e.getMessage()); }
-        }
-
-        /** 逐 token 推思考过程（失败静默）。 */
-        void reasoning(String text) {
-            try { write("event: reasoning\ndata: {\"text\":\"" + jsonEscape(text) + "\"}\n\n"); }
-            catch (Exception ignored) { broken = true; }
-        }
-
-        void done() throws Exception { write("event: done\ndata: {}\n\n"); }
-
-        void doneWithText(String text) throws Exception {
-            write("event: done\ndata: {\"text\":\"" + jsonEscape(text == null ? "" : text) + "\"}\n\n");
-        }
-
-        /** 自定义事件帧（如 event:grade / event:result / event:reveal）。 */
-        void event(String name, String json) throws Exception {
-            write("event: " + name + "\ndata: " + json + "\n\n");
-        }
-
-        void error(String msg) {
-            try { write("event: error\ndata: " + jsonEscape(msg) + "\"}\n\n"); }
-            catch (Exception ignored) {}
-        }
-
-        private void write(String s) throws Exception {
-            out.write(s.getBytes(StandardCharsets.UTF_8));
-            out.flush();
-        }
-    }
-
-    /** SSE 流式处理器：在 handler 里写 token / 事件，异常由 sse() 统一兜底为 event:error。 */
-    @FunctionalInterface
-    interface SseHandler { void handle(SseSink sink) throws Exception; }
-
-    /** 把流式逻辑包装成标准 SSE 响应（自动错误兜底 + 统一响应头）。 */
-    private ResponseEntity<StreamingResponseBody> sse(SseHandler handler) {
-        StreamingResponseBody body = out -> {
-            SseSink sink = new SseSink(out);
-            try {
-                handler.handle(sink);
-            } catch (Exception e) {
-                log.warn("SSE 推送异常", e);
-                sink.error(e.getMessage());
-            }
-        };
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header("Cache-Control", "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
     }
 
     /** 把图片 data URL 列表序列化为 JSON 字符串（存 drill_turn.image_json）。 */

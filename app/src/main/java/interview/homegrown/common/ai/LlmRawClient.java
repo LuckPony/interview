@@ -212,25 +212,36 @@ public class LlmRawClient {
      */
     public void stream(String system, String user, Consumer<String> onToken, Consumer<Throwable> onError,
                        boolean fallbackToReasoning, Consumer<String> onReasoning) {
-        stream(system, user, null, onToken, onError, fallbackToReasoning, onReasoning);
+        stream(system, user, null, true, onToken, onError, fallbackToReasoning, onReasoning);
+    }
+
+    /** 带图片的流式请求（默认开思考），兼容旧调用。 */
+    public void stream(String system, String user, List<String> images,
+                       Consumer<String> onToken, Consumer<Throwable> onError,
+                       boolean fallbackToReasoning, Consumer<String> onReasoning) {
+        stream(system, user, images, true, onToken, onError, fallbackToReasoning, onReasoning);
     }
 
     /**
      * 流式请求（可带图片）：视觉模型时把用户消息拼成 OpenAI 兼容的
      * {@code content: [{type:text},{type:image_url,image_url:{url:"data:image/..."}}]}；
      * images 为空时与旧行为一致（content 为纯字符串）。
+     *
+     * @param enableThinking 是否开启模型思考。讲解正文场景应传 false：
+     *                        思考阶段不产出正文 token，前端长时间空白像“不流式”，
+     *                        且超 30s 还会触发降级重试（已生成的内容作废重来）。
      */
-    public void stream(String system, String user, List<String> images,
+    public void stream(String system, String user, List<String> images, boolean enableThinking,
                        Consumer<String> onToken, Consumer<Throwable> onError,
                        boolean fallbackToReasoning, Consumer<String> onReasoning) {
         if (!available()) {
             notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
         }
-        boolean enableThinking = true;
+        boolean thinking = enableThinking;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                Map<String, Object> body = buildStreamBody(system, user, images, enableThinking);
+                Map<String, Object> body = buildStreamBody(system, user, images, thinking);
                 HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
                 if (response == null) return;
                 if (response.statusCode() / 100 != 2) {
@@ -242,7 +253,7 @@ public class LlmRawClient {
                 boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning);
                 if (!thinkingTimeout) return;
                 log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
-                enableThinking = false;
+                thinking = false;
             } catch (Exception t) {
                 if (t instanceof InterruptedException) Thread.currentThread().interrupt();
                 notifyError(onError, t);
