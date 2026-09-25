@@ -1000,58 +1000,62 @@ public class DrillController {
         final String context = contextOf(uid, run.getQuestionId());
         final List<String> fImages = images;
 
-        // —— 苏格拉底三态判定（用户每轮作答后）——
-        // 判定结果写回 turn，并决定 AI 这轮的回复行为：
-        //   answering → AI 简短确认并等（不引导不评分）
-        //   needs_guide → AI 抛一个引导问题（不给答案）
-        //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
-        //   wantsAnswerNow=true → 用户明确索要完整答案/放弃作答，触发揭示（评分封 AGAIN）
-        // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
-        boolean buttonReveal = Boolean.TRUE.equals(req.reveal());
-        boolean preGraded = run.getStatus() == DrillRunStatus.READY
-                || run.getStatus() == DrillRunStatus.ANSWERING;
-        // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
-        final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
-                stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+        return SseStream.start(sink -> {
+            // 首帧立即下发：EdgeOne 回源首包超时很短（实测约 15 秒），而下面的苏格拉底
+            // 判定（LLM）与 LLM 首 token 都比它慢——不先发一帧占住连接，网关会 524 掐断。
+            sink.start();
 
-        // —— 答案揭示边界（“得到答案之前”的评分依据）——
-        // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
-        // 意图由 AI 语义理解判定（非关键词写死）。揭示后评分封 AGAIN，防止骗答案刷分。
-        // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
-        boolean reveal = buttonReveal || (judge != null && judge.wantsAnswerNow());
-        boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
-        if (reveal && notFinished && !run.isRevealed()) {
-            run.setRevealed(true);
-            runRepo.save(run);
-        }
-        final boolean fReveal = reveal;
+            // —— 苏格拉底三态判定（用户每轮作答后）——
+            // 判定结果写回 turn，并决定 AI 这轮的回复行为：
+            //   answering → AI 简短确认并等（不引导不评分）
+            //   needs_guide → AI 抛一个引导问题（不给答案）
+            //   done → 表扬 + 提示结束；G1 未达标则后续触发再考查
+            //   wantsAnswerNow=true → 用户明确索要完整答案/放弃作答，触发揭示（评分封 AGAIN）
+            // 已判分（GRADED）的 run 继续对话是自由问答，不再判定、不改变评分结果。
+            boolean buttonReveal = Boolean.TRUE.equals(req.reveal());
+            boolean preGraded = run.getStatus() == DrillRunStatus.READY
+                    || run.getStatus() == DrillRunStatus.ANSWERING;
+            // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
+            final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
+                    stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
 
-        if (judge != null) {
-            fTurn.setJudgeState(judge.state());
-            fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
-            fTurn.setFatalGap(judge.fatalGap());
-            turnRepo.save(fTurn);
-            // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（fReveal=true）
-            if (!reveal && "done".equalsIgnoreCase(judge.state())) {
-                // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
-                // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
-                boolean guided = run.getGuideRounds() > 0
-                        || run.getSocraticState() == DrillPhase.GUIDED;
-                if (guided) {
-                    gradingService.guidedPass(uid, runId, fTurn);
-                } else {
-                    run.setSocraticState(DrillPhase.DONE);
-                    run.setFinalGrade("GOOD");
-                    runRepo.save(run);
-                }
-            } else if (!reveal && "needs_guide".equalsIgnoreCase(judge.state())) {
-                run.setSocraticState(DrillPhase.GUIDED);
-                run.setGuideRounds(run.getGuideRounds() + 1);
+            // —— 答案揭示边界（“得到答案之前”的评分依据）——
+            // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
+            // 意图由 AI 语义理解判定（非关键词写死）。揭示后评分封 AGAIN，防止骗答案刷分。
+            // 判分后（GRADED）看答案同样记录边界：看答案后封 AGAIN，不再引导/再考查。
+            boolean reveal = buttonReveal || (judge != null && judge.wantsAnswerNow());
+            boolean notFinished = run.getSocraticState() != DrillPhase.DONE;
+            if (reveal && notFinished && !run.isRevealed()) {
+                run.setRevealed(true);
                 runRepo.save(run);
             }
-        }
+            final boolean fReveal = reveal;
 
-        return SseStream.start(sink -> {
+            if (judge != null) {
+                fTurn.setJudgeState(judge.state());
+                fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
+                fTurn.setFatalGap(judge.fatalGap());
+                turnRepo.save(fTurn);
+                // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（fReveal=true）
+                if (!reveal && "done".equalsIgnoreCase(judge.state())) {
+                    // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
+                    // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
+                    boolean guided = run.getGuideRounds() > 0
+                            || run.getSocraticState() == DrillPhase.GUIDED;
+                    if (guided) {
+                        gradingService.guidedPass(uid, runId, fTurn);
+                    } else {
+                        run.setSocraticState(DrillPhase.DONE);
+                        run.setFinalGrade("GOOD");
+                        runRepo.save(run);
+                    }
+                } else if (!reveal && "needs_guide".equalsIgnoreCase(judge.state())) {
+                    run.setSocraticState(DrillPhase.GUIDED);
+                    run.setGuideRounds(run.getGuideRounds() + 1);
+                    runRepo.save(run);
+                }
+            }
+
             if (fReveal && notFinished) sink.event("reveal", "{}");
 
             boolean wantAnswer = judge != null && judge.wantsAnswerNow();

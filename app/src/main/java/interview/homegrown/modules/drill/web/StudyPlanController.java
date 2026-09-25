@@ -69,6 +69,8 @@ public class StudyPlanController {
         List<ChatMessage> messages = req.messages();
         Long corpusId = req.corpusId();
         return SseStream.start(sink -> {
+            // 首帧立即下发：EdgeOne 回源首包超时很短，LLM 首 token 比它慢，先占住连接。
+            sink.start();
             String reply = service.intakeStream(messages, corpusId, sink::token);
             // 把流式的回复并入对话历史，再提取草稿
             List<ChatMessage> conv = new ArrayList<>(messages);

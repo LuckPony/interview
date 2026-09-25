@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
  * handler 跑在虚拟线程上、不占 servlet 线程；抛出的异常统一兜底为 {@code event: error} 帧。
  *
  * <p>客户端断开由写失败感知并置 {@link Sink#isBroken()}（调用方据此跳过写库）；
- * 心跳每 20 秒发一帧 {@code : keepalive} 注释保活（防 nginx 等代理 idle 断连），
- * 心跳失败会中断 handler 线程，及时中止上游 LLM 请求。
+ * 心跳每 10 秒发一帧 {@code : keepalive} 注释保活（EdgeOne 回源首包/idle 超时很短，
+ * 长静默会被网关 524 掐断），心跳失败会中断 handler 线程，及时中止上游 LLM 请求。
  *
  * <p>帧格式与前端解析器约定一致（换传输层不换协议）：正文 {@code data:{"text":...}}，
  * 命名事件 {@code event:xxx} + 单行 JSON data，空行分隔。
@@ -108,7 +108,7 @@ public final class SseStream {
             this.emitter = emitter;
             this.emitter.onError(t -> broken = true);
             this.emitter.onTimeout(() -> broken = true);
-            this.heartbeat = HEARTBEATS.scheduleAtFixedRate(this::keepalive, 20, 20, TimeUnit.SECONDS);
+            this.heartbeat = HEARTBEATS.scheduleAtFixedRate(this::keepalive, 10, 10, TimeUnit.SECONDS);
         }
 
         /** 客户端是否已断开（写失败/超时/错误后为 true，调用方据此跳过写库）。 */
