@@ -1017,7 +1017,9 @@ public class DrillController {
                     || run.getStatus() == DrillRunStatus.ANSWERING;
             // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
             final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
-                    stem, pointsJson, turn.getRawAnswer(), buildConversationForJudge(allTurns));
+                    stem, pointsJson,
+                    interview.homegrown.common.util.TextUtil.truncateCodeAware(turn.getRawAnswer(), 2400),
+                    buildConversationForJudge(allTurns));
 
             // —— 答案揭示边界（“得到答案之前”的评分依据）——
             // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
@@ -1348,7 +1350,12 @@ public class DrillController {
         return q.getConceptIds()[0].longValue();
     }
 
-    /** 把 turns 拼成「老师/学生」对话实录，供 SocraticJudgeService 判定哪些点被实际考到。 */
+    /**
+     * 把 turns 拼成「老师/学生」对话实录，供 SocraticJudgeService 判定哪些点被实际考到。
+     * 判定是 chat 同步链路里最大的耗时（实测 6.5s），prompt 越长越慢且随轮次线性膨胀——
+     * 老师的长讲解对"学生覆盖了哪些点"几乎无信息量，只留 120 字当上下文；
+     * 实录整体再截到最近 3500 字，让判定耗时不随对话轮次无限增长。
+     */
     private String buildConversationForJudge(List<DrillTurn> turns) {
         if (turns == null || turns.isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
@@ -1360,10 +1367,14 @@ public class DrillController {
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                sb.append("老师：").append(trimForJudge(tutor)).append("\n");
+                String line = trimForJudge(tutor);
+                sb.append("老师：")
+                        .append(line.length() > 120 ? line.substring(0, 120) + "…" : line)
+                        .append("\n");
             }
         }
-        return sb.toString();
+        String convo = sb.toString();
+        return convo.length() <= 3500 ? convo : "…" + convo.substring(convo.length() - 3500);
     }
 
     /** 判定用对话实录裁剪：代码（含 ``` 围栏）完整保留；其余 1200 字符截断。 */
