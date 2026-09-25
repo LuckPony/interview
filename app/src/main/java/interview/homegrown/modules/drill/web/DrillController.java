@@ -1029,14 +1029,13 @@ public class DrillController {
                 run.setRevealed(true);
                 runRepo.save(run);
             }
-            final boolean fReveal = reveal;
 
             if (judge != null) {
                 fTurn.setJudgeState(judge.state());
                 fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
                 fTurn.setFatalGap(judge.fatalGap());
                 turnRepo.save(fTurn);
-                // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（fReveal=true）
+                // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（reveal=true）
                 if (!reveal && "done".equalsIgnoreCase(judge.state())) {
                     // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
                     // 已经过引导（GUIDED）→ G2 引导后达标，落 GradeResult + applyMastery（封顶 GOOD）
@@ -1056,7 +1055,7 @@ public class DrillController {
                 }
             }
 
-            if (fReveal && notFinished) sink.event("reveal", "{}");
+            if (reveal && notFinished) sink.event("reveal", "{}");
 
             boolean wantAnswer = judge != null && judge.wantsAnswerNow();
             String judgeReply = (!wantAnswer && judge != null && "done".equalsIgnoreCase(judge.state())
@@ -1074,7 +1073,7 @@ public class DrillController {
                 full = judgeReply;
             } else {
                 full = tutorGenerator.streamChat(stem, pointsJson, allTurns, context,
-                        fImages, fGuide, sink::token, sink::reasoning, fReveal);
+                        fImages, fGuide, sink::token, sink::reasoning, reveal);
             }
 
             if (full != null && !sink.isBroken()) { fTurn.setTutorText(full.trim()); turnRepo.save(fTurn); }

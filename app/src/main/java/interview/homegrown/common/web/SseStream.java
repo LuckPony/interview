@@ -116,7 +116,7 @@ public final class SseStream {
             return broken;
         }
 
-        /** event:start 空帧：通知前端连接已建立。 */
+        /** event:start 空帧：立即触发首字节 flush（占住 EdgeOne 回源连接，防 524）；前端不解析该事件。 */
         public void start() {
             send("start", "{}");
         }
