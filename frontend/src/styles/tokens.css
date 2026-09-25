@@ -45,11 +45,11 @@
     'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* —— 流式字号（clamp，模块化比例 ~1.25）—— */
-  --fs-xs: 0.75rem;     /* 12 */
-  --fs-sm: 0.8125rem;   /* 13 */
-  --fs-base: 0.9375rem; /* 15 */
-  --fs-md: 1.0625rem;   /* 17 */
+  /* —— 流式字号（整体上调一档：配合设置页根字号 16/18/20/22，标准态正文 18px）—— */
+  --fs-xs: 0.8125rem;   /* 13 */
+  --fs-sm: 0.875rem;    /* 14 */
+  --fs-base: 1rem;      /* 16 */
+  --fs-md: 1.125rem;    /* 18 */
   --fs-lg: 1.25rem;     /* 20 */
   --fs-xl: 1.75rem;     /* 28 */
   --fs-2xl: clamp(2.1rem, 4vw, 2.9rem);
@@ -92,7 +92,7 @@
   --paper: oklch(0.17 0.014 255);          /* 主背景：深蓝灰 */
   --paper-2: oklch(0.21 0.014 255);        /* 卡片：略高于底 */
   --paper-3: oklch(0.25 0.014 255);        /* 凹陷/输入底 */
-  --ink: oklch(0.92 0.010 250);            /* 主文字 */
+  --ink: #ffffff;                          /* 主文字：纯白 */
   --ink-soft: oklch(0.74 0.012 250);       /* 次级文字 */
   --ink-faint: oklch(0.56 0.012 248);      /* Tertiary / 占位 */
   --line: oklch(0.29 0.010 240);           /* 发丝分隔线 */

@@ -6,7 +6,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export interface AppearancePrefs {
   /** 主题模式：跟随系统时按 prefers-color-scheme 解析 */
   theme: ThemeMode;
-  /** 整体字号档位：0 小(14px) | 1 标准(16px) | 2 大(18px) | 3 特大(20px) */
+  /** 整体字号档位：0 小(16px) | 1 标准(18px) | 2 大(20px) | 3 特大(22px) */
   fontScale: number;
   /** 题干字号档位：0 小 | 1 标准 | 2 大 */
   stemScale: number;
@@ -23,7 +23,8 @@ export interface AppearancePrefs {
 const KEY = 'mianba.appearance';
 
 export const DEFAULT_PREFS: AppearancePrefs = {
-  theme: 'system',
+  // 初始即黑夜：深色底 + 纯白主文字（白天主题保留深色字，白底白字不可读）
+  theme: 'dark',
   fontScale: 1,
   stemScale: 1,
   bodyScale: 1,
@@ -32,7 +33,7 @@ export const DEFAULT_PREFS: AppearancePrefs = {
   meBubbleColor: null,
 };
 
-const FONT_PX = [14, 16, 18, 20];      // 整体字号档位 → html 根字号
+const FONT_PX = [16, 18, 20, 22];      // 整体字号档位 → html 根字号（整体上调，标准态 16→18px）
 const AREA_MULT = [0.9, 1, 1.15];      // 分项字号档位 → 乘数
 
 function clampNum(v: unknown, min: number, max: number, def: number): number {
@@ -81,7 +82,7 @@ export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
 export function applyPrefs(p: AppearancePrefs): void {
   const root = document.documentElement;
   root.setAttribute('data-theme', resolveTheme(p.theme));
-  root.style.fontSize = `${FONT_PX[p.fontScale] ?? 16}px`;
+  root.style.fontSize = `${FONT_PX[p.fontScale] ?? 18}px`;
   root.style.setProperty('--scale-stem', String(AREA_MULT[p.stemScale] ?? 1));
   root.style.setProperty('--scale-body', String(AREA_MULT[p.bodyScale] ?? 1));
   root.style.setProperty('--scale-code', String(AREA_MULT[p.codeScale] ?? 1));

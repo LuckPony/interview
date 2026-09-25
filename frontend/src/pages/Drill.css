@@ -1363,7 +1363,7 @@
   display: grid;
   place-items: center;
   color: var(--on-accent);
-  font-size: 12px;
+  font-size: 13px;
 }
 .lesson-qa-check.on {
   background: var(--cinnabar);

@@ -6,9 +6,9 @@
   display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 9px;
   width: 100%; padding: 15px 18px; margin-bottom: 22px;
   border: 1px dashed var(--line-strong); border-radius: 13px;
-  color: var(--ink-soft); background: color-mix(in srgb, var(--paper-2) 65%, transparent); font-size: 13px;
+  color: var(--ink-soft); background: color-mix(in srgb, var(--paper-2) 65%, transparent); font-size: 14px;
 }
-.resume-drop-hint small { color: var(--ink-faint); font-size: 11px; }
+.resume-drop-hint small { color: var(--ink-faint); font-size: 12px; }
 .resume-drop-hint:hover:not(:disabled) { border-color: var(--cinnabar); background: var(--cinnabar-wash); }
 .resume-drop-hint:disabled { cursor: wait; opacity: .6; }
 .resume-drop-overlay {

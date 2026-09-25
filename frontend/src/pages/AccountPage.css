@@ -65,10 +65,10 @@
   background: conic-gradient(var(--cinnabar) var(--completion), var(--line) 0);
 }
 .account-completion-ring::before { content: ''; grid-area: 1 / 1; width: 46px; height: 46px; border-radius: 50%; background: var(--paper-2); }
-.account-completion-ring span { z-index: 1; grid-area: 1 / 1; color: var(--cinnabar-deep); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+.account-completion-ring span { z-index: 1; grid-area: 1 / 1; color: var(--cinnabar-deep); font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
 .account-completion > div:last-child { display: flex; flex-direction: column; }
 .account-completion strong { font-size: var(--fs-sm); }
-.account-completion small { margin-top: 3px; color: var(--ink-faint); font-size: 11px; }
+.account-completion small { margin-top: 3px; color: var(--ink-faint); font-size: 12px; }
 .account-layout { display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(260px, 0.72fr); align-items: start; gap: var(--s-5); }
 .account-form-card { padding: var(--s-6); }
 .account-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding-bottom: var(--s-5); border-bottom: 1px solid var(--line); }
@@ -94,7 +94,7 @@
 .account-field input:focus,
 .account-field select:focus { border-color: var(--cinnabar); box-shadow: 0 0 0 3px var(--cinnabar-wash); }
 .account-field input:disabled { cursor: not-allowed; color: var(--ink-faint); background: var(--paper-3); }
-.account-field small { color: var(--ink-faint); font-size: 11px; }
+.account-field small { color: var(--ink-faint); font-size: 12px; }
 .account-actions { display: flex; justify-content: flex-end; margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px solid var(--line); }
 .account-side-column { display: flex; flex-direction: column; gap: var(--s-4); }
 .account-security-card { position: relative; overflow: hidden; padding: 25px; }

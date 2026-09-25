@@ -34,7 +34,7 @@
 .dashboard-breadcrumb {
   gap: 12px;
   color: var(--dash-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-breadcrumb > span {
   color: #bdc8c3;
@@ -51,7 +51,7 @@
 .dashboard-date {
   gap: 8px;
   color: var(--dash-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .dashboard-refresh {
   display: grid;
@@ -113,7 +113,7 @@
   padding-left: 4px;
 }
 .dashboard-welcome p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--dash-muted);
 }
 .dashboard-outline-button {
@@ -124,7 +124,7 @@
   padding: 10px 13px;
   border: 1px solid color-mix(in srgb, var(--dash-teal) 24%, transparent);
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--dash-teal-deep);
   background: color-mix(in srgb, var(--paper-2) 50%, transparent);
   transition: background 0.2s;
@@ -142,7 +142,7 @@
   border-radius: 8px;
   background: var(--warn-wash);
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-notice button {
   color: var(--dash-teal-deep);
@@ -174,7 +174,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dash-muted);
 }
 .dashboard-stat > strong {
@@ -186,7 +186,7 @@
 }
 .dashboard-stat strong small {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--dash-muted);
   font-weight: 400;
 }
@@ -233,7 +233,7 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dash-muted);
 }
 .dashboard-section-heading > a:hover {
@@ -306,7 +306,7 @@
 }
 .dashboard-card-number small {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   letter-spacing: 0;
   color: #6b796c;
@@ -314,7 +314,7 @@
 .dashboard-overview-card h3 {
   font-family: var(--font-sans);
   color: #3d4b43;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   margin-top: 8px;
 }
@@ -421,7 +421,7 @@
 .dashboard-focus-progress strong {
   color: white;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -449,7 +449,7 @@
   border-radius: 8px;
   background: #fff;
   color: #3e766c;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   transition: background 0.2s;
 }
@@ -481,7 +481,7 @@
 .dashboard-offer-sheet b {
   display: block;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 1px;
   margin: 2px 0 6px;
 }
@@ -570,7 +570,7 @@
   gap: 4px;
 }
 .dashboard-record-copy strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.6;
   color: var(--ink);
@@ -594,7 +594,7 @@
   align-items: center;
   gap: 6px;
   color: var(--dash-teal);
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 18px;
   padding: 6px;
 }
@@ -634,7 +634,7 @@
 }
 .dashboard-trend-total strong small {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--dash-muted);
 }
@@ -700,7 +700,7 @@
   margin-bottom: 12px;
 }
 .dashboard-empty strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink-soft);
 }
@@ -714,7 +714,7 @@
   align-items: center;
   gap: 6px;
   color: var(--dash-teal);
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 12px;
 }
 .dashboard-plan-bar {
@@ -733,7 +733,7 @@
   min-height: 38px;
   margin: 27px 0 16px;
   color: var(--dash-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-direction-summary span {
   color: var(--dash-teal-deep);
@@ -753,11 +753,11 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dash-muted);
 }
 .dashboard-plan-bar strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink-soft);
 }
@@ -765,7 +765,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dash-teal);
   white-space: nowrap;
 }
@@ -776,7 +776,7 @@
   display: none;
 }
 .dashboard-plan-bar .ps-trigger {
-  font-size: 12px;
+  font-size: 13px;
   background: var(--paper-2);
   border-color: var(--dash-stroke);
 }
@@ -957,7 +957,7 @@
     align-items: flex-start;
   }
   .dashboard-outline-button {
-    font-size: 11px;
+    font-size: 12px;
   }
   .dashboard-middle-grid,
   .dashboard-bottom-grid {
@@ -1091,7 +1091,7 @@
     order: 0;
   }
   .dashboard-section-heading h2 {
-    font-size: 13px;
+    font-size: 14px;
   }
   .dashboard-section-heading > div > span {
     font-size: 9px;

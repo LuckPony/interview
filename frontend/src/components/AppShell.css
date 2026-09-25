@@ -70,7 +70,7 @@
   gap: 8px;
   padding: 10px 12px 13px;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .sidebar-collapsed .brand {
   justify-content: center;
@@ -474,7 +474,7 @@
 }
 .user-copy small {
   margin-bottom: 2px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-soft);
 }
 .logout {
