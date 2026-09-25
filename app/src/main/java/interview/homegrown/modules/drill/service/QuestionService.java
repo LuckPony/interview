@@ -1,6 +1,8 @@
 package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import interview.homegrown.common.exception.BusinessException;
+import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
 import interview.homegrown.modules.drill.ai.QuestionGenerator;
 import interview.homegrown.modules.drill.domain.AnswerMode;
@@ -89,6 +91,13 @@ public class QuestionService {
             tried.add(probe);
 
             GeneratedQuestion gq = generator.generate(task, probe, format, history, referenceText);
+            if (gq == null || gq.stem == null || gq.stem.isBlank()) {
+                // 兜底闸：模型漏顶层 stem 时 DB 非空约束会炸（整笔回滚、任务永远 PENDING）——带错重试而非落库崩
+                log.warn("出题结果缺少顶层 stem，带错重试 attempt={} probe={}", attempt + 1, probe);
+                referenceText = (referenceText == null ? "" : referenceText + "\n\n")
+                        + "上一次输出缺少顶层 stem：JSON 顶层必须同时包含 stem（完整题干）、points、byConcept。";
+                continue;
+            }
             double sim = similarityGuard.maxSimilarity(gq.stem, history);
 
             if (sim <= DUP_THRESHOLD) {
@@ -105,6 +114,9 @@ public class QuestionService {
                     + "），本次必须更换实际场景、示例代码和核心问法，不得只改措辞。";
         }
 
+        if (accepted == null || accepted.stem == null || accepted.stem.isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "出题失败：模型未返回有效题干，请重试");
+        }
         return persist(task, accepted, acceptedProbe, format);
     }
 

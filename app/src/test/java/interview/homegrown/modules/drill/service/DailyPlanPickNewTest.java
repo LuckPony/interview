@@ -29,7 +29,7 @@ class DailyPlanPickNewTest {
     private DailyPlanService service() {
         // 只用到 conceptRepo / masteryRepo，其余依赖传 null（progressContext 出题上下文，pickNew 不涉及）
         return new DailyPlanService(null, null, conceptRepo, masteryRepo,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     private Concept c(long id, int layer) {

@@ -1,5 +1,7 @@
 package interview.homegrown.modules.drill.service;
 
+import interview.homegrown.common.ai.AiConfig;
+import interview.homegrown.common.ai.AiSettingsService;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.Mastery;
@@ -75,6 +77,7 @@ public class DailyPlanService {
     private final QuestionService questionService;
     private final CorpusService corpusService;
     private final ProgressContextService progressContext;
+    private final AiSettingsService settings;
 
     private final ExecutorService generatorPool;
 
@@ -82,7 +85,7 @@ public class DailyPlanService {
                             ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             QuestionBankRepository qbRepo, SelectionService selectionService,
                             QuestionService questionService, CorpusService corpusService,
-                            ProgressContextService progressContext) {
+                            ProgressContextService progressContext, AiSettingsService settings) {
         this.taskRepo = taskRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -92,6 +95,7 @@ public class DailyPlanService {
         this.questionService = questionService;
         this.corpusService = corpusService;
         this.progressContext = progressContext;
+        this.settings = settings;
         this.generatorPool = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "daily-task-gen");
             t.setDaemon(true);
@@ -402,13 +406,21 @@ public class DailyPlanService {
             try {
                 DailyTask t = taskRepo.findById(taskId).orElse(null);
                 if (t == null || t.getQuestionId() != null) return;
-                SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
-                QuestionBank qb = questionService.generate(sel, taskContext(t));
-                t.setQuestionId(qb.getId());
-                t.setStatus(DailyTask.STATUS_READY);
-                taskRepo.save(t);
+                // 后台线程没有请求上下文，取任务归属用户的库配置（否则云端无服务器级 key，
+                // 预生成全部报"尚未配置 API Key"、任务永远 PENDING）
+                settings.withTaskConfig(settings.userConfig(t.getUserId()), () -> {
+                    try {
+                        SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
+                        QuestionBank qb = questionService.generate(sel, taskContext(t));
+                        t.setQuestionId(qb.getId());
+                        t.setStatus(DailyTask.STATUS_READY);
+                        taskRepo.save(t);
+                    } catch (Exception e) {
+                        log.warn("预生成题目失败 taskId={}: {}", taskId, e.getMessage());
+                    }
+                });
             } catch (Exception e) {
-                log.warn("预生成题目失败 taskId={}: {}", taskId, e.getMessage());
+                log.warn("预生成调度失败 taskId={}: {}", taskId, e.getMessage());
             }
         });
     }

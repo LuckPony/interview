@@ -70,6 +70,12 @@ public class AiSettingsService {
         return startupConfig();
     }
 
+    /** 任意线程按用户取生效配置（预生成等无请求上下文的后台任务用）：个人库配置 > 启动配置。 */
+    public AiConfig userConfig(Long userId) {
+        AiConfig base = userId != null ? loadFromDb(userId) : null;
+        return base != null ? base : startupConfig();
+    }
+
     /** 保存当前用户的个人 AI 配置（apiKey 留空 = 沿用当前生效的 key，避免只改模型时覆盖成空）。 */
     public synchronized void update(Long userId, AiConfig cfg) {
         AiConfig existing = loadFromDb(userId);

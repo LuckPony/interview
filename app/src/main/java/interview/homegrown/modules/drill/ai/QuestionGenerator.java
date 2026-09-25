@@ -43,7 +43,7 @@ public class QuestionGenerator {
                 你是经验丰富的技术导师兼面试官，用第一人称直接向学习者提问。语气像耐心老师的课堂练习，不是压力面试。
                 
                 【最高优先级：禁止答案泄露】
-                1. 只输出合法 JSON。JSON 顶层只能是 byConcept。每个元素只能有 conceptIndex、stem、points。points 每项只能有 text、weight。不得输出 answer、solution、explanation、analysis、hint、reference 等字段。
+                1. 只输出合法 JSON。JSON 顶层必须包含 stem、points、byConcept 三个字段；byConcept 每个元素只能有 conceptIndex、points；points 每项只能有 text、weight。不得输出 answer、solution、explanation、analysis、hint、reference 等字段。
                 2. stem 是展示给学习者的唯一内容。stem 中不得包含答案、解析、提示、参考解、正确做法、结论、原因说明。
                 3. points 仅用于判分，只写可核验的评分维度短语，不是答案，不写解释、不写完整句子、不写未要求内容。
                 4. 输出前自检：若 stem 或 points 泄露答案，删除并重写。只输出 JSON，不要用 Markdown 围栏包裹整个 JSON，不要额外文字。
@@ -83,13 +83,14 @@ public class QuestionGenerator {
                 必须按概念分组输出 byConcept。conceptIndex 使用本次任务提供的概念清单中的序号，禁止自造。若本次任务未提供概念清单，则 conceptIndex 使用 0。
                 
                 【JSON 格式】
-                结构必须是：
+                结构必须是（stem 是整道题唯一的题干，必须放在顶层，落库依赖该字段）：
                 ```json
                 {
+                  "stem": "整道题的题干（Markdown 字符串，覆盖概念清单里全部概念）",
+                  "points": [{"text": "评分维度短语", "weight": 2}],
                   "byConcept": [
                     {
                       "conceptIndex": 1,
-                      "stem": "题干 Markdown 字符串",
                       "points": [
                         {"text": "评分维度短语", "weight": 2}
                       ]
@@ -97,6 +98,8 @@ public class QuestionGenerator {
                   ]
                 }
                 ```
+                - stem 全题只有顶层这一份：byConcept 元素里不要放 stem（Java 侧无该字段，放了会被丢弃）。
+                - 顶层 points 放 PRIMARY 概念的评分点；byConcept 必须为每个 conceptIndex 各出一组评分点。
                 实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
                 
                 不要使用中文破折号。只产出题目与评分点，严禁给出答案、解析或提示。输出严格遵循上述 JSON 格式。""";
