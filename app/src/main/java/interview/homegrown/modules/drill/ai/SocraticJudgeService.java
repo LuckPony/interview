@@ -64,15 +64,18 @@ public class SocraticJudgeService {
     private static final String PASS_THRESHOLD = "0.8";
 
     /**
-     * 判定用户当前轮作答。
+     * 判定对话中的最后一条学生作答（由 conversation 末行给出，含当前轮）。
+     *
+     * <p>prompt 排布服务前缀缓存：题干/评分点/历史实录都是"静态或只在尾部追加"的内容，
+     * 当轮作答就是实录的最后一行——这样每轮请求的 token 前缀与上一轮逐字节一致，
+     * mimo 的自动前缀缓存可整段命中，只有新增的一两行做真实 prefill。
      *
      * @param stem         题干
      * @param pointsJson   评分点 JSON
-     * @param userAnswer   用户本轮作答
-     * @param conversation 之前的对话实录（老师问/学生答），供判定参考；可为空
+     * @param conversation 对话实录（按轮次排列，最后一条是待判定的学生作答）；可为空
      * @return 三态判定结果
      */
-    public SocraticJudge judge(String stem, String pointsJson, String userAnswer, String conversation) {
+    public SocraticJudge judge(String stem, String pointsJson, String conversation) {
         String user = """
                 题干：
                 %s
@@ -80,18 +83,14 @@ public class SocraticJudgeService {
                 评分点（JSON）：
                 %s
 
-                用户本轮作答：
-                %s
-
-                之前的对话实录（供参考，判断哪些点已被实际考到）：
+                对话实录（按轮次排列，最新一条学生作答在最后，供判断哪些点已被实际考到）：
                 %s
 
                 达标阈值：评分点覆盖 ≥ %s 且无致命缺漏。
-                请判定 state / coverage / fatalGap / guideQuestion / praise / wantsAnswerNow。
+                请判定最后一条学生作答的 state / coverage / fatalGap / guideQuestion / praise / wantsAnswerNow。
                 """.formatted(
                 stem == null ? "" : stem,
                 pointsJson == null ? "" : pointsJson,
-                userAnswer == null ? "" : userAnswer,
                 conversation == null ? "（无）" : conversation,
                 PASS_THRESHOLD);
 

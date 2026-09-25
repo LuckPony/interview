@@ -1017,9 +1017,7 @@ public class DrillController {
                     || run.getStatus() == DrillRunStatus.ANSWERING;
             // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
             final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
-                    stem, pointsJson,
-                    interview.homegrown.common.util.TextUtil.truncateCodeAware(turn.getRawAnswer(), 2400),
-                    buildConversationForJudge(allTurns));
+                    stem, pointsJson, buildConversationForJudge(allTurns));
 
             // —— 答案揭示边界（“得到答案之前”的评分依据）——
             // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
@@ -1351,10 +1349,14 @@ public class DrillController {
     }
 
     /**
-     * 把 turns 拼成「老师/学生」对话实录，供 SocraticJudgeService 判定哪些点被实际考到。
-     * 判定是 chat 同步链路里最大的耗时（实测 6.5s），prompt 越长越慢且随轮次线性膨胀——
-     * 老师的长讲解对"学生覆盖了哪些点"几乎无信息量，只留 120 字当上下文；
-     * 实录整体再截到最近 3500 字，让判定耗时不随对话轮次无限增长。
+     * 把 turns 拼成「学生/老师」对话实录（含当前轮，待判定作答在最后），供 SocraticJudgeService
+     * 判定哪些点被实际考到。两个硬约束：
+     * <ul>
+     *   <li><b>前缀缓存对齐</b>：已发出的行永不改动、新内容只往尾部追加，每轮请求的 token 前缀
+     *       与上一轮逐字节一致，mimo 自动前缀缓存整段命中——所以<b>不能做整体尾部截断</b>
+     *       （尾部截断会让起点漂移、前缀报废），只做行级截断防单条爆炸；</li>
+     *   <li>老师的长讲解对"学生覆盖了哪些点"几乎无信息量，只留 120 字当上下文。</li>
+     * </ul>
      */
     private String buildConversationForJudge(List<DrillTurn> turns) {
         if (turns == null || turns.isEmpty()) return null;
@@ -1363,23 +1365,17 @@ public class DrillController {
             String ans = t.getRawAnswer();
             if (ans != null && !ans.isBlank()) {
                 sb.append("学生（第 ").append(t.getRound() + 1).append(" 轮）：")
-                        .append(trimForJudge(ans)).append("\n");
+                        .append(interview.homegrown.common.util.TextUtil.truncateCodeAware(ans, 2400))
+                        .append("\n");
             }
             String tutor = t.getTutorText();
             if (tutor != null && !tutor.isBlank()) {
-                String line = trimForJudge(tutor);
                 sb.append("老师：")
-                        .append(line.length() > 120 ? line.substring(0, 120) + "…" : line)
+                        .append(interview.homegrown.common.util.TextUtil.truncateCodeAware(tutor, 120))
                         .append("\n");
             }
         }
-        String convo = sb.toString();
-        return convo.length() <= 3500 ? convo : "…" + convo.substring(convo.length() - 3500);
-    }
-
-    /** 判定用对话实录裁剪：代码（含 ``` 围栏）完整保留；其余 1200 字符截断。 */
-    private static String trimForJudge(String s) {
-        return interview.homegrown.common.util.TextUtil.truncateCodeAware(s, 1200);
+        return sb.toString();
     }
 
     /** 题目涉及的学习上下文（学生进度 + 概念要点 + 资料块 + 互联网补充），查不到返回 null。 */

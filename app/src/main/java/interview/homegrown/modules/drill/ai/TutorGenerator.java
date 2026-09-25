@@ -205,18 +205,15 @@ public class TutorGenerator {
                 %s
 
                 评分要点（仅供核对主问；题目正文未要求的旧题扩展评分点一律忽略，不得据此认定回答不完整）：
-                %s
-
-                对话历史：
-                %s
+                %s%s对话历史（最新一条学生作答在最后）：
                 %s
                 %s
 
                 学生最新消息附带了 %d 张图片（截图，随消息一起发送），请结合图片内容回应：
                 图片是学生作答的截图/报错/代码/题目时，请基于图里的实际内容回应，不要臆测图里没有的东西。
                 请回复学生的最新消息。
-                """, stem, pointsText,
-                history.toString().isBlank() ? "（无）" : history.toString(), contextBlock, guideBlock,
+                """, stem, pointsText, contextBlock,
+                history.toString().isBlank() ? "（无）" : history.toString(), guideBlock,
                 images == null ? 0 : images.size());
 
         StringBuilder buf = new StringBuilder();
